@@ -14,7 +14,7 @@ def expect(condition, reason):
         raise AssertionError(reason)
 
 expect('CURRENT_PROJECT_VERSION: "106"' in project, "new build identity")
-expect('RC126APIStartupLifecycle.begin(build: "105")' in view, "startup identity")
+expect('RC126APIStartupLifecycle.begin(build: "106")' in view, "startup identity")
 expect('"build_id": "rc1.26-build106-m5-governor"' in server, "server identity")
 expect('?? maxOutputLimit' in server, "omitted output length must default to UI-configured ceiling")
 expect('?? 256' not in server, "obsolete API parser 256-token default remains")

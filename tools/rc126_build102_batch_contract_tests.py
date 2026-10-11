@@ -38,7 +38,7 @@ for item in (
     'apiRuntime.batch = batchCap',
     'apiRuntime.ubatch = batchCap',
     'if context == 32_768 {',
-    'RC126APIStartupLifecycle.begin(build: "105")',
+    'RC126APIStartupLifecycle.begin(build: "106")',
     'Build94BatchExperiment.noteTextSuccess(',
     'Build94BatchExperiment.noteStartupFailure()',
 ):

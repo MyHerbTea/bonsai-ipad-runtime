@@ -11,7 +11,7 @@ project = (root / "project.yml").read_text()
 workflow = (root / ".github/workflows/build-ios.yml").read_text()
 
 assert 'CURRENT_PROJECT_VERSION: "106"' in project
-assert 'RC126APIStartupLifecycle.begin(build: "105")' in view
+assert 'RC126APIStartupLifecycle.begin(build: "106")' in view
 assert '"build_id": "rc1.26-build106-m5-governor"' in server
 assert 'BonsaiBuild97APIMaxOutputTokens' in view
 assert '[256, 512, 1024, 2048, 4096, 8192, 16384, 32768]' in view

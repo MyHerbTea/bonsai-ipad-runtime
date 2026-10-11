@@ -13,7 +13,7 @@ def has(s, needle):
     assert needle in s, "MISSING CONTRACT: %r" % needle
 
 has(project, 'CURRENT_PROJECT_VERSION: "106"')
-has(view, 'RC126APIStartupLifecycle.begin(build: "105")')
+has(view, 'RC126APIStartupLifecycle.begin(build: "106")')
 has(server, '"build_id": "rc1.26-build106-m5-governor"')
 has(policy, 'static let preferB16Key = "BonsaiBuild100PreferGuardedB16"')
 has(policy, 'defaults.bool(forKey: confirmedKey)')

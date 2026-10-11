@@ -9,7 +9,7 @@ policy = (root / "BonsaiLab/Build94BatchExperiment.swift").read_text()
 workflow = (root / ".github/workflows/build-ios.yml").read_text()
 project = (root / "project.yml").read_text()
 assert 'CURRENT_PROJECT_VERSION: "106"' in project
-assert 'RC126APIStartupLifecycle.begin(build: "105")' in view
+assert 'RC126APIStartupLifecycle.begin(build: "106")' in view
 assert '"build_id": "rc1.26-build106-m5-governor"' in server
 assert '"schema": "bonsai-build94-execution-v1"' in server
 assert "Build94BatchExperiment.select(context: context)" in view
