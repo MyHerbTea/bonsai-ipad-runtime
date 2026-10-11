@@ -146,6 +146,12 @@ def classify_long_output(completion_tokens, finish_reason, threshold=256):
     return "INCONCLUSIVE", "Model stopped early; cannot prove the configured budget"
 
 
+def is_build106_identity(status, build_info):
+    """Accept Build106 /debug/build JSON regardless of numeric vs string build."""
+    return (status == 200 and isinstance(build_info, dict)
+            and str(build_info.get("build")) == "106")
+
+
 def run():
     ap = argparse.ArgumentParser(description="Bonsai Build106 one-run device integration")
     ap.add_argument("--base-url", default=os.environ.get("BONSAI_BASE_URL", ""))
@@ -162,7 +168,13 @@ def run():
         assert normalize("http://127.0.0.1:8080/api") == "http://127.0.0.1:8080/api"
         assert all(HOSTS)
         # Product identity must match the installed Build106 IPA.
-        assert 'str(build_info.get("build")) != "106"' in Path(__file__).read_text(encoding="utf-8")
+        assert is_build106_identity(200, {"build": 106})
+        assert is_build106_identity(200, {"build": "106"})
+        assert not is_build106_identity(200, {"build": 105})
+        assert not is_build106_identity(200, {"build": "105"})
+        assert not is_build106_identity(401, {"build": 106})
+        assert not is_build106_identity(200, {})
+        assert not is_build106_identity(200, None)
         assert classify_long_output(384, "length")[0] == "PASS"
         assert classify_long_output(256, "length")[0] == "FAIL"
         assert classify_long_output(128, "length")[0] == "FAIL"
@@ -247,9 +259,10 @@ def run():
         record("discovery", "PASS", model=model, context=context, advertised_max_output=ceiling)
         (session / "model.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
         build_code, build_info = request(base + "/debug/build", key, timeout=12)
-        if build_code != 200 or str(build_info.get("build")) != "105":
+        if not is_build106_identity(build_code, build_info):
+            observed = build_info.get("build") if isinstance(build_info, dict) else None
             raise RuntimeError("Expected installed Build106; /debug/build returned " +
-                               str(build_info.get("build")) + ". Older IPA must not certify.")
+                               str(observed) + ". Older IPA must not certify.")
         record("build106_identity", "PASS", build=build_info.get("build"),
                git_sha=str(build_info.get("product_git_sha", ""))[:12])
         def governor_gate():
