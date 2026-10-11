@@ -2438,6 +2438,8 @@ struct ProductionView: View {
             "rc1235_api_context_active=\(activeAPIContext)",
             "rc1235_api_context_profile=\(requestedAPIContextProfile)",
             "api_batch=\(apiServer.runtimeBatch)",
+            "build106_governor_profile=\(defaults.string(forKey: M5RuntimeGovernor.profileKey) ?? "none")",
+            "build106_governor_reason=\(defaults.string(forKey: M5RuntimeGovernor.reasonKey) ?? "none")",
             "api_ubatch=\(apiServer.runtimeUBatch)",
             "api_runtime_profile=\(effectiveAPIRuntimeProfile)",
             "api_runtime_profile_requested=\(requestedAPIRuntimeProfile)",
@@ -3374,8 +3376,13 @@ struct ProductionView: View {
                 // llama context batch, even when earlier Phase2
                 // latches contain a different historical experiment arm.
                 // Never change allocated context parameters mid-request.
-                apiRuntime.batch = batchCap
-                apiRuntime.ubatch = batchCap
+                // Build106: governed at context creation, never per request.
+                let governorDecision = M5RuntimeGovernor.decide(
+                    arm: arm, context: context
+                )
+                apiRuntime.batch = governorDecision.profile.batch
+                apiRuntime.ubatch = governorDecision.profile.ubatch
+                M5RuntimeGovernor.persist(governorDecision, source: source)
             } else {
                 apiRuntime.batch = min(apiRuntime.batch, batchCap)
                 apiRuntime.ubatch = min(apiRuntime.ubatch, batchCap)
@@ -3663,7 +3670,7 @@ struct ProductionView: View {
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
 
-        RC126APIStartupLifecycle.begin(build: "105")
+        RC126APIStartupLifecycle.begin(build: "106")
         busy = true
         status = "正在执行 RC1.26 Build 89 Compact Scheduler Metadata + API 冷启动保护…"
         detail = """
