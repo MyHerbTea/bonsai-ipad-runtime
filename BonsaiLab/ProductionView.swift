@@ -3378,7 +3378,7 @@ struct ProductionView: View {
                 // Never change allocated context parameters mid-request.
                 // Build106: governed at context creation, never per request.
                 let governorDecision = M5RuntimeGovernor.decide(
-                    arm: arm, context: context
+                    arm: arm ?? .safe4, context: context
                 )
                 apiRuntime.batch = governorDecision.profile.batch
                 apiRuntime.ubatch = governorDecision.profile.ubatch
