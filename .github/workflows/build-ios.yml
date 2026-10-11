@@ -1,4 +1,4 @@
-name: Build Bonsai iPad Lab v1 RC1.26 Build105 Safe Startup Recovery
+name: Build Bonsai iPad Lab v1 RC1.26 Build106 M5 Runtime Governor
 
 on:
   push:
@@ -36,6 +36,7 @@ on:
       - lab-v1-rc1-26-build103-integrated-stage-fixed
       - lab-v1-rc1-26-build104-integrated-32k-performance
       - lab-v1-rc1-26-build105-startup-recovery
+      - lab-v1-rc1-26-build106-m5-governor
   workflow_dispatch:
 
 concurrency:
@@ -118,6 +119,21 @@ jobs:
           "$RUNNER_TEMP/build102_policy_tests"
           python3 tools/rc126_build102_batch_contract_tests.py
 
+      - name: Build106 M5 Governor executable policy and integration contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun swiftc -swift-version 5 \
+            BonsaiLab/Build93BatchTrialPolicy.swift \
+            BonsaiLab/Build94BatchExperiment.swift \
+            BonsaiLab/M5RuntimeGovernor.swift \
+            tools/rc126_build106_policy_tests.swift \
+            -o "$RUNNER_TEMP/build106_policy_tests"
+          "$RUNNER_TEMP/build106_policy_tests"
+          python3 tools/rc126_build106_governor_contract_tests.py
+          python3 -m py_compile tools/rc126_build106_full_stage_certification.py
+          python3 tools/rc126_build106_full_stage_certification.py --dry-run
+
       - name: Live vision injection gate
         shell: bash
         run: |
@@ -157,7 +173,7 @@ jobs:
           grep -q 'warm.kvReuseHit' BonsaiLab/ProductionView.swift
           grep -q 'UIPasteboard.general.string' BonsaiLab/ProductionView.swift
           grep -q 'MARKETING_VERSION: "1.0.0"' project.yml
-          grep -q 'CURRENT_PROJECT_VERSION: "105"' project.yml
+          grep -q 'CURRENT_PROJECT_VERSION: "106"' project.yml
           grep -q 'reasoningEffort' BonsaiLab/BonsaiEngine.swift
           grep -q 'payload.reasoningEffort' BonsaiLab/ProductionView.swift
           grep -q '<think>\\n\\n</think>\\n\\n' BonsaiLab/BonsaiEngine.swift
@@ -543,9 +559,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(grep -c 'CURRENT_PROJECT_VERSION: \"105\"' project.yml)" -ge 1
-          grep -q '"rc1.26-build105-startup-recovery"' BonsaiLab/LocalOpenAIServer.swift
-          grep -q 'RC126APIStartupLifecycle.begin(build: \"105\")' BonsaiLab/ProductionView.swift
+          test "$(grep -c 'CURRENT_PROJECT_VERSION: \"106\"' project.yml)" -ge 1
+          grep -q '"rc1.26-build106-startup-recovery"' BonsaiLab/LocalOpenAIServer.swift
+          grep -q 'RC126APIStartupLifecycle.begin(build: \"106\")' BonsaiLab/ProductionView.swift
 
           PACKAGE_BLOCK="$(
             sed -n \
@@ -553,8 +569,8 @@ jobs:
               .github/workflows/build-ios.yml
           )"
 
-          grep -q 'zip -qry ../BonsaiLab-v1-RC1.26-build105-startup-recovery-unsigned.ipa Payload' <<< "$PACKAGE_BLOCK"
-          grep -q 'BonsaiLab-v1-RC1.26-build105-startup-recovery-unsigned.ipa.sha256' <<< "$PACKAGE_BLOCK"
+          grep -q 'zip -qry ../BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa Payload' <<< "$PACKAGE_BLOCK"
+          grep -q 'BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256' <<< "$PACKAGE_BLOCK"
           if grep -q 'build75-api-cold-start-guard' <<< "$PACKAGE_BLOCK"; then
             echo "ERROR: Build 78 packaging leaked into Build 79 package step." >&2
             exit 1
@@ -675,7 +691,7 @@ jobs:
           file "$FRAMEWORK"
           otool -L "$APP/BonsaiLab"
           test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Info.plist")" = "1.0.0"
-          test "$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")" = "105"
+          test "$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")" = "106"
           nm -gU "$FRAMEWORK" > build/llama-symbols.txt
           grep -q '_mtmd_init_from_file' build/llama-symbols.txt
           grep -q '_mtmd_helper_eval_chunks' build/llama-symbols.txt
@@ -693,7 +709,7 @@ jobs:
           ditto "$APP" build/ipa/Payload/BonsaiLab.app
 
           cat > build/BUILD_INFO.txt <<'INFO'
-          Bonsai iPad Lab v1 RC1.26 Build105 safe startup recovery (NOT DEVICE CERTIFIED)
+          Bonsai iPad Lab v1 RC1.26 Build106 M5 Governor (NOT DEVICE CERTIFIED)
           Prism: prism-b10743-adfffbe
           Main model target: Ternary-Bonsai-2-27B-PTQ1_0.gguf
           Vision: MLX Vision Sidecar + cached projected injection
@@ -708,34 +724,38 @@ jobs:
           echo "Workflow run: $GITHUB_RUN_ID" >> build/BUILD_INFO.txt
 
           cd build/ipa
-          zip -qry ../BonsaiLab-v1-RC1.26-build105-startup-recovery-unsigned.ipa Payload
+          zip -qry ../BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa Payload
           cd ../..
-          shasum -a 256 build/BonsaiLab-v1-RC1.26-build105-startup-recovery-unsigned.ipa | tee build/BonsaiLab-v1-RC1.26-build105-startup-recovery-unsigned.ipa.sha256
+          shasum -a 256 build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa | tee build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256
 
-      - name: Package one-click Build105 safe recovery certification runner
+      - name: Package one-click Build106 M5 Governor certification runner
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build/build105-runner
-          cp tools/RUN_BUILD105_FULL_STAGE.cmd tools/RUN_BUILD105_GUI.ps1 tools/rc126_build105_full_stage_certification.py build/build105-runner/
-          cp docs/backburner-integration/RC1.26_BUILD105_STARTUP_RECOVERY.md build/build105-runner/README.md
-          (cd build/build105-runner && zip -qry ../Bonsai-Build105-OneClick-FullStage.zip .)
-          unzip -t build/Bonsai-Build105-OneClick-FullStage.zip
+          mkdir -p build/build106-runner
+          cp tools/RUN_BUILD106_FULL_STAGE.cmd tools/RUN_BUILD106_GUI.ps1 tools/rc126_build106_full_stage_certification.py build/build106-runner/
+          cp docs/backburner-integration/RC1.26_BUILD106_M5_GOVERNOR.md build/build106-runner/README.md
+          (cd build/build106-runner && zip -qry ../Bonsai-Build106-OneClick-FullStage.zip .)
+          unzip -t build/Bonsai-Build106-OneClick-FullStage.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BonsaiLab-iPad-v1-RC1.26-Build105-Safe-Startup-Recovery
+          name: BonsaiLab-iPad-v1-RC1.26-Build106-M5-Governor
           path: |
-            build/Bonsai-Build105-OneClick-FullStage.zip
+            build/Bonsai-Build106-OneClick-FullStage.zip
+            tools/rc126_build106_policy_tests.swift
+            tools/rc126_build106_governor_contract_tests.py
+            tools/rc126_build106_full_stage_certification.py
+            docs/backburner-integration/RC1.26_BUILD106_M5_GOVERNOR.md
             tools/rc126_build105_startup_contract_tests.py
             tools/rc126_build105_recovery_policy_tests.swift
             docs/backburner-integration/RC1.26_BUILD105_STARTUP_RECOVERY.md
             tools/rc126_build104_integrated_contract_tests.py
             tools/rc126_build104_policy_tests.swift
             docs/backburner-integration/RC1.26_BUILD104_INTEGRATED_32K_PERFORMANCE.md
-            build/BonsaiLab-v1-RC1.26-build105-startup-recovery-unsigned.ipa
-            build/BonsaiLab-v1-RC1.26-build105-startup-recovery-unsigned.ipa.sha256
+            build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa
+            build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256
             build/BUILD_INFO.txt
             tools/rc126_build100_b16_policy_tests.swift
             tools/rc126_build102_batch_policy_tests.swift
