@@ -6,13 +6,13 @@ read=lambda n:(root/n).read_text(encoding="utf-8")
 e=read("BonsaiLab/BonsaiEngine.swift");v=read("BonsaiLab/ProductionView.swift")
 s=read("BonsaiLab/LocalOpenAIServer.swift");p=read("BonsaiLab/Build105StartupRecovery.swift")
 w=read(".github/workflows/build-ios.yml")
-assert 'CURRENT_PROJECT_VERSION: "105"' in read("project.yml")
-assert 'RC126APIStartupLifecycle.begin(build: "105")' in v
-assert '"build_id": "rc1.26-build105-startup-recovery"' in s
+assert 'CURRENT_PROJECT_VERSION: "106"' in read("project.yml")
+assert 'RC126APIStartupLifecycle.begin(build: "106"' in v
+assert '"build_id": "rc1.26-build106-m5-governor"' in s
 assert 'contextParams.n_seq_max = 1' in e
 assert 'private let textKVReuseEnabled = false' in e
 assert 'BonsaiBuild105KVCheckpointQuarantined' in e
-assert 'app_build=105' in e
+assert 'app_build=106' in e
 assert 'private var preferCertifiedB24NextLaunch = false' in v
 assert 'private var textKVCheckpointEnabled104 = false' in v
 assert 'Build105StartupRecovery.apply()' in v
@@ -25,7 +25,7 @@ assert 'defaults.set(false, forKey: Build94BatchExperiment.preferB24Key)' in p
 assert '"build105_quarantined": true' in s
 assert '?? maxOutputLimit' in s
 assert 'gen.maxTokens = payload.maxTokens' in v
-assert 'Bonsai-Build105-OneClick-FullStage.zip' in w
-assert 'Build105-Safe-Startup-Recovery' in w
+assert 'Bonsai-Build106-OneClick-FullStage.zip' in w
+assert 'Build106-M5-Governor' in w
 print("PASS Build105 quarantine seq2, one-shot safe migration, API output retained")
 print("DEVICE REQUIRED: actual 32K context startup and outputs")
