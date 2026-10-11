@@ -44,7 +44,7 @@ for item in (
 ):
     required(view, item)
 for item in (
-    '"build_id": "rc1.26-build105-startup-recovery"',
+    '"build_id": "rc1.26-build106-m5-governor"',
     '"/debug/build102/next-launch"',
     '"/debug/build102/launch"',
     'acknowledge_higher_risk',
@@ -55,13 +55,13 @@ for item in (
 ):
     required(server, item)
 for item in (
-    'CURRENT_PROJECT_VERSION: "105"',
+    'CURRENT_PROJECT_VERSION: "106"',
     ):
     required(project, item)
 for item in (
     'tools/rc126_build102_batch_policy_tests.swift',
     'tools/rc126_build102_batch_contract_tests.py',
-    'BonsaiLab-iPad-v1-RC1.26-Build105-Safe-Startup-Recovery',
+    'BonsaiLab-iPad-v1-RC1.26-Build106-M5-Governor',
     'adfffbe41b2cabcd51fff326ab045662265062bb',
 ):
     required(workflow, item)
