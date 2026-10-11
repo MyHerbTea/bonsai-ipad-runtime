@@ -315,7 +315,7 @@ actor BonsaiEngine {
                 withIntermediateDirectories: true
             )
             let defaults = UserDefaults.standard
-            let header = "build=89\napp_build=105\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"))\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
+            let header = "build=89\napp_build=106\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"))\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
             // Preserve last attempt even when a new 32K run is started.
             // The diagnostic UI can export both traces after a crash.
             let previous = directory.appendingPathComponent(
