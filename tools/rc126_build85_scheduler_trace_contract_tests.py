@@ -6,7 +6,7 @@ server=(root/"BonsaiLab/LocalOpenAIServer.swift").read_text()
 workflow=(root/".github/workflows/build-ios.yml").read_text()
 patch=(root/"tools/rc126_build85_patch_prism_scheduler_trace.py").read_text()
 assert 'CURRENT_PROJECT_VERSION: "106"' in (root/"project.yml").read_text()
-assert 'RC126APIStartupLifecycle.begin(build: "105")' in view
+assert 'RC126APIStartupLifecycle.begin(build: "106")' in view
 assert '"build_id": "rc1.26-build106-m5-governor"' in server
 assert "build85_scheduler_reserve_trace_supported" in server
 assert "build=89" in engine
