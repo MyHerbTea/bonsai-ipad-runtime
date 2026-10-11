@@ -706,6 +706,16 @@ final class LocalOpenAIServer: ObservableObject {
         }
 
         if request.method == "GET",
+           request.path == "/debug/build106/governor" {
+            sendJSON(connection, status: 200, object: M5RuntimeGovernor.snapshot(
+                context: advertisedContextWindow,
+                activeBatch: advertisedBatch,
+                activeUBatch: advertisedUBatch
+            ))
+            return
+        }
+
+        if request.method == "GET",
            request.path == "/debug/execution" {
             sendJSON(connection, status: 200, object: forensicsSnapshot())
             return
@@ -1904,7 +1914,7 @@ final class LocalOpenAIServer: ObservableObject {
         let info = Bundle.main.infoDictionary ?? [:]
         return [
             "program": "RC1.26_BACKBURNER_RUNTIME_OPTIMIZATION",
-            "build_id": "rc1.26-build105-startup-recovery",
+            "build_id": "rc1.26-build106-m5-governor",
             "product_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA,
             "workflow_run_id": BonsaiCertificationBuildIdentity.workflowRunID,
             "prism_upstream_sha": "adfffbe41b2cabcd51fff326ab045662265062bb",
