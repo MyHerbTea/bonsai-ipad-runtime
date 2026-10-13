@@ -734,7 +734,7 @@ jobs:
           set -euo pipefail
           mkdir -p build/build106-runner
           cp tools/RUN_BUILD106_FULL_STAGE.cmd tools/RUN_BUILD106_GUI.ps1 tools/rc126_build106_full_stage_certification.py build/build106-runner/
-          cp docs/backburner-integration/RC1.26_BUILD106_M5_GOVERNOR.md build/build106-runner/README.md
+          cp docs/optimization/backburner-integration/RC1.26_BUILD106_M5_GOVERNOR.md build/build106-runner/README.md
           (cd build/build106-runner && zip -qry ../Bonsai-Build106-OneClick-FullStage.zip .)
           unzip -t build/Bonsai-Build106-OneClick-FullStage.zip
 
@@ -747,22 +747,22 @@ jobs:
             tools/rc126_build106_policy_tests.swift
             tools/rc126_build106_governor_contract_tests.py
             tools/rc126_build106_full_stage_certification.py
-            docs/backburner-integration/RC1.26_BUILD106_M5_GOVERNOR.md
+            docs/optimization/backburner-integration/RC1.26_BUILD106_M5_GOVERNOR.md
             tools/rc126_build105_startup_contract_tests.py
             tools/rc126_build105_recovery_policy_tests.swift
-            docs/backburner-integration/RC1.26_BUILD105_STARTUP_RECOVERY.md
+            docs/optimization/backburner-integration/RC1.26_BUILD105_STARTUP_RECOVERY.md
             tools/rc126_build104_integrated_contract_tests.py
             tools/rc126_build104_policy_tests.swift
-            docs/backburner-integration/RC1.26_BUILD104_INTEGRATED_32K_PERFORMANCE.md
+            docs/optimization/backburner-integration/RC1.26_BUILD104_INTEGRATED_32K_PERFORMANCE.md
             build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa
             build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256
             build/BUILD_INFO.txt
             tools/rc126_build100_b16_policy_tests.swift
             tools/rc126_build102_batch_policy_tests.swift
             tools/rc126_build102_batch_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD102_32K_BATCH24_32_SWEEP.md
+            docs/optimization/backburner-integration/RC1.26_BUILD102_32K_BATCH24_32_SWEEP.md
             tools/rc126_build100_b16_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD100_B16_ACCEL_GUARDED.md
+            docs/optimization/backburner-integration/RC1.26_BUILD100_B16_ACCEL_GUARDED.md
             RC1.20_RELEASE_ACCEPTANCE.md
             tools/rc126_phase2d_prefill_batch_arm.ps1
             tools/rc126_phase2e_prefill_batch_arm.ps1
@@ -770,27 +770,27 @@ jobs:
             tools/rc126_build76_text_kv_reuse_ab.ps1
             tools/rc126_build76_text_kv_reuse_contract_tests.py
             tools/rc126_build79_storage_memory_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD79_STORAGE_MEMORY_LONG_CONTEXT.md
+            docs/optimization/backburner-integration/RC1.26_BUILD79_STORAGE_MEMORY_LONG_CONTEXT.md
             tools/rc126_build80_tier_reload_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD80_LONG_CONTEXT_TIER_RELOAD_FIX.md
+            docs/optimization/backburner-integration/RC1.26_BUILD80_LONG_CONTEXT_TIER_RELOAD_FIX.md
             tools/rc126_build81_32k_memory_squeeze_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD81_32K_MEMORY_SQUEEZE.md
+            docs/optimization/backburner-integration/RC1.26_BUILD81_32K_MEMORY_SQUEEZE.md
             tools/rc126_build82_unified_metal_32k_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD82_UNIFIED_METAL_32K.md
+            docs/optimization/backburner-integration/RC1.26_BUILD82_UNIFIED_METAL_32K.md
             BonsaiLab/BonsaiLab.entitlements
             tools/rc126_build75_api_cold_start_probe.ps1
             tools/rc126_build75_api_cold_start_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD76_TEXT_KV_REUSE_LAB.md
-            docs/backburner-integration/RC1.26_PHASE2I0_AGGRESSIVE_TEXT_KV_CONTEXT_AUDIT.md
-            docs/backburner-integration/RC1.26_BUILD76_M5_EXTREME_CONTEXT_LAB_PLAN.md
-            docs/backburner-integration/RC1.26_BUILD74_PHASE2F_DEVICE_EVIDENCE.md
-            docs/backburner-integration/RC1.26_BUILD75_API_COLD_START_GUARD.md
+            docs/optimization/backburner-integration/RC1.26_BUILD76_TEXT_KV_REUSE_LAB.md
+            docs/optimization/backburner-integration/RC1.26_PHASE2I0_AGGRESSIVE_TEXT_KV_CONTEXT_AUDIT.md
+            docs/optimization/backburner-integration/RC1.26_BUILD76_M5_EXTREME_CONTEXT_LAB_PLAN.md
+            docs/optimization/backburner-integration/RC1.26_BUILD74_PHASE2F_DEVICE_EVIDENCE.md
+            docs/optimization/backburner-integration/RC1.26_BUILD75_API_COLD_START_GUARD.md
             tools/rc126_phase2f_prefill_batch_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD73_PHASE2E_DEVICE_EVIDENCE.md
-            docs/backburner-integration/RC1.26_PHASE2F_PREFILL_BATCH_32_VS_64.md
+            docs/optimization/backburner-integration/RC1.26_BUILD73_PHASE2E_DEVICE_EVIDENCE.md
+            docs/optimization/backburner-integration/RC1.26_PHASE2F_PREFILL_BATCH_32_VS_64.md
             tools/rc126_phase2e_prefill_batch_contract_tests.py
-            docs/backburner-integration/RC1.26_BUILD72_PHASE2D_DEVICE_EVIDENCE.md
-            docs/backburner-integration/RC1.26_PHASE2E_PREFILL_BATCH_16_VS_32.md
+            docs/optimization/backburner-integration/RC1.26_BUILD72_PHASE2D_DEVICE_EVIDENCE.md
+            docs/optimization/backburner-integration/RC1.26_PHASE2E_PREFILL_BATCH_16_VS_32.md
             OPENAI_API_QUICKSTART_RC1.20.md
             RC1.20.1_API_CRASH_GUARD.md
             RC1.20.2_CONTEXT_ADMISSION.md
@@ -855,16 +855,16 @@ jobs:
             tools/rc126_phase2a_memory_governor_contract_tests.py
             tools/rc126_phase2a_memory_governor_abab.ps1
             tools/RUN_RC126_PHASE2A_MEMORY_GOVERNOR_ABAB.cmd
-            docs/backburner-integration/RC1.26_PHASE2A_MEMORY_GOVERNOR.md
+            docs/optimization/backburner-integration/RC1.26_PHASE2A_MEMORY_GOVERNOR.md
             tools/rc126_phase2b_heap_pressure_relief_contract_tests.py
             tools/rc126_phase2b_heap_pressure_relief_abab.ps1
             tools/RUN_RC126_PHASE2B_HEAP_PRESSURE_RELIEF_ABAB.cmd
-            docs/backburner-integration/RC1.26_PHASE2B_HEAP_PRESSURE_RELIEF.md
-            docs/backburner-integration/RC1.26_BUILD68_PHASE2B_DEVICE_EVIDENCE.md
+            docs/optimization/backburner-integration/RC1.26_PHASE2B_HEAP_PRESSURE_RELIEF.md
+            docs/optimization/backburner-integration/RC1.26_BUILD68_PHASE2B_DEVICE_EVIDENCE.md
             tools/rc126_phase2c_metal_prefill_contract_tests.py
             tools/rc126_phase2c_metal_prefill_measurement.ps1
             tools/RUN_RC126_PHASE2C_METAL_PREFILL_MEASUREMENT.cmd
-            docs/backburner-integration/RC1.26_PHASE2C_METAL_PREFILL_MEASUREMENT.md
+            docs/optimization/backburner-integration/RC1.26_PHASE2C_METAL_PREFILL_MEASUREMENT.md
             tools/rc1252_context_boundary_probe.ps1
             tools/rc1252_context_ladder_device_probe.ps1
             tools/rc1252_openai_python_sdk_probe.py

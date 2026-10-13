@@ -4,7 +4,7 @@ import json
 ROOT = Path(__file__).resolve().parents[1]
 
 manifest = json.loads(
-    (ROOT / "docs/backburner-integration/BASELINE_MANIFEST.json")
+    (ROOT / "docs/optimization/backburner-integration/BASELINE_MANIFEST.json")
     .read_text(encoding="utf-8")
 )
 assert manifest["source_commit"] == "0d84e106daa10590ddbd1b7a3b6b3212114db6f7"
