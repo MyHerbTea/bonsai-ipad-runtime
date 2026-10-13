@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference='Stop'
+﻿param([ValidateSet('smoke','full')][string]$Suite='full')
+$ErrorActionPreference='Stop'
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $runner=Join-Path $root 'rc126_build106_full_stage_certification.py'
 if(-not (Test-Path -LiteralPath $runner)){Write-Host '[ERROR] Please extract full ZIP';exit 2}
@@ -6,7 +7,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form=New-Object System.Windows.Forms.Form
-$form.Text='Bonsai Build106 完整真机自动验收'
+$form.Text=if($Suite -eq 'smoke'){'Bonsai Build106 首次真机 Smoke Test'}else{'Bonsai Build106 完整真机自动验收'}
 $form.ClientSize=New-Object System.Drawing.Size(580,300)
 $form.StartPosition='CenterScreen'
 $form.FormBorderStyle='FixedDialog'
@@ -42,7 +43,7 @@ $hint=New-Object System.Windows.Forms.Label
 $hint.Text='Key 不写入报告；请先在 iPad 启动 API。'
 $hint.SetBounds(20,220,540,25);$form.Controls.Add($hint)
 $go=New-Object System.Windows.Forms.Button
-$go.Text='开始完整测试';$go.SetBounds(305,260,158,32)
+$go.Text=if($Suite -eq 'smoke'){'开始 Smoke Test'}else{'开始完整测试'};$go.SetBounds(305,260,158,32)
 $go.Add_Click({
  if([string]::IsNullOrWhiteSpace($key.Text)){[System.Windows.Forms.MessageBox]::Show('请粘贴 API Key')|Out-Null;return}
  if($url.Text.Trim() -and $url.Text.Trim() -notmatch '^https?://[^\s]+$'){
@@ -72,7 +73,7 @@ try {
    Write-Host '[ERROR] Local runner compatibility check failed before API test.'
    $rc=2
  } else {
-   & $exe @py $runner '--output' (Join-Path $root 'RESULTS')
+   & $exe @py $runner '--suite' $Suite '--output' (Join-Path $root 'RESULTS')
    $rc=$LASTEXITCODE
  }
 }finally{

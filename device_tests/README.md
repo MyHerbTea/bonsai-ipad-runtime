@@ -1,5 +1,8 @@
 # BonsaiLab 32K Certification — P0 Windows runner
 
+> 首次验证当前 Build106 M5：从仓库根目录双击 `tools\RUN_BUILD106_SMOKE.cmd`。该入口验证 Build106 身份、模型推理、SSE、API 健康和推理前后遥测；下面的 `certify.py` 仍面向 Build89。
+
+
 This is the first **non-invasive** certification iteration. It runs against the **unchanged Build 89 IPA** using OpenAI-compatible LAN HTTP. It does not recompile Prism or attempt a 64K context.
 
 ## Start

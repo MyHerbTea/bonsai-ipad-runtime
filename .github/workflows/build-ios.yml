@@ -738,6 +738,60 @@ jobs:
           (cd build/build106-runner && zip -qry ../Bonsai-Build106-OneClick-FullStage.zip .)
           unzip -t build/Bonsai-Build106-OneClick-FullStage.zip
 
+      - name: Package portable Build106 M5 Governor TestKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          KIT_NAME="BonsaiLab-v1-RC1.26-Build106-M5-Governor-TestKit"
+          IPA_NAME="BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa"
+          KIT="build/$KIT_NAME"
+          mkdir -p "$KIT"
+          cp "build/$IPA_NAME" "$KIT/"
+          cp build/BUILD_INFO.txt "$KIT/"
+          cp tools/RUN_BUILD106_SMOKE.cmd tools/RUN_BUILD106_FULL_STAGE.cmd \
+            tools/RUN_BUILD106_GUI.ps1 tools/rc126_build106_full_stage_certification.py "$KIT/"
+          (
+            cd "$KIT"
+            shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+            shasum -a 256 -c "$IPA_NAME.sha256"
+          )
+          cat > "$KIT/README.md" <<'README'
+          # BonsaiLab Build106 M5 Governor TestKit
+
+          This portable kit contains the unsigned Build106 IPA and its matching Windows device-test runner.
+
+          ## Quick smoke test
+
+          1. Install the included IPA on the iPad, import and load your model, then start **OpenAI API** in the app.
+          2. Connect the Windows PC to a network that can reach the iPad's API on port 8080.
+          3. Double-click `RUN_BUILD106_SMOKE.cmd`.
+          4. Enter the iPad API URL and API Key in the dialog, then start Smoke Test. The key is used only for this run and is not written to the report.
+
+          If the API URL is blank, the runner tries its built-in LAN addresses. Enter the URL shown by the iPad app if discovery does not find your device.
+
+          The smoke suite checks Build106 identity, model discovery and short text inference, SSE, API health, telemetry/memory snapshots, and API continuity after inference. Crash evidence is limited to app diagnostics and API continuity; collect iPadOS `.ips` reports separately when needed.
+
+          ## Requirements and contents
+
+          Windows PowerShell and Python 3.8 or later are required. The runner uses Python's standard library and needs no repository checkout or Python packages. The IPA is unsigned; the target iPad must be able to install it through your existing signing/sideloading process. Model weights are not included.
+
+          `RUN_BUILD106_FULL_STAGE.cmd` launches the longer integrated suite. Results are written beside the runner under `RESULTS/`.
+
+          Verify the IPA with `shasum -a 256 -c BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256` on macOS/Linux, or compare its SHA-256 on Windows.
+          README
+          (cd build && zip -qry "$KIT_NAME.zip" "$KIT_NAME")
+          unzip -t "build/$KIT_NAME.zip"
+          for file in \
+            "$KIT_NAME/$IPA_NAME" \
+            "$KIT_NAME/$IPA_NAME.sha256" \
+            "$KIT_NAME/BUILD_INFO.txt" \
+            "$KIT_NAME/RUN_BUILD106_SMOKE.cmd" \
+            "$KIT_NAME/RUN_BUILD106_GUI.ps1" \
+            "$KIT_NAME/rc126_build106_full_stage_certification.py" \
+            "$KIT_NAME/README.md"; do
+            unzip -Z1 "build/$KIT_NAME.zip" | grep -Fqx "$file"
+          done
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -754,6 +808,7 @@ jobs:
             tools/rc126_build104_integrated_contract_tests.py
             tools/rc126_build104_policy_tests.swift
             docs/optimization/backburner-integration/RC1.26_BUILD104_INTEGRATED_32K_PERFORMANCE.md
+            build/BonsaiLab-v1-RC1.26-Build106-M5-Governor-TestKit.zip
             build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa
             build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256
             build/BUILD_INFO.txt

@@ -59,7 +59,8 @@ def request(url, key=None, payload=None, timeout=45, stream=False, test_id=""):
     first_event_seconds = None
     started = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(req, timeout=timeout) as response:
             status = response.status
             mime = response.headers.get("Content-Type", "")
             if stream:
@@ -159,6 +160,8 @@ def run():
     ap.add_argument("--image", default=os.environ.get("BONSAI_VISION_IMAGE", ""))
     ap.add_argument("--timeout", type=int, default=900, help="Seconds per inference, default 900")
     ap.add_argument("--output", default="RESULTS")
+    ap.add_argument("--suite", choices=("smoke", "full"), default="full",
+                    help="smoke: brief Build106 device check; full: integrated certification")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     if args.dry_run:
@@ -184,7 +187,7 @@ def run():
         return 0
     root = Path(args.output)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    session = root / ("Build106-FULL-" + stamp)
+    session = root / ("Build106-" + args.suite.upper() + "-" + stamp)
     session.mkdir(parents=True, exist_ok=True)
     base = ""
     key = args.api_key
@@ -231,19 +234,46 @@ def run():
                finish_reason=reason, client_max_tokens=max_tokens if max_tokens is not None else "omitted",
                stream=stream, budget_field=budget_field,
                first_event_seconds=obj.get("first_event_seconds") if stream else None)
+        if name in ("short_nonstream", "text_inference"):
+            record("model_load", "PASS", model=model, proof="non-empty text inference completed")
         if require_min is not None:
             verdict, rationale = classify_long_output(count, reason, require_min)
             record(name+"_length", verdict, reason=rationale, completion_tokens=count,
                    threshold=require_min, finish_reason=reason)
         return txt
     def debug_snapshot(suffix):
-        for route in ["/health", "/debug/build106/governor", "/debug/runtime", "/debug/telemetry", "/debug/prefill", "/debug/execution", "/debug/build"]:
+        snapshot = {}
+        routes = ["/health", "/debug/build106/governor", "/debug/runtime", "/debug/telemetry", "/debug/prefill", "/debug/execution", "/debug/build"]
+        for route in routes:
             try:
                 code, data = request(base + route, key, timeout=12)
                 name = route.strip("/").replace("/", "_")
-                (session / f"{suffix}_{name}.json").write_text(json.dumps({"http":code, "data":data}, ensure_ascii=False, indent=2), encoding="utf-8")
+                captured = {"http":code, "data":data}
+                snapshot[route] = captured
+                (session / f"{suffix}_{name}.json").write_text(json.dumps(captured, ensure_ascii=False, indent=2), encoding="utf-8")
             except Exception as e:
-                record(suffix + route, "SKIP", reason=str(e)[:140])
+                snapshot[route] = {"error":type(e).__name__}
+                record(suffix + route, "SKIP", reason=type(e).__name__)
+        health_capture = snapshot.get("/health", {})
+        health = health_capture.get("data", {})
+        health_ok = health_capture.get("http") == 200 and health.get("status") == "ok"
+        record(suffix + "_api_health", "PASS" if health_ok else "FAIL",
+               status=health.get("status", "unavailable"), model=health.get("model"),
+               context_window=health.get("context_window"))
+        prefill = snapshot.get("/debug/prefill", {}).get("data", {})
+        telemetry = snapshot.get("/debug/telemetry", {}).get("data", {})
+        record(suffix + "_device_info", "PASS" if prefill.get("metal_device") else "INCONCLUSIVE",
+               metal_device=prefill.get("metal_device", "unavailable"),
+               unified_memory=prefill.get("metal_has_unified_memory"),
+               recommended_working_set_bytes=prefill.get("metal_recommended_working_set_bytes"),
+               device_model_and_os="not exposed by current app API")
+        record(suffix + "_memory", "PASS" if telemetry.get("phys_footprint_bytes") is not None else "INCONCLUSIVE",
+               available_bytes=telemetry.get("available_bytes"), resident_bytes=telemetry.get("resident_bytes"),
+               phys_footprint_bytes=telemetry.get("phys_footprint_bytes"),
+               metal_allocated_bytes=telemetry.get("metal_allocated_bytes"),
+               metal_headroom_bytes=telemetry.get("metal_headroom_bytes"),
+               thermal_state=telemetry.get("thermal_state"))
+        return snapshot
     try:
         base = discover(args.base_url)
         record("api_discovery", "PASS", base_url=base)
@@ -263,7 +293,8 @@ def run():
             observed = build_info.get("build") if isinstance(build_info, dict) else None
             raise RuntimeError("Expected installed Build106; /debug/build returned " +
                                str(observed) + ". Older IPA must not certify.")
-        record("build106_identity", "PASS", build=build_info.get("build"),
+        record("build106_identity", "PASS", build_id=build_info.get("build_id"),
+               build_number=build_info.get("build"),
                git_sha=str(build_info.get("product_git_sha", ""))[:12])
         def governor_gate():
             code, state = request(base + "/debug/build106/governor", key, timeout=12)
@@ -285,83 +316,100 @@ def run():
         debug_snapshot("before")
         def text(t):
             return [{"role":"user","content":t}]
-        check("short_nonstream", lambda: chat("short_nonstream",text("请只回复一个词：收到。"), max_tokens=48))
-        check("short_stream",lambda:chat("short_stream",text("请用中文写一句不超过20字的问候。"), max_tokens=96,stream=True))
-        def output_probe(case, n):
-            prompt = "请从0001开始逐行列出递增的4位序号，直到0400。每行仅写一个数字，不要解释，不要省略。"
-            chat(case, text(prompt), max_tokens=n, require_min=256 if n>256 else None)
-        if ceiling > 256 and context > 1024:
-            check("explicit_384_tokens", lambda: output_probe("explicit_384_tokens", min(384, ceiling, context-1)))
-            check("alias_max_completion_tokens", lambda: chat(
-                "alias_max_completion_tokens", text("请只回复：别名支持。"),
-                max_tokens=384, budget_field="max_completion_tokens"))
-            check("alias_max_output_tokens", lambda: chat(
-                "alias_max_output_tokens", text("请只回复：别名支持。"),
-                max_tokens=384, budget_field="max_output_tokens"))
-            check("implicit_ui_default_tokens", lambda: chat(
-                "implicit_ui_default_tokens",text("请从0001到0400逐行写出4位数字，每行一个，不要提前停止。"),
-                max_tokens=None,require_min=256))
-        else:
-            record("explicit_384_tokens","SKIP",reason="UI ceiling <= 256 or context too small")
-            record("implicit_ui_default_tokens","SKIP",reason="UI ceiling <= 256 or context too small")
-        def turn_sequence():
-            a = "随后的回答请记住我说的随机标记 LILAC-0427。只需确认。"
-            one = chat("turn1",text(a),max_tokens=80)
-            two = chat("turn2",[{"role":"user","content":a},{"role":"assistant","content":one},
-                                {"role":"user","content":"我刚才给出的随机标记是什么？"}],max_tokens=100)
-            if "LILAC" not in two.upper():
-                record("multi_turn_semantics","INCONCLUSIVE",reason="Model did not repeat literal marker")
+        text_case = "text_inference" if args.suite == "smoke" else "short_nonstream"
+        stream_case = "sse" if args.suite == "smoke" else "short_stream"
+        check(text_case, lambda: chat(text_case,text("请只回复一个词：收到。"), max_tokens=48))
+        check(stream_case,lambda:chat(stream_case,text("请用中文写一句不超过20字的问候。"), max_tokens=96,stream=True))
+        if args.suite == "full":
+            def output_probe(case, n):
+                prompt = "请从0001开始逐行列出递增的4位序号，直到0400。每行仅写一个数字，不要解释，不要省略。"
+                chat(case, text(prompt), max_tokens=n, require_min=256 if n>256 else None)
+            if ceiling > 256 and context > 1024:
+                check("explicit_384_tokens", lambda: output_probe("explicit_384_tokens", min(384, ceiling, context-1)))
+                check("alias_max_completion_tokens", lambda: chat(
+                    "alias_max_completion_tokens", text("请只回复：别名支持。"),
+                    max_tokens=384, budget_field="max_completion_tokens"))
+                check("alias_max_output_tokens", lambda: chat(
+                    "alias_max_output_tokens", text("请只回复：别名支持。"),
+                    max_tokens=384, budget_field="max_output_tokens"))
+                check("implicit_ui_default_tokens", lambda: chat(
+                    "implicit_ui_default_tokens",text("请从0001到0400逐行写出4位数字，每行一个，不要提前停止。"),
+                    max_tokens=None,require_min=256))
             else:
-                record("multi_turn_semantics","PASS")
-            chat("turn3", text("回答上一轮问题之前，先简述 KV Cache 是否等于长时记忆。"),max_tokens=180)
-        check("multi_turn",turn_sequence)
-        def kv_quarantine_check():
-            code, data = request(base + "/debug/prefill", key, timeout=12)
-            if code != 200 or not isinstance(data, dict):
-                raise RuntimeError("Build106 /debug/prefill missing")
-            kv = data.get("text_kv_reuse", {})
-            ck = data.get("build104_text_kv_checkpoint", {})
-            seq = int(ck.get("effective_sequence_max", -1))
-            if seq != 1 or ck.get("build105_quarantined") is not True:
-                raise RuntimeError("Unsafe native KV state: "+str(ck))
-            if int(kv.get("reused_tokens",0)) != 0:
-                raise RuntimeError("Unproven KV cache reused")
-            record("native_single_sequence_safety","PASS",seq_max=seq,
-                   kv_reuse="QUARANTINED",reused_tokens=0)
-        check("kv_quarantine",kv_quarantine_check)
-        # One integrated run: these are workload sizes, not separate manually armed configurations.
-        for chars in [1500, 4500, 9500]:
-            if chars >= context:
-                continue
-            def long_case(chars=chars):
-                filler=("东南西北春夏秋冬" * ((chars + 7)//8))[:chars]
-                chat(f"long_input_{chars}",text("阅读以下内容，最后只回答末尾问题：" + filler +
-                     "\n问题：以上文本中出现的四个方位词是什么？"),max_tokens=64)
-            check(f"long_input_{chars}",long_case)
-        file = Path(args.image) if args.image else Path("D:/apple/vision_test_01_people_landscape.png")
-        if file.exists() and file.is_file():
-            raw = file.read_bytes()
-            mime = "image/png" if file.suffix.lower() == ".png" else "image/jpeg"
-            record("vision_fixture","PASS",source="local_image",bytes=len(raw))
+                record("explicit_384_tokens","SKIP",reason="UI ceiling <= 256 or context too small")
+                record("implicit_ui_default_tokens","SKIP",reason="UI ceiling <= 256 or context too small")
+            def turn_sequence():
+                a = "随后的回答请记住我说的随机标记 LILAC-0427。只需确认。"
+                one = chat("turn1",text(a),max_tokens=80)
+                two = chat("turn2",[{"role":"user","content":a},{"role":"assistant","content":one},
+                                    {"role":"user","content":"我刚才给出的随机标记是什么？"}],max_tokens=100)
+                if "LILAC" not in two.upper():
+                    record("multi_turn_semantics","INCONCLUSIVE",reason="Model did not repeat literal marker")
+                else:
+                    record("multi_turn_semantics","PASS")
+                chat("turn3", text("回答上一轮问题之前，先简述 KV Cache 是否等于长时记忆。"),max_tokens=180)
+            check("multi_turn",turn_sequence)
+            def kv_quarantine_check():
+                code, data = request(base + "/debug/prefill", key, timeout=12)
+                if code != 200 or not isinstance(data, dict):
+                    raise RuntimeError("Build106 /debug/prefill missing")
+                kv = data.get("text_kv_reuse", {})
+                ck = data.get("build104_text_kv_checkpoint", {})
+                seq = int(ck.get("effective_sequence_max", -1))
+                if seq != 1 or ck.get("build105_quarantined") is not True:
+                    raise RuntimeError("Unsafe native KV state: "+str(ck))
+                if int(kv.get("reused_tokens",0)) != 0:
+                    raise RuntimeError("Unproven KV cache reused")
+                record("native_single_sequence_safety","PASS",seq_max=seq,
+                       kv_reuse="QUARANTINED",reused_tokens=0)
+            check("kv_quarantine",kv_quarantine_check)
+            # One integrated run: these are workload sizes, not separate manually armed configurations.
+            for chars in [1500, 4500, 9500]:
+                if chars >= context:
+                    continue
+                def long_case(chars=chars):
+                    filler=("东南西北春夏秋冬" * ((chars + 7)//8))[:chars]
+                    chat(f"long_input_{chars}",text("阅读以下内容，最后只回答末尾问题：" + filler +
+                         "\n问题：以上文本中出现的四个方位词是什么？"),max_tokens=64)
+                check(f"long_input_{chars}",long_case)
+            file = Path(args.image) if args.image else Path("D:/apple/vision_test_01_people_landscape.png")
+            if file.exists() and file.is_file():
+                raw = file.read_bytes()
+                mime = "image/png" if file.suffix.lower() == ".png" else "image/jpeg"
+                record("vision_fixture","PASS",source="local_image",bytes=len(raw))
+            else:
+                raw = sample_image_png()
+                mime = "image/png"
+                record("vision_fixture","PASS",source="generated_256x256_png",bytes=len(raw))
+            data_uri = "data:" + mime + ";base64," + base64.b64encode(raw).decode("ascii")
+            for n in (1,2,3):
+                def vision_case(n=n):
+                    content = [{"type":"text","text":"请用一句中文描述图像，不要分析。"}] + [
+                        {"type":"image_url","image_url":{"url":data_uri}} for _ in range(n)]
+                    chat(f"vision_{n}_images",[{"role":"user","content":content}],max_tokens=180)
+                check(f"vision_{n}_images",vision_case)
+            check("post_vision_text",lambda:chat("post_vision_text",text("请只回复：图文切换成功。"),max_tokens=90))
+            debug_snapshot("after")
         else:
-            raw = sample_image_png()
-            mime = "image/png"
-            record("vision_fixture","PASS",source="generated_256x256_png",bytes=len(raw))
-        data_uri = "data:" + mime + ";base64," + base64.b64encode(raw).decode("ascii")
-        for n in (1,2,3):
-            def vision_case(n=n):
-                content = [{"type":"text","text":"请用一句中文描述图像，不要分析。"}] + [
-                    {"type":"image_url","image_url":{"url":data_uri}} for _ in range(n)]
-                chat(f"vision_{n}_images",[{"role":"user","content":content}],max_tokens=180)
-            check(f"vision_{n}_images",vision_case)
-        check("post_vision_text",lambda:chat("post_vision_text",text("请只回复：图文切换成功。"),max_tokens=90))
-        debug_snapshot("after")
+            debug_snapshot("after")
+            def post_smoke_health():
+                code, health = request(base + "/health", timeout=12)
+                if code != 200 or not isinstance(health, dict) or health.get("status") != "ok":
+                    raise RuntimeError("API did not remain healthy after text and SSE inference")
+                diagnostics = health.get("diagnostics", {})
+                record("crash_evidence", "PASS", api_alive_after_inference=True,
+                       last_engine_stage=diagnostics.get("last_engine_stage", "unavailable"),
+                       api_startup_stage=diagnostics.get("api_startup_stage", "unavailable"),
+                       api_startup_previous_incomplete=diagnostics.get("api_startup_previous_incomplete", "unavailable"),
+                       api_startup_last_error=diagnostics.get("api_startup_last_error", "unavailable"),
+                       limitation="iPadOS .ips crash reports are not exposed by the app API")
+            check("crash_evidence", post_smoke_health)
     except Exception as e:
         record("startup_or_discovery", "FAIL",
                error=type(e).__name__ + ": " + str(e)[:350])
     finally:
         meta = {"generated_at":iso(), "host":platform.system(), "python":platform.python_version(),
-                "base_url":base, "schema_version":1, "profile":"integrated",
+                "base_url":base, "schema_version":1, "profile":args.suite,
                 "credential_saved":False}
         (session / "manifest.json").write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding="utf-8")
         counts = {k:sum(x["state"]==k for x in events) for k in ["PASS","FAIL","SKIP","INCONCLUSIVE"]}
@@ -369,14 +417,19 @@ def run():
         status = ("FAIL" if counts["FAIL"] else
                   "INCOMPLETE" if (counts["INCONCLUSIVE"] or counts["SKIP"]) else
                   "PASS" if counts["PASS"] else "INCOMPLETE")
-        report = "# Bonsai Build106 integrated device test\n\n"
+        report = "# Bonsai Build106 " + args.suite + " device test\n\n"
         report += f"**{status}** | " + " | ".join(f"{k}={v}" for k,v in counts.items()) + "\n\n"
         report += f"Date: {iso()}\n\n"
         report += "| Case | State | Notes |\n|---|---|---|\n"
         for event in events:
             note = str({k:v for k,v in event.items() if k not in ["case","state","at"]}).replace("|","/")
             report += f'| {event["case"]} | {event["state"]} | {note[:220]} |\n'
-        report += "\nThis is a device run, not a CI build. Long-context capacity, restart/recovery and peak Metal memory cannot be conclusively certified by HTTP alone.\n"
+        report += "\nThis is a device run, not a CI build.\n"
+        if args.suite == "smoke":
+            report += "Smoke scope: installed Build106 identity, model discovery and short inference, SSE, API continuity, device telemetry and memory snapshots.\n"
+            report += "Crash evidence is limited to app diagnostics and API continuity; iPadOS .ips reports require manual collection from the device.\n"
+        else:
+            report += "Long-context capacity, restart/recovery and peak Metal memory cannot be conclusively certified by HTTP alone.\n"
         (session / "FINAL_REPORT.md").write_text(report, encoding="utf-8")
         archive = root / (session.name + ".zip")
         with zipfile.ZipFile(archive,"w",compression=zipfile.ZIP_DEFLATED) as z:
