@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "snapshot_local": "2026-10-11T21:22:00+08:00",
+  "repository": "MyHerbTea/bonsai-ipad-prob",
+  "repo_url": "https://github.com/MyHerbTea/bonsai-ipad-prob",
+  "read_only_research": true,
+  "branch_snapshots": {
+    "main": "a032634d992f3b2edf0b3665e9b381ee4d6c06cf",
+    "build64_frozen": "0d84e106daa10590ddbd1b7a3b6b3212114db6f7",
+    "build75_device_certified_product_commit": "c09b2e09706dd0c0391b7a15727da57e0f17d425",
+    "build105_ci_success": "4c25b0abd79d316754b0e612ab7c5fa53cabffd6",
+    "build106_code_review": "37291498aed19cc357f8a53ec8115d7b9be482e3",
+    "build106_latest_observed_head": "184324263fcf7036da022ddb5c402898bd679c1b"
+  },
+  "github_tree_counts": {
+    "main_tree_entries": 60,
+    "build105_blob_files": 269,
+    "build106_blob_files_at_review_commit": 276
+  },
+  "actions": {
+    "build105": {
+      "run_id": 38070840581,
+      "conclusion": "success",
+      "job_steps": 65,
+      "artifact_id": 11676354546,
+      "artifact_name": "BonsaiLab-iPad-v1-RC1.26-Build105-Safe-Startup-Recovery",
+      "device_certified": false
+    },
+    "build106_initial": {
+      "run_id": 38142193090,
+      "conclusion": "failure",
+      "reason": "inherited Build93 contract asserted project build 105"
+    },
+    "build106_intermediate": {
+      "run_id": 38142803699,
+      "conclusion": "failure",
+      "reason": "Build90 trace contract"
+    },
+    "build106_latest_observed": {
+      "run_id": 38142867642,
+      "status_at_observation": "in_progress",
+      "conclusion": null,
+      "device_certified": false
+    }
+  },
+  "runtime_baselines": {
+    "device": "iPad Pro M5 12GB",
+    "os": "iPadOS 27.0.1",
+    "text_model": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+    "local_model_api_id": "bonsai-2-27b-local"
+  },
+  "boundaries": [
+    "CI success does not establish M5 true-device PASS",
+    "no full 32K prompt throughput certification observed",
+    "no Build106 M5 device certification observed",
+    "active branch may advance after snapshot",
+    "API keys and models not included"
+  ]
+}
