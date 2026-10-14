@@ -20,7 +20,7 @@ assert 'apiRuntime.ubatch = governorDecision.profile.ubatch' in v
 assert '"selection_boundary": "llama_context_creation"' in g
 assert '"mid_request_batch_switch_supported": false' in g
 assert '/debug/build106/governor' in s
-assert 'build/Bonsai-Build106-OneClick-FullStage.zip' in w
+assert 'path: build/BonsaiLab-v1-RC1.26-Build106-M5-Governor-TestKit.zip' in w
 assert 'BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa' in w
 assert 'lab-v1-rc1-26-build106-m5-governor' in w
 print("PASS Build106 runtime integration and Build105 safety inheritance")

@@ -728,16 +728,6 @@ jobs:
           cd ../..
           shasum -a 256 build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa | tee build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256
 
-      - name: Package one-click Build106 M5 Governor certification runner
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/build106-runner
-          cp tools/RUN_BUILD106_FULL_STAGE.cmd tools/RUN_BUILD106_GUI.ps1 tools/rc126_build106_full_stage_certification.py build/build106-runner/
-          cp docs/optimization/backburner-integration/RC1.26_BUILD106_M5_GOVERNOR.md build/build106-runner/README.md
-          (cd build/build106-runner && zip -qry ../Bonsai-Build106-OneClick-FullStage.zip .)
-          unzip -t build/Bonsai-Build106-OneClick-FullStage.zip
-
       - name: Package portable Build106 M5 Governor TestKit
         shell: bash
         run: |
@@ -796,8 +786,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BonsaiLab-iPad-v1-RC1.26-Build106-M5-Governor
+          path: build/BonsaiLab-v1-RC1.26-Build106-M5-Governor-TestKit.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload CI diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BonsaiLab-Build106-CI-Diagnostics
           path: |
-            build/Bonsai-Build106-OneClick-FullStage.zip
             tools/rc126_build106_policy_tests.swift
             tools/rc126_build106_governor_contract_tests.py
             tools/rc126_build106_full_stage_certification.py
@@ -808,10 +806,6 @@ jobs:
             tools/rc126_build104_integrated_contract_tests.py
             tools/rc126_build104_policy_tests.swift
             docs/optimization/backburner-integration/RC1.26_BUILD104_INTEGRATED_32K_PERFORMANCE.md
-            build/BonsaiLab-v1-RC1.26-Build106-M5-Governor-TestKit.zip
-            build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa
-            build/BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa.sha256
-            build/BUILD_INFO.txt
             tools/rc126_build100_b16_policy_tests.swift
             tools/rc126_build102_batch_policy_tests.swift
             tools/rc126_build102_batch_contract_tests.py
@@ -949,5 +943,5 @@ jobs:
             THIRD_PARTY_MLX_VISION_NOTICE.md
             tools/extract_bonsai_vision_tower.py
             build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14

@@ -25,7 +25,7 @@ assert 'defaults.set(false, forKey: Build94BatchExperiment.preferB24Key)' in p
 assert '"build105_quarantined": true' in s
 assert '?? maxOutputLimit' in s
 assert 'gen.maxTokens = payload.maxTokens' in v
-assert 'Bonsai-Build106-OneClick-FullStage.zip' in w
+assert 'path: build/BonsaiLab-v1-RC1.26-Build106-M5-Governor-TestKit.zip' in w
 assert 'Build106-M5-Governor' in w
 print("PASS Build105 quarantine seq2, one-shot safe migration, API output retained")
 print("DEVICE REQUIRED: actual 32K context startup and outputs")
