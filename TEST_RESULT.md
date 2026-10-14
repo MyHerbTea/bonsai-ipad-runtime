@@ -3,6 +3,10 @@
 范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
 
 
+## Build110 initial CI fixture correction
+
+Run 38625066678 for `fbd51e09a75ceb12969dd3d1832c8098e93d40bb` passed retained rollback/Governor suites and compiled the new evidence/bookmark test, then failed its raw bookmark path equality assertion at line21 (exit133), before Xcode/native build. The fixture now checks non-nil restored URL, canonical file path equality and exact file bytes, and reports only canonical_same/path_alias flags. This handles Darwin /var symlink aliases without dropping file identity or changing production code. The corrected exact-source run must pass before delivery.
+
 ## 2026-10-15 - Build110 B16 candidate local verification
 
 Base: `40f8a4d52a10825e6675f8d592c3637d849b7d87`, branch `codex/32k-prefill-b16`. This records host/source checks, not iPad certification.

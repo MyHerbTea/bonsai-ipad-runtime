@@ -18,7 +18,13 @@ struct Build110EvidenceTests {
         precondition(B16AssetBookmarks.restore(B16AssetBookmarks.modelKey, defaults: bookmarkDefaults) == nil)
         precondition(!B16AssetBookmarks.save(URL(string: "https://example.invalid/model")!, key: B16AssetBookmarks.modelKey, defaults: bookmarkDefaults))
         precondition(B16AssetBookmarks.save(file, key: B16AssetBookmarks.modelKey, defaults: bookmarkDefaults))
-        precondition(B16AssetBookmarks.restore(B16AssetBookmarks.modelKey, defaults: bookmarkDefaults)?.path == file.path)
+        let restoredBookmark = B16AssetBookmarks.restore(B16AssetBookmarks.modelKey, defaults: bookmarkDefaults)
+        precondition(restoredBookmark != nil, "Saved bookmark must restore an existing file")
+        let bookmarkSameFile = restoredBookmark!.resolvingSymlinksInPath().standardizedFileURL.path == file.resolvingSymlinksInPath().standardizedFileURL.path
+        print("Bookmark roundtrip: canonical_same=\(bookmarkSameFile), path_alias=\(restoredBookmark!.path != file.path)")
+        precondition(bookmarkSameFile, "Bookmark must restore the same canonical file")
+        let restoredBytes = try Data(contentsOf: restoredBookmark!)
+        precondition(restoredBytes == Data("abc".utf8))
         bookmarkDefaults.set(Data([0, 1, 2]), forKey: B16AssetBookmarks.modelKey)
         precondition(B16AssetBookmarks.restore(B16AssetBookmarks.modelKey, defaults: bookmarkDefaults) == nil)
         B16RuntimeEvidence.created(parameters: [
