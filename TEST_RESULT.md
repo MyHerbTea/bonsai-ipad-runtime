@@ -3,6 +3,21 @@
 范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
 
 
+## 2026-10-15 - Build110 B16 candidate local verification
+
+Base: `40f8a4d52a10825e6675f8d592c3637d849b7d87`, branch `codex/32k-prefill-b16`. This records host/source checks, not iPad certification.
+
+- `python -m unittest discover -s tools/tests -p test_b16_*.py -q`: exit 0, **47 tests PASS** in 59.878s on the final local source. Includes actual loopback orchestration (63 inference requests, 18 Prefill benchmark samples), restart/resume/no-replay, identity/configuration, privacy ZIP/hash, memory sampling, sustained Decode, SSE and packaging negatives. Mock performance is not a device result.
+- `python tools/b16_testkit.py --dry-run`: exit 0; registration succeeds while verdict remains INCOMPLETE, device_certified=false and full_32k_input_certified=false.
+- All 53 Python source-contract scripts selected from the existing workflow's `python3 tools/*contract_tests.py` commands: exit 0, 53 PASS, using PYTHONUTF8=1. Old behavioral/native/API/Vision assertions retained; current package version pins follow project.yml.
+- Workflow YAML: 67 steps; all 64 run blocks checked by Git Bash `bash -n`, exit 0. Windows GUI PowerShell AST and Python 3.8 AST checked separately: PASS; portable Python digest/extraction fixtures included in the 47-test suite.
+- `python tools/documentation_consistency.py` and `python -m unittest discover -s tools/tests -p test_documentation_consistency.py -q`: PASS, 10 tests, exit 0. Run document scan after temporary loopback fixture cleanup; simultaneous scans can see unclassified temporary reports.
+- `git diff --check`: exit 0. Protected diff against base is empty for Vendor/Prism, BonsaiMLXVisionSidecar, StagedVisionBridge, M5RuntimeGovernor, RuntimeOptimization and BonsaiUltraSmoke. project.yml changes only CURRENT_PROJECT_VERSION 106 -> 110. BonsaiEngine changes attach/invalidate creation evidence and report actual build; native parameter assignments and default Runtime configuration are retained.
+- Red/green failures exercised missing runner/evidence, invalid identity/context, stale observations, unsafe resume, missing sustained Decode, injected degradation/drift and SSE timing. Windows local checkpoint-sharing and mock socket concurrency failures were corrected and the full suite rerun sequentially. Only local filesystem checkpoint replacement can retry; uncertain HTTP requests cannot replay.
+- Independent read-only review found and resolved context invalidation/qualification, failed Vision hash readiness, first-event timing and repeat asset-hash issues. Swift tests cover source-gated pending/sticky policy, real creation identity, absent/stale identity, asset coexistence/mutation and bookmarks.
+- Local Swift/iOS compilation NOT_RUN (Windows has no swiftc/Xcode); exact-source GitHub macOS CI is required. User M5/32K performance **NOT_RUN / WAITING_DEVICE**. Candidate gates are >=15% median Prefill improvement, >=95% sustained Decode, <=10% ABA drift and no registered regression/memory failure; no default promotion.
+- Unrelated historical Build109 infrastructure gaps remain as recorded below; this is not a blanket tools/tests PASS. No missing Build109 framework reconstruction or old Runtime test repair.
+
 ## 2026-10-15 — PASS_WITH_FINDINGS follow-up
 
 Correction base: `35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2`. Original commit was conditionally accepted by the user's ChatGPT review; that conclusion does not certify this correction, devices or performance.

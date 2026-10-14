@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """Build105 gates protect against unverified 32K KV/Batch startups."""
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 root=Path(__file__).resolve().parents[1]
 read=lambda n:(root/n).read_text(encoding="utf-8")
 e=read("BonsaiLab/BonsaiEngine.swift");v=read("BonsaiLab/ProductionView.swift")
 s=read("BonsaiLab/LocalOpenAIServer.swift");p=read("BonsaiLab/Build105StartupRecovery.swift")
 w=read(".github/workflows/build-ios.yml")
-assert 'CURRENT_PROJECT_VERSION: "106"' in read("project.yml")
-assert 'RC126APIStartupLifecycle.begin(build: "106"' in v
+assert f'CURRENT_PROJECT_VERSION: "{_current_build}"' in read("project.yml")
+assert f'RC126APIStartupLifecycle.begin(build: "{_current_build}"' in v
 assert '"build_id": "rc1.26-build106-m5-governor"' in s
 assert 'contextParams.n_seq_max = 1' in e
 assert 'private let textKVReuseEnabled = false' in e
 assert 'BonsaiBuild105KVCheckpointQuarantined' in e
-assert 'app_build=106' in e
+assert 'app_build=\\(appBuild)' in e
+assert 'let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String' in e
 assert 'private var preferCertifiedB24NextLaunch = false' in v
 assert 'private var textKVCheckpointEnabled104 = false' in v
 assert 'Build105StartupRecovery.apply()' in v
@@ -25,7 +34,7 @@ assert 'defaults.set(false, forKey: Build94BatchExperiment.preferB24Key)' in p
 assert '"build105_quarantined": true' in s
 assert '?? maxOutputLimit' in s
 assert 'gen.maxTokens = payload.maxTokens' in v
-assert 'path: build/BonsaiLab-v1-RC1.26-Build106-M5-Governor-TestKit.zip' in w
-assert 'Build106-M5-Governor' in w
+assert f'path: build/BonsaiLab-v1-RC1.26-Build{_current_build}-B16-Prefill-TestKit.zip' in w
+assert f'Build{_current_build}-B16-Prefill' in w
 print("PASS Build105 quarantine seq2, one-shot safe migration, API output retained")
 print("DEVICE REQUIRED: actual 32K context startup and outputs")

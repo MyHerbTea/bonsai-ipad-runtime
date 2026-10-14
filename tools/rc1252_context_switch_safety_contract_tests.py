@@ -61,8 +61,6 @@ for marker in [
     assert marker in view
 
 assert "python3 tools/rc1252_context_switch_safety_contract_tests.py" in workflow
-assert (
-    f'CFBundleVersion raw -o - "$APP/Info.plist")" = "{project_build}"'
-    in workflow
-)
+assert f'BUILD_NUMBER: "{project_build}"' in workflow
+assert 'CFBundleVersion raw -o - "$APP/Info.plist")" = "$BUILD_NUMBER"' in workflow
 print("RC1.25.2 Build 63 context switch safety contracts: PASS")

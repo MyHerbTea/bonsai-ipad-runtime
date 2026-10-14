@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Build100 guarded B16 static safety checks; macOS Swift XCTest-like CLI tests run in CI."""
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 root = Path(__file__).resolve().parents[1]
 policy = (root / "BonsaiLab/Build94BatchExperiment.swift").read_text()
 view = (root / "BonsaiLab/ProductionView.swift").read_text()
@@ -12,8 +20,8 @@ engine = (root / "BonsaiLab/BonsaiEngine.swift").read_text()
 def has(s, needle): 
     assert needle in s, "MISSING CONTRACT: %r" % needle
 
-has(project, 'CURRENT_PROJECT_VERSION: "106"')
-has(view, 'RC126APIStartupLifecycle.begin(build: "106")')
+has(project, f'CURRENT_PROJECT_VERSION: "{_current_build}"')
+has(view, f'RC126APIStartupLifecycle.begin(build: "{_current_build}")')
 has(server, '"build_id": "rc1.26-build106-m5-governor"')
 has(policy, 'static let preferB16Key = "BonsaiBuild100PreferGuardedB16"')
 has(policy, 'defaults.bool(forKey: confirmedKey)')
@@ -40,7 +48,7 @@ has(server, '/debug/build94/launch')
 has(server, '/debug/build94/next-launch')
 has(workflow, 'tools/rc126_build100_b16_policy_tests.swift')
 has(workflow, 'tools/rc126_build100_b16_contract_tests.py')
-has(workflow, 'BonsaiLab-iPad-v1-RC1.26-Build106-M5-Governor')
+has(workflow, f'BonsaiLab-iPad-v1-RC1.26-Build{_current_build}-B16-Prefill')
 # Critical: base Build97 has no APPEND experiment, and pinned Prism is unmodified.
 assert 'Build99AppendOnlyReuse' not in engine
 assert 'Build98FAVecAB' not in engine

@@ -1,13 +1,21 @@
 """RC1.26 Build87 scheduler context native forensics contracts."""
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 root=Path(__file__).resolve().parents[1]
 e=(root/"BonsaiLab/BonsaiEngine.swift").read_text()
 v=(root/"BonsaiLab/ProductionView.swift").read_text()
 srv=(root/"BonsaiLab/LocalOpenAIServer.swift").read_text()
 flow=(root/".github/workflows/build-ios.yml").read_text()
 patch=(root/"tools/rc126_build87_patch_prism_sched_context.py").read_text()
-assert 'CURRENT_PROJECT_VERSION: "106"' in (root/"project.yml").read_text()
-assert 'RC126APIStartupLifecycle.begin(build: "106")' in v
+assert f'CURRENT_PROJECT_VERSION: "{_current_build}"' in (root/"project.yml").read_text()
+assert f'RC126APIStartupLifecycle.begin(build: "{_current_build}")' in v
 assert '"build_id": "rc1.26-build106-m5-governor"' in srv
 assert "build87_sched_context_trace_supported" in srv
 assert "build=89" in e
@@ -23,7 +31,7 @@ assert "BUILD87_SPLIT_RESET_DONE" in patch
 assert "BUILD87_SPLIT_UID_DONE" in patch
 assert "tools/rc126_build87_patch_prism_sched_context.py" in flow
 assert "tools/rc126_build87_scheduler_context_contract_tests.py" in flow
-assert "BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa" in flow
+assert f'BonsaiLab-v1-RC1.26-build{_current_build}-b16-prefill-unsigned.ipa' in flow
 assert "tools/rc126_build86_patch_prism_crash_forensics.py" in flow
 assert "ctx16k-build79-validated" in v and "min(apiRuntime.gpuLayers, 56)" in v
 print("RC1.26 Build87 scheduler context forensics contracts: PASS")

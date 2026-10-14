@@ -8,9 +8,17 @@
 - 审计时远端 main 完整 SHA：`dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6`，由 `git ls-remote origin refs/heads/main`核对。
 - 本地 main 与 origin/main 同 SHA；初始 working tree clean；本地分支审计只有 main，没有未提交或未推送的候选。
 - `project.yml`为 RC1.26 Build106。源码有本地文本／图文 API、M5 Governor、单序列上下文和现有 Vision 路径。源码存在与 CI 构建不证明每个能力已通过当前 SHA 的真机认证。
-- 工程规则：[AGENTS](../../AGENTS.md)、[工作区政策](../PROJECT_WORKSPACE_POLICY.md)。本次禁止改变核心、默认参数、模型、KV、Vision。
+- 工程规则：[AGENTS](../../AGENTS.md)、[工作区政策](../PROJECT_WORKSPACE_POLICY.md)。该治理快照当时禁止改变核心、默认参数、模型、KV、Vision；当前工程授权见下方 Build110 节。
 
-## Local candidate
+## Build110 performance candidate - 2026-10-15
+
+- User explicitly paused documentation governance and authorized 32K Prefill engineering. Active branch: `codex/32k-prefill-b16`, based on committed governance correction `40f8a4d52a10825e6675f8d592c3637d849b7d87`; exact candidate source is Git HEAD and the generated CI TestKitIdentity.json. Original `35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2` remains in history.
+- Actual local implementation reuses Build94/102 B16 launch and Build106 Governor. B8/8, 32768 allocated context, sequence=1 and Text KV reuse OFF are the controlled baseline. Qualification/pending/confirmed and sticky SAFE4 remain required; no request-time batch switching or B24/B32 default promotion.
+- Unified runner: [b16_testkit.py](../../tools/b16_testkit.py), [Windows entry](../../tools/RUN_B16_TESTKIT.cmd). The CI artifact includes portable Python, source identity, unsigned IPA/hash and automated report. Source/build/configuration and asset identities must match before measurements can pass.
+- Device/performance status: **WAITING_DEVICE / NOT_RUN**. Controlled inputs do not certify a full 32K input. Prefill improvement >=15%, sustained Decode ratio >=95%, ABA drift <=10% and regressions are gates, not claimed results. SAFE4 or ambiguous/missing proof yields INCOMPLETE.
+- Current task permits candidate engineering, push to its independent branch and GitHub CI only. No main merge or automatic promotion. Inspect current Actions for exact HEAD; old main CI success below is separate. Local commands/results are recorded in [TEST_RESULT](../../TEST_RESULT.md).
+
+## Prior documentation candidate snapshot
 
 - 本次文档治理使用官方目录中的 `codex/docs-governance`，基于上面的完整 SHA。原治理提交为 `35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2`；后续修正提交以 Git HEAD/log 为准，main 的上述观察快照保持独立。
 - 本次只新增／整理文档、文档校验与其 CI 步骤；未推送、未合并回 main。后续分支状态以 Git 为准。
@@ -41,9 +49,9 @@
 - 不能把配置的 32768 context 当成实际 32K 满输入验证，不能把编译成功或单次历史收益当成默认档位推广。
 - 历史局部性能及失败经验见 [DECISION_LOG](DECISION_LOG.md)；当前源码事实是 KV reuse OFF、n_seq_max=1、BVCACHE1。候选记录中 BVCACHE2、certified envelopes 与共享 benchmark 不是当前 main 能力。
 
-## 下一步允许任务与前提
+## Next allowed actions
 
-1. 原治理提交的 ChatGPT 独立交叉审查已完成：PASS_WITH_FINDINGS（用户于 2026-10-15 提供）。[AI_HANDOFF](../../AI_HANDOFF.md)为 HISTORICAL 交接；本轮仅补强文档校验与分类，验证结果见 TEST_RESULT。通过检查后另行安排候选分支推送与 GitHub CI，本阶段不合并 main。
-2. 获得发布任务授权后，按已成功 main 的同 SHA artifact 签名／安装、核对 App/API 身份，并运行 Build106 smoke／full-stage；记录设备、配置、原始 trace 和 ZIP hash。无设备时停在 WAITING_DEVICE。
-3. 只读查明 Build109 原候选完整 SHA、原 Spec、缺失 evidence 与文件的真实来源；保留原工作，通过另一个明确的迁移任务审阅差异。禁止凭历史 PASS 补写“已实现”。
-4. 优化实验须先形成同身份的设备／性能基线，再满足 DECISION_LOG 的单变量重启条件。当前任务未授权任何核心或参数改动。
+1. Finish and push the Build110 candidate to `codex/32k-prefill-b16`; verify the exact-source macOS/Xcode CI and combined artifact before asking for one consolidated M5 run.
+2. Sign/install the unsigned candidate through the existing device installation workflow, select the same model/Vision assets and 32768 context, then double-click RUN_B16_TESTKIT.cmd. Enter the key once; follow full-app-restart prompts. TestKit returns B8 when all arms complete and emits PASS/FAIL/INCOMPLETE with measured scope.
+3. Use real same-identity ABA evidence to decide whether to promote B16. If gates fail, retain evidence and locate the next native Prefill hotspot. No claim of speedup, 32K full-input certification or default promotion before evidence.
+4. Documentation governance is paused. Missing historical Build109 resources remain unavailable; no reconstruction or unrelated Runtime test repair is authorized by this engineering task.

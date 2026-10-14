@@ -706,6 +706,15 @@ final class LocalOpenAIServer: ObservableObject {
         }
 
         if request.method == "GET",
+           request.path == "/debug/b16/evidence" {
+            sendJSON(connection, status: 200, object: B16RuntimeEvidence.snapshot(
+                sourceSHA: BonsaiCertificationBuildIdentity.sourceGitSHA,
+                buildNumber: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+            ))
+            return
+        }
+
+        if request.method == "GET",
            request.path == "/debug/build106/governor" {
             sendJSON(connection, status: 200, object: M5RuntimeGovernor.snapshot(
                 context: advertisedContextWindow,
@@ -1530,7 +1539,8 @@ final class LocalOpenAIServer: ObservableObject {
                 "framework_embed_library":
                     Int(capability.framework_embed_library)
             ],
-            "last": last
+            "last": last,
+            "last_observation": last
         ]
     }
 
@@ -1916,6 +1926,9 @@ final class LocalOpenAIServer: ObservableObject {
             "program": "RC1.26_BACKBURNER_RUNTIME_OPTIMIZATION",
             "build_id": "rc1.26-build106-m5-governor",
             "product_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA,
+            "source_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA,
+            "candidate_build_id": "rc1.26-build110-b16-prefill",
+            "build_number": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown",
             "workflow_run_id": BonsaiCertificationBuildIdentity.workflowRunID,
             "prism_upstream_sha": "adfffbe41b2cabcd51fff326ab045662265062bb",
             "certification_trace_endpoint": "/debug/request-trace",

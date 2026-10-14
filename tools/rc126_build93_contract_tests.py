@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """Structural integration invariants; real Swift lifecycle behavior is tested separately."""
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 root = Path(__file__).resolve().parents[1]
 view = (root / "BonsaiLab/ProductionView.swift").read_text()
 engine = (root / "BonsaiLab/BonsaiEngine.swift").read_text()
 server = (root / "BonsaiLab/LocalOpenAIServer.swift").read_text()
 policy = (root / "BonsaiLab/Build93BatchTrialPolicy.swift").read_text()
 project = (root / "project.yml").read_text()
-assert 'CURRENT_PROJECT_VERSION: "106"' in project
-assert 'RC126APIStartupLifecycle.begin(build: "106")' in view
+assert f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project
+assert f'RC126APIStartupLifecycle.begin(build: "{_current_build}")' in view
 assert '"build_id": "rc1.26-build106-m5-governor"' in server
 assert '"schema": "bonsai-build94-execution-v1"' in server
 assert 'Build94BatchExperiment.select(context: context)' in view

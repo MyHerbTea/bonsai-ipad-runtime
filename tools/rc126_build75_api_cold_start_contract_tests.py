@@ -1,4 +1,12 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,7 +47,7 @@ assert (
     or 'RC126APIStartupLifecycle.begin(build: "80")' in view
     or 'RC126APIStartupLifecycle.begin(build: "81")' in view
     or 'RC126APIStartupLifecycle.begin(build: "82")' in view
-    or 'RC126APIStartupLifecycle.begin(build: "106")' in view
+    or f'RC126APIStartupLifecycle.begin(build: "{_current_build}")' in view
 )
 assert (
     'RC1.26 Build 75 API Cold-Start Guard' in view
@@ -106,7 +114,7 @@ assert (
     or 'CURRENT_PROJECT_VERSION: "80"' in project
     or 'CURRENT_PROJECT_VERSION: "81"' in project
     or 'CURRENT_PROJECT_VERSION: "82"' in project
-    or 'CURRENT_PROJECT_VERSION: "106"' in project
+    or f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project
 )
 assert "RC1.26 Build 75 cold-start guard contracts" in workflow
 assert "tools/rc126_build75_api_cold_start_probe.ps1" in workflow

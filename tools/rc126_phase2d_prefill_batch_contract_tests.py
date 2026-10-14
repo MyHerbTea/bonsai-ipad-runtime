@@ -1,4 +1,12 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -86,7 +94,7 @@ assert (
     or 'CURRENT_PROJECT_VERSION: "80"' in project
     or 'CURRENT_PROJECT_VERSION: "81"' in project
     or 'CURRENT_PROJECT_VERSION: "82"' in project
-    or 'CURRENT_PROJECT_VERSION: "106"' in project
+    or f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project
 )
 assert "RC1.26 Phase 2D prefill batch contracts" in workflow
 assert "tools/rc126_phase2d_prefill_batch_arm.ps1" in workflow

@@ -1,10 +1,18 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 root = Path(__file__).resolve().parents[1]
 server = (root / "BonsaiLab/LocalOpenAIServer.swift").read_text()
 view = (root / "BonsaiLab/ProductionView.swift").read_text()
 workflow = (root / ".github/workflows/build-ios.yml").read_text()
 project = (root / "project.yml").read_text()
-assert 'CURRENT_PROJECT_VERSION: "90"' in project or 'CURRENT_PROJECT_VERSION: "106"' in project
+assert 'CURRENT_PROJECT_VERSION: "90"' in project or f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project
 assert ('"rc1.26-build90-certification-p1"' in server or '"rc1.26-build106-m5-governor"' in server)
 assert 'request.path == "/debug/request-trace"' in server
 assert server.index('guard authorized(request) else') < server.index('request.path == "/debug/request-trace"')
@@ -13,7 +21,7 @@ assert 'BonsaiRequestTrace.from(headers: request.headers)' in server
 assert 'recordCertificationTrace(' in server
 assert 'certificationTraceLimit = 64' in server
 assert 'payload.certificationTrace?.requestID' in view
-assert 'RC126APIStartupLifecycle.begin(build: "106"' in view
+assert f'RC126APIStartupLifecycle.begin(build: "{_current_build}"' in view
 assert 'BonsaiCertificationBuildIdentity.sourceGitSHA' in server
 assert 'Embed exact product build identity' in workflow
 assert 'github_run_id' not in server or 'workflow_run_id' in server

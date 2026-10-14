@@ -236,9 +236,7 @@ assert "tools/rc1252_context_boundary_probe.ps1" in workflow
 assert "tools/rc1252_context_ladder_device_probe.ps1" in workflow
 assert "tools/rc1252_openai_python_sdk_probe.py" in workflow
 assert "tools/rc1252_openai_js_sdk_probe.mjs" in workflow
-assert (
-    f'CFBundleVersion raw -o - "$APP/Info.plist")" = "{project_build}"'
-    in workflow
-)
+assert f'BUILD_NUMBER: "{project_build}"' in workflow
+assert 'CFBundleVersion raw -o - "$APP/Info.plist")" = "$BUILD_NUMBER"' in workflow
 
 print("RC1.25.2 Build 63 API usability contracts: PASS")

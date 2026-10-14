@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Build102 source/packaging safety contracts. Device perf is a separate gate."""
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 root = Path(__file__).resolve().parents[1]
 policy = (root / "BonsaiLab/Build94BatchExperiment.swift").read_text()
 view = (root / "BonsaiLab/ProductionView.swift").read_text()
@@ -38,7 +46,7 @@ for item in (
     'apiRuntime.batch = governorDecision.profile.batch',
     'apiRuntime.ubatch = governorDecision.profile.ubatch',
     'if context == 32_768 {',
-    'RC126APIStartupLifecycle.begin(build: "106")',
+    f'RC126APIStartupLifecycle.begin(build: "{_current_build}")',
     'Build94BatchExperiment.noteTextSuccess(',
     'Build94BatchExperiment.noteStartupFailure()',
 ):
@@ -55,13 +63,13 @@ for item in (
 ):
     required(server, item)
 for item in (
-    'CURRENT_PROJECT_VERSION: "106"',
+    f'CURRENT_PROJECT_VERSION: "{_current_build}"',
     ):
     required(project, item)
 for item in (
     'tools/rc126_build102_batch_policy_tests.swift',
     'tools/rc126_build102_batch_contract_tests.py',
-    'BonsaiLab-iPad-v1-RC1.26-Build106-M5-Governor',
+    f'BonsaiLab-iPad-v1-RC1.26-Build{_current_build}-B16-Prefill',
     'adfffbe41b2cabcd51fff326ab045662265062bb',
 ):
     required(workflow, item)

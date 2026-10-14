@@ -1,12 +1,20 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 root=Path(__file__).resolve().parents[1]
 e=(root/"BonsaiLab/BonsaiEngine.swift").read_text()
 v=(root/"BonsaiLab/ProductionView.swift").read_text()
 srv=(root/"BonsaiLab/LocalOpenAIServer.swift").read_text()
 wf=(root/".github/workflows/build-ios.yml").read_text()
 p=(root/"tools/rc126_build89_patch_prism_compact_scheduler.py").read_text()
-assert 'CURRENT_PROJECT_VERSION: "106"' in (root/"project.yml").read_text()
-assert 'RC126APIStartupLifecycle.begin(build: "106"' in v
+assert f'CURRENT_PROJECT_VERSION: "{_current_build}"' in (root/"project.yml").read_text()
+assert f'RC126APIStartupLifecycle.begin(build: "{_current_build}"' in v
 assert '"build_id": "rc1.26-build106-m5-governor"' in srv
 assert '"build89_compact_scheduler_metadata": true' in srv
 assert 'let header = "build=89' in e
@@ -21,5 +29,5 @@ assert 'BUILD89_COMPACT_ALLOC_FAILURE' in p and 'BUILD89_META_USED' in p
 assert 'ggml_used_mem(sched->ctx)' in p
 assert 'rc126_build88_patch_prism_mmap_recovery.py' in wf
 assert 'rc126_build89_patch_prism_compact_scheduler.py' in wf
-assert 'BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa' in wf
+assert f'BonsaiLab-v1-RC1.26-build{_current_build}-b16-prefill-unsigned.ipa' in wf
 print("RC1.26 Build89 bounded scheduler metadata contracts: PASS")

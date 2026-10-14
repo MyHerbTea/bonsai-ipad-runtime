@@ -1,4 +1,12 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 
 ROOT = Path(__file__).resolve().parents[1]
 engine = (ROOT / "BonsaiLab/BonsaiEngine.swift").read_text(encoding="utf-8")
@@ -53,7 +61,7 @@ assert (
     or 'CURRENT_PROJECT_VERSION: "80"' in project
     or 'CURRENT_PROJECT_VERSION: "81"' in project
     or 'CURRENT_PROJECT_VERSION: "82"' in project
-    or 'CURRENT_PROJECT_VERSION: "106"' in project
+    or f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project
 )
 assert 'CODE_SIGN_ENTITLEMENTS: "BonsaiLab/BonsaiLab.entitlements"' in project
 assert "Security.framework" in project
@@ -74,7 +82,7 @@ assert (
     or 'RC126APIStartupLifecycle.begin(build: "80")' in view
     or 'RC126APIStartupLifecycle.begin(build: "81")' in view
     or 'RC126APIStartupLifecycle.begin(build: "82")' in view
-    or 'RC126APIStartupLifecycle.begin(build: "106")' in view
+    or f'RC126APIStartupLifecycle.begin(build: "{_current_build}")' in view
 )
 assert (
     "RC1.26 Build 79 Storage-Memory Long Context Lab" in view
@@ -97,7 +105,7 @@ assert (
     or "BonsaiLab-v1-RC1.26-build80-long-context-tier-reload-fix-unsigned.ipa" in package_block
     or "BonsaiLab-v1-RC1.26-build81-32k-memory-squeeze-unsigned.ipa" in package_block
     or "BonsaiLab-v1-RC1.26-build82-unified-metal-32k-lab-unsigned.ipa" in package_block
-    or "BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa" in package_block
+    or f'BonsaiLab-v1-RC1.26-build{_current_build}-b16-prefill-unsigned.ipa' in package_block
 )
 assert "build78-context-boundary-lab-unsigned.ipa" not in package_block
 

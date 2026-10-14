@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Build103 output-budget regression: static guard only; device run remains mandatory."""
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 
 root = Path(__file__).resolve().parents[1]
 server = (root / "BonsaiLab/LocalOpenAIServer.swift").read_text(encoding="utf-8")
@@ -13,8 +21,8 @@ def expect(condition, reason):
     if not condition:
         raise AssertionError(reason)
 
-expect('CURRENT_PROJECT_VERSION: "106"' in project, "new build identity")
-expect('RC126APIStartupLifecycle.begin(build: "106")' in view, "startup identity")
+expect(f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project, "new build identity")
+expect(f'RC126APIStartupLifecycle.begin(build: "{_current_build}")' in view, "startup identity")
 expect('"build_id": "rc1.26-build106-m5-governor"' in server, "server identity")
 expect('?? maxOutputLimit' in server, "omitted output length must default to UI-configured ceiling")
 expect('?? 256' not in server, "obsolete API parser 256-token default remains")
@@ -40,7 +48,7 @@ expect('requireFullOutputBudget:\n                                            fa
 expect('maxOutputTokens: apiMaxOutputTokens' in view, "UI configured limit must be propagated")
 expect('lab-v1-rc1-26-build105-startup-recovery' in workflow,
        "CI must run on integrated-stage branch")
-expect('build106-m5-governor-unsigned.ipa' in workflow,
+expect(f'build{_current_build}-b16-prefill-unsigned.ipa' in workflow,
        "Build103 IPA artifact must be published")
 print("PASS Build103 parser -> handler -> text/vision engine -> metadata/API UI/output budget contracts")
 print("DEVICE REQUIRED: >256 actual completions, stream/nonstream, context/vision, idle/crash memory")

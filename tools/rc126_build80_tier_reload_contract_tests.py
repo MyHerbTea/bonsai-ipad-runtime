@@ -1,4 +1,12 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 
 ROOT = Path(__file__).resolve().parents[1]
 view = (ROOT / "BonsaiLab/ProductionView.swift").read_text(encoding="utf-8")
@@ -7,9 +15,9 @@ project = (ROOT / "project.yml").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/build-ios.yml").read_text(encoding="utf-8")
 
 assert ('CURRENT_PROJECT_VERSION: "80"' in project or 'CURRENT_PROJECT_VERSION: "81"' in project or 'CURRENT_PROJECT_VERSION: "82"' in project
-    or 'CURRENT_PROJECT_VERSION: "106"' in project)
+    or f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project)
 assert ('RC126APIStartupLifecycle.begin(build: "80")' in view or 'RC126APIStartupLifecycle.begin(build: "81")' in view or 'RC126APIStartupLifecycle.begin(build: "82")' in view
-    or 'RC126APIStartupLifecycle.begin(build: "106")' in view)
+    or f'RC126APIStartupLifecycle.begin(build: "{_current_build}")' in view)
 assert ("RC1.26 Build 80 Long-Context Tier Reload Fix" in view or "RC1.26 Build 81 32K Memory Squeeze" in view or "RC1.26 Build 82 Unified-Metal 32K Lab" in view
     or "RC1.26 Build 89 Compact Scheduler Metadata" in view)
 assert ('"build_id": "rc1.26-build80-long-context-tier-reload-fix"' in server or '"build_id": "rc1.26-build81-32k-memory-squeeze"' in server or '"build_id": "rc1.26-build82-unified-metal-32k-lab"' in server
@@ -67,6 +75,6 @@ for field in [
 
 assert "RC1.26 Build 80 tier reload contracts" in workflow
 assert "tools/rc126_build80_tier_reload_contract_tests.py" in workflow
-assert ("build80-long-context-tier-reload-fix-unsigned.ipa" in workflow or "build81-32k-memory-squeeze-unsigned.ipa" in workflow or "build82-unified-metal-32k-lab-unsigned.ipa" in workflow or "build106-m5-governor-unsigned.ipa" in workflow)
+assert ("build80-long-context-tier-reload-fix-unsigned.ipa" in workflow or "build81-32k-memory-squeeze-unsigned.ipa" in workflow or "build82-unified-metal-32k-lab-unsigned.ipa" in workflow or f'build{_current_build}-b16-prefill-unsigned.ipa' in workflow)
 
 print("RC1.26 Build 80 tier reload contracts: PASS")

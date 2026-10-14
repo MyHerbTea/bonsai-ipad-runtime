@@ -3,6 +3,14 @@
 范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
 
 
+## 2026-10-15 - Build110 B16 Prefill engineering candidate
+
+- Reused Build94/102 launch arms and Build106 Governor; no new native tuning or B24/B32 default promotion. Source changes invalidate old B16 qualifications while preserving pending/SAFE4 recovery.
+- Bound real text qualification to the same successfully created 32K native context and B8/B16 shape. Exposed authenticated creation/configuration, process/context UUID and asset hash evidence; added persistent asset bookmarks for required full-process restarts.
+- Added one Windows GUI TestKit with bundled portable Python, one key entry, durable B8 -> B16 -> B8 checkpoints, identical measured inputs, SSE/multi-turn/long-output/vision/API regressions and allowlisted result ZIPs. Uncertain inference requests are never replayed.
+- Reused existing CI/native/regression gates and updated current package identity assertions. One Build110 artifact combines unsigned IPA, identity/digests, TestKit and actual CI reports.
+- This is an experimental candidate, not an M5 performance result. 32768 allocated context is distinct from a full 32K input test. No main merge or automatic profile promotion.
+
 ## 2026-10-15 — Documentation review findings correction
 
 - Addressed the user-provided ChatGPT PASS_WITH_FINDINGS result for 35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2.

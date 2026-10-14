@@ -1755,6 +1755,18 @@ struct ProductionView: View {
             }
             .navigationTitle("Bonsai")
             .onAppear {
+                if modelURL == nil, let restored = B16AssetBookmarks.restore(B16AssetBookmarks.modelKey) {
+                    modelURL = restored
+                    modelName = restored.lastPathComponent
+                }
+                if mlxVisionWeightsURL == nil, let restored = B16AssetBookmarks.restore(B16AssetBookmarks.visionKey) {
+                    mlxVisionWeightsURL = restored
+                    mlxVisionWeightsName = restored.lastPathComponent
+                }
+                if mmprojURL == nil, let restored = B16AssetBookmarks.restore(B16AssetBookmarks.projectorKey) {
+                    mmprojURL = restored
+                    mmprojName = restored.lastPathComponent
+                }
                 UserDefaults.standard.set(
                     String(describing: scenePhase),
                     forKey: "BonsaiRC1240AppScenePhase"
@@ -1842,11 +1854,13 @@ struct ProductionView: View {
                 apiServer.stop()
                 Task { await engine.unloadAll() }
                 modelURL = url
+                B16AssetBookmarks.save(url, key: B16AssetBookmarks.modelKey)
                 modelName = url.lastPathComponent
             case .mmproj:
                 apiServer.stop()
                 Task { await engine.unloadAll() }
                 mmprojURL = url
+                B16AssetBookmarks.save(url, key: B16AssetBookmarks.projectorKey)
                 mmprojName = url.lastPathComponent
             case .image:
                 imageURL = url
@@ -1855,6 +1869,7 @@ struct ProductionView: View {
                 apiServer.stop()
                 Task { await engine.unloadAll() }
                 mlxVisionWeightsURL = url
+                B16AssetBookmarks.save(url, key: B16AssetBookmarks.visionKey)
                 mlxVisionWeightsName = url.lastPathComponent
                 mlxVisionSummary = ""
             }
@@ -3362,6 +3377,9 @@ struct ProductionView: View {
             // executable Swift tests. Never enter the native context before
             // quarantining Build104's unsafe persistent settings.
             Build105StartupRecovery.apply()
+            Build94BatchExperiment.bindCertificationIdentity(
+                BonsaiCertificationBuildIdentity.sourceGitSHA
+            )
             let arm = Build94BatchExperiment.select(context: context)
             let batchCap: Int
             switch arm {
@@ -3670,7 +3688,7 @@ struct ProductionView: View {
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
 
-        RC126APIStartupLifecycle.begin(build: "106")
+        RC126APIStartupLifecycle.begin(build: "110")
         busy = true
         status = "正在执行 RC1.26 Build 89 Compact Scheduler Metadata + API 冷启动保护…"
         detail = """
@@ -3760,6 +3778,7 @@ struct ProductionView: View {
                     url: selectedModelURL,
                     runtime: apiRuntime
                 )
+                B16RuntimeEvidence.registerVisionAsset(selectedMLXVisionWeightsURL)
                 RC126APIStartupLifecycle.mark("MODEL_READY")
 
                 UserDefaults.standard.set(
@@ -3819,6 +3838,7 @@ struct ProductionView: View {
                         )
                     }
 
+                    let b16QualificationContext = B16RuntimeEvidence.contextIDForQualification()
                     let requestResourceSnapshotStart =
                         await sharedEngine
                             .apiAdmissionSnapshot()
@@ -4412,9 +4432,15 @@ struct ProductionView: View {
 
                     let textGenerationEnd =
                         RC1232PerformanceDiagnostics.now()
-                    Build94BatchExperiment.noteTextSuccess(
-                        promptTokens: metrics.promptTokens
-                    )
+                    let qualificationArm = Build94BatchExperiment.snapshot()["active_arm"] as? String
+                    let qualificationBatch = ["BASELINE8": 8, "CANDIDATE16": 16, "CANDIDATE24": 24, "CANDIDATE32": 32][qualificationArm ?? ""]
+                    if let qualificationBatch, B16RuntimeEvidence.qualifiesTextCompletion(
+                        contextID: b16QualificationContext, batch: qualificationBatch
+                    ) {
+                        Build94BatchExperiment.noteTextSuccess(
+                            promptTokens: metrics.promptTokens
+                        )
+                    }
 
                     let resourceSnapshot =
                         await sharedEngine

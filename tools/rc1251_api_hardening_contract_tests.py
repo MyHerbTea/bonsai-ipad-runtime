@@ -1,4 +1,12 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 import re
 
 root = Path(__file__).resolve().parents[1]
@@ -131,7 +139,7 @@ assert (
     or "Build90-Certification-P1" in workflow
     or "Build91-Long-Context-Forensics-P0" in workflow
     or "Build94-Prefill-Kernel-Boundary-P0" in workflow
-    or "Build106-M5-Governor" in workflow
+    or f'Build{_current_build}-B16-Prefill' in workflow
 )
 
 print("RC1.25.1 Build 60 API hardening contracts: PASS")

@@ -32,6 +32,27 @@ enum Build94BatchExperiment {
     private static let gate = NSLock()
     private static var selected: Arm?
 
+    static let certificationIdentityKey = "BonsaiBuild110CertificationSource"
+    static func bindCertificationIdentity(
+        _ identity: String, defaults: UserDefaults = .standard
+    ) {
+        gate.lock()
+        defer { gate.unlock() }
+        guard defaults.string(forKey: certificationIdentityKey) != identity else { return }
+        // Old source qualification cannot silently certify a new binary.
+        // Preserve pending and sticky recovery across the update.
+        defaults.set(identity, forKey: certificationIdentityKey)
+        for key in [baselineOKKey, confirmedKey, candidate24CompletedKey,
+                    candidate32CompletedKey, preferB16Key, preferB24Key] {
+            defaults.set(false, forKey: key)
+        }
+        let requested = Arm(rawValue: defaults.string(forKey: nextKey) ?? "")
+        if requested == .candidate16 || requested == .candidate24 || requested == .candidate32 {
+            defaults.set(Arm.baseline8.rawValue, forKey: nextKey)
+        }
+        defaults.synchronize()
+    }
+
     static func select(context: Int, defaults: UserDefaults = .standard) -> Arm? {
         guard context == 32_768 else { return nil }
         gate.lock()

@@ -315,7 +315,8 @@ actor BonsaiEngine {
                 withIntermediateDirectories: true
             )
             let defaults = UserDefaults.standard
-            let header = "build=89\napp_build=106\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"))\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
+            let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+            let header = "build=89\napp_build=\(appBuild)\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"))\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
             // Preserve last attempt even when a new 32K run is started.
             // The diagnostic UI can export both traces after a crash.
             let previous = directory.appendingPathComponent(
@@ -516,6 +517,24 @@ actor BonsaiEngine {
             throw LabError.contextCreateFailed
         }
         mark("MODEL_08_CONTEXT_CREATE_DONE")
+        B16RuntimeEvidence.created(parameters: [
+            "context": Int(contextParams.n_ctx),
+            "batch": Int(contextParams.n_batch),
+            "ubatch": Int(contextParams.n_ubatch),
+            "sequence_max": Int(contextParams.n_seq_max),
+            "kv_k": contextParams.type_k == GGML_TYPE_Q4_0 ? "Q4_0" : (contextParams.type_k == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
+            "kv_v": contextParams.type_v == GGML_TYPE_Q4_0 ? "Q4_0" : (contextParams.type_v == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
+            "gpu_layers": config.gpuLayers,
+            "flash_attention": contextParams.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_ENABLED,
+            "threads": Int(contextParams.n_threads),
+            "threads_batch": Int(contextParams.n_threads_batch),
+            "swa_full": contextParams.swa_full,
+            "metal_tensor_disabled": backendRegistryMetalTensorDisabledAtFirstInit ?? config.disableMetalTensorAPI,
+            "offload_kqv": contextParams.offload_kqv,
+            "op_offload": contextParams.op_offload,
+            "kv_unified": contextParams.kv_unified,
+            "mmap": config.loadMode == .mmap
+        ], modelURL: url)
         UserDefaults.standard.set(
             true,
             forKey: "BonsaiBuild81ContextCreateCompleted"
@@ -607,6 +626,7 @@ actor BonsaiEngine {
         mark("CTX_SWITCH_01_CONTEXT_RELEASE_BEGIN")
 
         if let context {
+            B16RuntimeEvidence.invalidate()
             llama_free(context)
             self.context = nil
         }
@@ -715,6 +735,7 @@ actor BonsaiEngine {
             reason: "vision_context_rebuild"
         )
         if let context {
+            B16RuntimeEvidence.invalidate()
             llama_free(context)
             self.context = nil
         }
@@ -2164,6 +2185,7 @@ actor BonsaiEngine {
         )
         if let context {
             mark("COEX_00_CONTEXT_RELEASE_BEGIN")
+            B16RuntimeEvidence.invalidate()
             llama_free(context)
             self.context = nil
             mark("COEX_00_CONTEXT_RELEASE_DONE")
@@ -2840,6 +2862,7 @@ actor BonsaiEngine {
     func unloadAll(
         releaseStagedResident: Bool = true
     ) {
+        B16RuntimeEvidence.invalidate()
         apiVisionPrefixReuseKey = nil
         apiVisionPrefixPositions = 0
         clearTextKVReuseState(
@@ -2848,6 +2871,7 @@ actor BonsaiEngine {
         unloadVision()
 
         if let context {
+            B16RuntimeEvidence.invalidate()
             llama_free(context)
             self.context = nil
         }
@@ -2869,6 +2893,7 @@ actor BonsaiEngine {
         model: OpaquePointer,
         config: RuntimeConfig
     ) throws -> OpaquePointer {
+        B16RuntimeEvidence.invalidate()
         let validated = try config.validated()
 
         var params = llama_context_default_params()
@@ -2921,6 +2946,24 @@ actor BonsaiEngine {
         guard let created = llama_init_from_model(model, params) else {
             throw LabError.contextCreateFailed
         }
+        B16RuntimeEvidence.created(parameters: [
+            "context": Int(params.n_ctx),
+            "batch": Int(params.n_batch),
+            "ubatch": Int(params.n_ubatch),
+            "sequence_max": Int(params.n_seq_max),
+            "kv_k": params.type_k == GGML_TYPE_Q4_0 ? "Q4_0" : (params.type_k == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
+            "kv_v": params.type_v == GGML_TYPE_Q4_0 ? "Q4_0" : (params.type_v == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
+            "gpu_layers": validated.gpuLayers,
+            "flash_attention": params.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_ENABLED,
+            "threads": Int(params.n_threads),
+            "threads_batch": Int(params.n_threads_batch),
+            "swa_full": params.swa_full,
+            "metal_tensor_disabled": backendRegistryMetalTensorDisabledAtFirstInit ?? validated.disableMetalTensorAPI,
+            "offload_kqv": params.offload_kqv,
+            "op_offload": params.op_offload,
+            "kv_unified": params.kv_unified,
+            "mmap": validated.loadMode == .mmap
+        ], modelURL: modelScopedURL)
         return created
     }
 

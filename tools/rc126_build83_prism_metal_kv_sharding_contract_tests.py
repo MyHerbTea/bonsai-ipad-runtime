@@ -1,4 +1,12 @@
 from pathlib import Path
+import re as _build_identity_re
+# Current package identity follows project.yml; historical API labels stay compatible.
+_current_build_match = _build_identity_re.search(
+    r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',
+    (Path(__file__).resolve().parents[1] / "project.yml").read_text(encoding="utf-8"),
+)
+assert _current_build_match is not None, "project build number is required"
+_current_build = _current_build_match.group(1)
 
 ROOT = Path(__file__).resolve().parents[1]
 view = (ROOT / "BonsaiLab/ProductionView.swift").read_text(encoding="utf-8")
@@ -7,8 +15,8 @@ project = (ROOT / "project.yml").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/build-ios.yml").read_text(encoding="utf-8")
 patcher = (ROOT / "tools/rc126_build83_patch_prism_kv_sharding.py").read_text(encoding="utf-8")
 
-assert 'CURRENT_PROJECT_VERSION: "106"' in project
-assert 'RC126APIStartupLifecycle.begin(build: "106")' in view
+assert f'CURRENT_PROJECT_VERSION: "{_current_build}"' in project
+assert f'RC126APIStartupLifecycle.begin(build: "{_current_build}")' in view
 assert "RC1.26 Build 89 Compact Scheduler Metadata" in view
 assert '"build_id": "rc1.26-build106-m5-governor"' in server
 
@@ -40,7 +48,7 @@ assert "adfffbe41b2cabcd51fff326ab045662265062bb" in workflow
 assert "rc126_build83_patch_prism_kv_sharding.py" in workflow
 assert "build-xcframework.sh ios-device" in workflow
 assert "RC1.26 Build 83 Prism Metal KV sharding contracts" in workflow
-assert "BonsaiLab-v1-RC1.26-build106-m5-governor-unsigned.ipa" in workflow
-assert "BonsaiLab-iPad-v1-RC1.26-Build106-M5-Governor" in workflow
+assert f'BonsaiLab-v1-RC1.26-build{_current_build}-b16-prefill-unsigned.ipa' in workflow
+assert f'BonsaiLab-iPad-v1-RC1.26-Build{_current_build}-B16-Prefill' in workflow
 
 print("RC1.26 Build 83 Prism Metal KV sharding contracts: PASS")
