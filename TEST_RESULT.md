@@ -3,6 +3,18 @@
 范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
 
 
+## 2026-10-15 — PASS_WITH_FINDINGS follow-up
+
+Correction base: `35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2`. Original commit was conditionally accepted by the user's ChatGPT review; that conclusion does not certify this correction, devices or performance.
+
+- `python tools/documentation_consistency.py`: exit 0, PASS; includes main/CI/candidate SHA, ACTIVE workspace and completed-handoff checks.
+- `python -m unittest discover -s tools/tests -p test_documentation_consistency.py -v`: exit 0, 10 tests PASS. Negative subcases independently change each SHA source, shorten/remove main SHA, regress each active directory declaration, and revive handoff authority/body. Historical paths and differing development HEAD are accepted.
+- TDD: 8 injected-conflict subcases failed before implementation; all 10 tests passed after correction. Tests call actual validate() through read overrides without editing real evidence.
+- `git diff --check`: exit 0. Python 3.8 syntax: PASS.
+- Protected comparison against correction base: exit 0, empty diff for BonsaiLab (Engine/Vision/Governor/Runtime defaults), BonsaiUltraSmoke, project.yml, Vendor, .github, archives, historical backburner/release evidence and Build83-89 Prism patch scripts.
+- CI metadata and candidate-baseline files unchanged; no development-HEAD/main equality requirement. Old candidate Runtime tests were not repaired or rerun.
+- Candidate remote CI / M5 / performance NOT_RUN. No push, main merge, new iPad build or profile promotion.
+
 ## 2026-10-14 — Documentation governance verification
 
 Scope: documentation candidate based on `dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6`. Commands ran in the official workspace; new remote CI, Swift/iOS build, device and benchmarks NOT_RUN.

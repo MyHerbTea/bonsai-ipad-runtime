@@ -3,6 +3,14 @@
 范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
 
 
+## 2026-10-15 — Documentation review findings correction
+
+- Addressed the user-provided ChatGPT PASS_WITH_FINDINGS result for 35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2.
+- Check CURRENT_STATE remote-main SHA against its linked CI metadata and candidate baseline, independently of development HEAD.
+- Check active workspace rules against AGENTS while retaining explicitly historical old paths.
+- Retired AI_HANDOFF to HISTORICAL, synchronized INDEX/current review status, and added real validate() conflict tests.
+- No Runtime, Build109 implementation, performance configuration, Prism or workflow changes.
+
 ## 2026-10-14 — Minimal documentation governance
 
 - Added the AGENTS → INDEX → CURRENT_STATE authority chain, five status classes, evidence-based decision log and ChatGPT AI_HANDOFF.

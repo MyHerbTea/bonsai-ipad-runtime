@@ -42,6 +42,71 @@ def check_candidate_references(root, rows):
             errors.append(f"path inventory cannot claim verification: {row['path']}")
     return errors
 
+def check_main_identity(root, references):
+    """Compare documented snapshot identities; never compare a development HEAD."""
+    state = (root / "docs/optimization/CURRENT_STATE.md").read_text(encoding="utf-8")
+    main = re.search(r"(?ms)^## Remote main\n(.*?)(?=^## |\Z)", state)
+    hashes = re.findall(r"审计时远端 main 完整 SHA：\s*" + chr(96) + r"([0-9a-fA-F]{40})" + chr(96), main.group(1) if main else "")
+    if len(hashes) != 1:
+        return ["main SHA: CURRENT_STATE requires one full remote-main snapshot SHA"]
+    sha = hashes[0].lower()
+    ci = re.search(r"(?ms)^## CI\n(.*?)(?=^## |\Z)", state)
+    links = re.findall(r"\]\((evidence/main-ci-[^)]+\.json)\)", ci.group(1) if ci else "")
+    if len(links) != 1:
+        return ["main SHA: CURRENT_STATE requires one current CI metadata link"]
+    folder = (root / "docs/optimization").resolve()
+    path = (folder / links[0]).resolve()
+    if folder not in path.parents:
+        return ["main SHA: CI metadata link escapes its document directory"]
+    try:
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+        run = snapshot.get("run", {})
+        ci_sha = run.get("head_sha") if isinstance(run, dict) else None
+    except (OSError, ValueError, AttributeError) as exc:
+        return [f"main SHA: CI metadata unavailable or invalid: {exc}"]
+    errors = []
+    for label, value in (("CI run.head_sha", ci_sha), ("candidate source_baseline_sha", references.get("source_baseline_sha"))):
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", value) or value.lower() != sha:
+            errors.append(f"main SHA mismatch: CURRENT_STATE vs {label}")
+    return errors
+
+def check_active_workspace(root):
+    """Only explicitly historical/superseded policy sections may retain old paths."""
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    section = re.search(r"(?ms)^## 1\. Authoritative Workspace\n(.*?)(?=^## |\Z)", agents)
+    paths = re.findall(r"[A-Za-z]:[\\/][^\s]+", section.group(1) if section else "")
+    if len(paths) != 1:
+        return ["active workspace: AGENTS requires one authoritative directory"]
+    normalize = lambda value: value.rstrip(".,;").replace("\\", "/").lower()
+    expected = normalize(paths[0])
+    policy = (root / "docs/PROJECT_WORKSPACE_POLICY.md").read_text(encoding="utf-8")
+    active, historical = [], False
+    for line in policy.splitlines():
+        if line.startswith("## "):
+            historical = bool(re.search(r"\((?:HISTORICAL|SUPERSEDED)\b[^)]*\)", line))
+        if not historical:
+            active.append(line)
+    text = "\n".join(active)
+    errors = []
+    for prefix in ("workspace at ", "directory is exactly "):
+        declarations = re.findall(re.escape(prefix) + r"([A-Za-z]:[\\/][^\s]+)", text)
+        if len(declarations) != 1 or normalize(declarations[0]) != expected:
+            errors.append(f"active workspace: policy {prefix.strip()} differs from AGENTS")
+    for path in re.findall(r"[A-Za-z]:[\\/]codexSpace[\\/][^\s]+", text, re.I):
+        normalized = normalize(path)
+        if normalized != expected and not normalized.startswith(expected + "/"):
+            errors.append(f"active workspace: conflicting policy directory: {path}")
+    return errors
+
+def check_completed_handoff(root, authority):
+    try:
+        text = (root / "AI_HANDOFF.md").read_text(encoding="utf-8")
+    except OSError:
+        return ["completed handoff document is missing"]
+    if classify("AI_HANDOFF.md", authority) != "HISTORICAL" or not re.search(r"(?m)^状态：HISTORICAL[；。]", text):
+        return ["completed handoff must remain HISTORICAL in authority and document status"]
+    return []
+
 def validate(root):
     authority = json.loads((root / "docs/document-authority.json").read_text(encoding="utf-8"))
     errors = []
@@ -65,6 +130,9 @@ def validate(root):
         errors.extend(check_links(root, document, unavailable))
     references = json.loads((root / "docs/optimization/candidate-references.json").read_text(encoding="utf-8"))
     errors.extend(check_candidate_references(root, references["references"]))
+    errors.extend(check_main_identity(root, references))
+    errors.extend(check_active_workspace(root))
+    errors.extend(check_completed_handoff(root, authority))
     navigation = [
         ("AGENTS.md", "docs/INDEX.md"),
         ("docs/INDEX.md", "optimization/CURRENT_STATE.md"),
@@ -84,5 +152,5 @@ if __name__ == "__main__":
     for error in errors:
         print("FAIL " + error)
     if not errors:
-        print("PASS documentation classification, local file links and candidate reference scope only")
+        print("PASS documentation classification, links, evidence identities, active workspace and completed handoff scope only")
     raise SystemExit(bool(errors))

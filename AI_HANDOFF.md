@@ -1,10 +1,10 @@
 # ChatGPT 交叉审查交接
 
-状态：ACTIVE；任务：最小侵入文档治理；2026-10-14。先读 [AGENTS](AGENTS.md) → [INDEX](docs/INDEX.md) → [CURRENT_STATE](docs/optimization/CURRENT_STATE.md)。
+状态：HISTORICAL；已完成交接：最小侵入文档治理（2026-10-14），原提交 `35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2`。2026-10-15 用户提供 ChatGPT 独立审查结论：PASS_WITH_FINDINGS，有条件接受，无需回滚。本文不作为当前 ACTIVE 任务。先读 [AGENTS](AGENTS.md) → [INDEX](docs/INDEX.md) → [CURRENT_STATE](docs/optimization/CURRENT_STATE.md)。
 
 ## 身份与范围
 
-基线／审计远端 main：`dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6`。本次分支 `codex/docs-governance`，独立本地 commit；提交身份用 `git log -1 --format=%H -- AI_HANDOFF.md`读取，再检查 diff 与 branch/status。未推送／未部署，不继承基线 CI。
+基线／审计远端 main：`dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6`。本次分支 `codex/docs-governance`，独立本地 commit；原审查提交为 `35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2`；后续修正身份以 Git log 为准，不将最新修改提交冒充原审查对象。未推送／未部署，不继承基线 CI。
 
 仅文档与 Python 文档校验、其 unittest 和 build-ios 文档步骤。推理核心、Runtime 默认、project.yml、模型、KV、Vision 均须与基线 byte-identical。没有批量重写 140 份历史 Markdown，原始失败、archives 和 T16 矩阵保留。
 
@@ -29,6 +29,6 @@
 
 ## 剩余工作
 
-当前 M5 签名安装、同 SHA smoke/full-stage、32K 实际长输入、持续性能均 NOT_RUN / WAITING_DEVICE。恢复 Build109 原 Spec 和源码／证据需独立审查任务；本次不补全 Runtime 实现。ChatGPT 交叉审查尚未完成，不把本交接视为外部审阅通过。
+当前 M5 签名安装、同 SHA smoke/full-stage、32K 实际长输入、持续性能均 NOT_RUN / WAITING_DEVICE。恢复 Build109 原 Spec 和源码／证据需独立审查任务；本次不补全 Runtime 实现。ChatGPT 对原提交的交叉审查已完成，结论为 PASS_WITH_FINDINGS（用户于 2026-10-15 提供）；SHA／现行工作区一致性与交接长期状态为本轮补强事项。此结论不认证后续提交、设备或性能。
 
-本地审阅可先执行 `git diff dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6..HEAD --stat`和文档门禁；若提交尚未发布到 GitHub，使用此官方工作区中的文件或用户提供的提交 diff，不假设远端已有。
+本地审阅可先执行 `git diff dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6..35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2 --stat`和文档门禁；若提交尚未发布到 GitHub，使用此官方工作区中的文件或用户提供的提交 diff，不假设远端已有。

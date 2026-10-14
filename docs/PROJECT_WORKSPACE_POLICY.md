@@ -54,7 +54,7 @@ This policy does not prescribe workflow names or commands; use the checks config
 - Cleaning a parent directory: a nested worktree may appear as an untracked directory from the parent repository. Do not run a broad clean; inspect the exact target and preserve the nested checkout.
 - Promoting before confirmation: a release branch can move before the intended commit has been reviewed or CI-verified.
 
-## 2026-10 T16 Swift Numerics 1.1.1 Workspace Incident
+## 2026-10 T16 Swift Numerics 1.1.1 Workspace Incident (HISTORICAL)
 
 The T16 commit 598a9f7b9555213519032206ed68c29acc17c24d (T16: pin Swift Numerics 1.1.1) was created in the Codex worktree:
 

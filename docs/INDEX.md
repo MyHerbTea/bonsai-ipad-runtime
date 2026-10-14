@@ -18,7 +18,8 @@
 
 | 文件或范围（相对仓库根） | 分类 | 使用边界 |
 |---|---|---|
-| AGENTS.md、README.md、本 INDEX、AI_HANDOFF.md | ACTIVE | 规则、导航、本次交接 |
+| AGENTS.md、README.md、本 INDEX | ACTIVE | 规则与导航 |
+| AI_HANDOFF.md | HISTORICAL | 已完成的原提交交接，独立审查 PASS_WITH_FINDINGS；不作为当前任务 |
 | docs/PROJECT_WORKSPACE_POLICY.md | ACTIVE | 现行规则段；事故和旧审计段仍是历史 |
 | docs/optimization/CURRENT_STATE.md、DECISION_LOG.md | ACTIVE | 分层事实、决策与重启门槛 |
 | docs/optimization/DOCUMENT_AUDIT.md | REFERENCE | 本次审计范围、缺口和方法 |
@@ -54,4 +55,4 @@ python -m unittest discover -s tools/tests -p test_documentation_consistency.py 
 git diff --check
 ```
 
-校验只证明文档分类、相对文件链接和候选引用范围一致，不检查远端页面存活、构建、推理或设备性能。
+校验只证明文档分类、相对文件链接、候选引用范围、main／CI／baseline 快照 SHA 和现行工作区规则一致，以及已完成交接保持 HISTORICAL；不要求开发分支 HEAD 等于 main，不检查远端页面存活、构建、推理或设备性能。

@@ -12,7 +12,7 @@
 
 ## Local candidate
 
-- 本次文档治理使用官方目录中的 `codex/docs-governance`，基于上面的完整 SHA。提交 SHA 请以 `git log -1 --format=%H -- AI_HANDOFF.md`读取，避免自引用提交摘要。
+- 本次文档治理使用官方目录中的 `codex/docs-governance`，基于上面的完整 SHA。原治理提交为 `35aa64ff6d94d8855882cd3f1fe5a5d0ceb549a2`；后续修正提交以 Git HEAD/log 为准，main 的上述观察快照保持独立。
 - 本次只新增／整理文档、文档校验与其 CI 步骤；未推送、未合并回 main。后续分支状态以 Git 为准。
 - 旧记录提到 `codex/bonsai-rc126-optimization` Build109；该分支不在本次本地分支清单中。不能声称已审计它的 HEAD、工作树或未推送提交。
 - 当前仓库保留了一部分候选脚本，但 `tools/certification/`、`BonsaiLab/ReleaseManifest.swift`、runtime evidence、BVCACHE2 fingerprint、benchmark 及候选 evidence 目录等没有完整迁移。[候选引用清单](candidate-references.json)逐项标明 PRESENT / NOT_AVAILABLE，verification 均 NOT_VERIFIED。
@@ -43,7 +43,7 @@
 
 ## 下一步允许任务与前提
 
-1. ChatGPT 依据 [AI_HANDOFF](../../AI_HANDOFF.md)交叉审查本次独立提交；核对范围、SHA、分类和测试证据。
+1. 原治理提交的 ChatGPT 独立交叉审查已完成：PASS_WITH_FINDINGS（用户于 2026-10-15 提供）。[AI_HANDOFF](../../AI_HANDOFF.md)为 HISTORICAL 交接；本轮仅补强文档校验与分类，验证结果见 TEST_RESULT。通过检查后另行安排候选分支推送与 GitHub CI，本阶段不合并 main。
 2. 获得发布任务授权后，按已成功 main 的同 SHA artifact 签名／安装、核对 App/API 身份，并运行 Build106 smoke／full-stage；记录设备、配置、原始 trace 和 ZIP hash。无设备时停在 WAITING_DEVICE。
 3. 只读查明 Build109 原候选完整 SHA、原 Spec、缺失 evidence 与文件的真实来源；保留原工作，通过另一个明确的迁移任务审阅差异。禁止凭历史 PASS 补写“已实现”。
 4. 优化实验须先形成同身份的设备／性能基线，再满足 DECISION_LOG 的单变量重启条件。当前任务未授权任何核心或参数改动。
