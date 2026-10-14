@@ -22,3 +22,6 @@ Explicit Branch
 Verified Commit
 +
 CI Gate
+## Documentation
+
+Start with [AGENTS.md](AGENTS.md), then [docs/INDEX.md](docs/INDEX.md) and [CURRENT_STATE.md](docs/optimization/CURRENT_STATE.md). Build106 is a CI-built candidate; current-device and performance certification remain unverified. Historical and Build109 candidate records do not certify current main.

@@ -1,5 +1,7 @@
 # Bonsai iPad Productization / Optimization Protocol
 
+Status: REFERENCE. This protocol records RC1.11-era frozen-core and later candidate gates. Its old version/default statements do not certify current Build106 or require the present core to be byte-identical to RC1.11. Use [INDEX](docs/INDEX.md), [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) and the configured workflow for current scope.
+
 ## Frozen baseline
 
 The real-device functional baseline is **RC1.11**.

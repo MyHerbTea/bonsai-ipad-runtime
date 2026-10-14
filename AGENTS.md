@@ -23,7 +23,7 @@ D:\codexSpace\bonsai-ipad-runtime
 
 禁止使用：
 
-C:\Users\*\ .codex\worktrees\*
+C:\Users\*\.codex\worktrees\*
 
 作为 Bonsai 开发目录。
 
@@ -45,3 +45,8 @@ git branch
 git status
 git rev-parse HEAD
 git remote -v
+```
+
+## 4. Documentation Entry
+
+[docs/INDEX.md](docs/INDEX.md) is the documentation authority and navigation entry.

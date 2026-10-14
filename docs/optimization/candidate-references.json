@@ -1,0 +1,366 @@
+{
+  "source_baseline_sha": "dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6",
+  "scope": "Historical Build109 candidate and v2 planning references; path inventory only; no candidate HEAD verified",
+  "references": [
+    {
+      "path": "BonsaiLab/BonsaiCertificationBuildIdentity.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/BonsaiEngine.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/CertifiedRuntimeEnvelope.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/ReleaseManifest.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/RuntimeContextEvidence.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/RuntimeEvidenceRecorder.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/StagedVisionBridge.mm",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/VisionCacheFingerprint.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "BonsaiLab/certified_runtime_envelopes.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "TEST_RESULT.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/CONTRACT_COVERAGE.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/benchmarks/baseline.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/benchmarks/batch-aba.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/benchmarks/kv-reuse.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/benchmarks/memory-candidate.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/benchmarks/prism-route-observer.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/evidence/INPUTS.sha256",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/evidence/build106-artifact-index.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/evidence/build106-ci-summary.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/release/EVIDENCE_MATRIX.csv",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/release/EXPERIMENT_INDEX.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/release/KNOWN_LIMITS.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/release/RELEASE_README.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/optimization/release/THIRD_PARTY_AUDIT.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/specs/2026-10-13-bonsai-optimization-design.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-13-t14-vision-cache-identity-design.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "lab-v1-rc1-26-build106-m5-governor/docs/optimization/CURRENT_STATE_20261013.json",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "lab-v1-rc1-26-build106-m5-governor/docs/optimization/PLANNING_AUDIT_20261013.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "lab-v1-rc1-26-build106-m5-governor/docs/superpowers/specs/2026-10-13-bonsai-optimization-design.md",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "project.yml",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/benchmark.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/context_cases.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/fixtures.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/kv_reuse_evidence.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/lifecycle.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/memory_candidate.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/run_suite.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certification/sse.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/certified_envelope_tests.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/current_release_contract_tests.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/kv_reuse_contract_tests.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/patch_prism_route_observer.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/release_manifest.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_batch_benchmark.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_context_cases.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_current_release_contract.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_kv_reuse_evidence.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_lifecycle_cases.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_memory_candidate.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_prism_route_observer.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_release_evidence_matrix.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_release_manifest.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "PRESENT",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_report_redaction.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_runner_resume.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_runtime_evidence.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_sse_cases.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_text_output_cases.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_vision_cache_identity.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/tests/test_vision_cases.py",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    },
+    {
+      "path": "tools/vision_cache_identity_tests.swift",
+      "scope": "Build109 historical candidate / v2 planning; not current-main certification",
+      "availability": "NOT_AVAILABLE",
+      "verification": "NOT_VERIFIED"
+    }
+  ]
+}

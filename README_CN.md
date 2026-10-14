@@ -1,5 +1,7 @@
 # Bonsai iPad Lab v1 RC1
 
+状态：REFERENCE。下文保留早期 Lab v1 的设备／功能范围，不代表当前 Build106 已认证。当前规则与验证状态见 [INDEX](docs/INDEX.md)。
+
 目标：把已经在 M5 iPad Pro 12GB 上验证通过的 Bonsai 2 27B PTQ1_0 真机基线，升级成一次部署后可在界面调参的长期测试 App，并加入可选 Vision Beta。
 
 ## 已冻结的安全基线

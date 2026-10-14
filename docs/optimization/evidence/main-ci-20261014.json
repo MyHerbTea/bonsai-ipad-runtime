@@ -1,0 +1,25 @@
+{
+  "observed_date_utc8": "2026-10-14",
+  "scope": "GitHub API metadata only; no artifact download or binary verification",
+  "repository": "MyHerbTea/bonsai-ipad-runtime",
+  "source_api": "https://api.github.com/repos/MyHerbTea/bonsai-ipad-runtime/actions/runs/38579679479",
+  "run": {
+    "id": 38579679479,
+    "head_sha": "dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6",
+    "status": "completed",
+    "conclusion": "success",
+    "updated_at": "2026-10-14T14:29:29Z"
+  },
+  "artifact": {
+    "id": 11903470229,
+    "name": "BonsaiLab-iPad-v1-RC1.26-Build106-M5-Governor",
+    "expired_at_query": false,
+    "wrapper_digest": "sha256:0c2234cda4e5fda55059e3c9c73bfe931889c236c08dd1c1321ef97b003cad5b",
+    "expires_at": "2026-10-28T14:29:23Z"
+  },
+  "original_current_state_sha256": "949fb6e6b58b3fd3542c3fe5484b4824ec78ecd796cd4a39eaf65a1ebad49dc5",
+  "device": "NOT_VERIFIED",
+  "performance": "NOT_RUN",
+  "baseline_current_state_blob_sha256": "7b2a3f2518a5039745500f5789009c1b245c74638a7d2dc7a277724d643d3d87",
+  "snapshot_preservation_scope": "Original checkout bytes preserved; identical to baseline Git blob after CRLF/LF normalization"
+}

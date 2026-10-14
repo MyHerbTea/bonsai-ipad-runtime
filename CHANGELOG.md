@@ -1,5 +1,17 @@
 # Changelog
 
+范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
+
+
+## 2026-10-14 — Minimal documentation governance
+
+- Added the AGENTS → INDEX → CURRENT_STATE authority chain, five status classes, evidence-based decision log and ChatGPT AI_HANDOFF.
+- Corrected active workspace rules to D:\codexSpace\bonsai-ipad-runtime; retained old incidents, plans and failure evidence with explicit historical/candidate scope.
+- Separated remote main, local documentation candidate, CI, device and performance identity. Inventoried 60 candidate references, 49 currently unavailable; no candidate verification is inferred from path presence.
+- Preserved the original CURRENT_STATE checkout bytes in docs/history, with raw and normalized Git-blob digests; fixed seven original broken navigation links or marked their unavailable evidence explicitly.
+- Added stdlib documentation checks, negative tests and one isolated step in the existing iOS workflow. No inference source, runtime defaults, model/KV/Vision settings changed.
+
+
 ## T01 — Build106 evidence archival
 
 - Archived and verified the Build106 CI wrapper, unsigned IPA, and runner ZIP locally; added evidence index and input hash manifest.

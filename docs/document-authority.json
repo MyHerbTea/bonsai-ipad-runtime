@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "statuses": [
+    "ACTIVE",
+    "REFERENCE",
+    "HISTORICAL",
+    "DRAFT",
+    "SUPERSEDED"
+  ],
+  "rules": [
+    {
+      "pattern": "AGENTS.md",
+      "status": "ACTIVE"
+    },
+    {
+      "pattern": "README.md",
+      "status": "ACTIVE"
+    },
+    {
+      "pattern": "AI_HANDOFF.md",
+      "status": "ACTIVE"
+    },
+    {
+      "pattern": "docs/INDEX.md",
+      "status": "ACTIVE"
+    },
+    {
+      "pattern": "docs/PROJECT_WORKSPACE_POLICY.md",
+      "status": "ACTIVE"
+    },
+    {
+      "pattern": "docs/optimization/CURRENT_STATE.md",
+      "status": "ACTIVE"
+    },
+    {
+      "pattern": "docs/optimization/DECISION_LOG.md",
+      "status": "ACTIVE"
+    },
+    {
+      "pattern": "docs/optimization/DOCUMENT_AUDIT.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/development/Bonsai_RC1.26_Build106_Optimization_Plan.md",
+      "status": "SUPERSEDED"
+    },
+    {
+      "pattern": "docs/development/*.md",
+      "status": "DRAFT"
+    },
+    {
+      "pattern": "docs/optimization/release/*.md",
+      "status": "DRAFT"
+    },
+    {
+      "pattern": "docs/optimization/backburner-integration/*.md",
+      "status": "HISTORICAL"
+    },
+    {
+      "pattern": "docs/history/*.md",
+      "status": "HISTORICAL"
+    },
+    {
+      "pattern": "docs/release/*.md",
+      "status": "HISTORICAL"
+    },
+    {
+      "pattern": "archives/**/*.md",
+      "status": "HISTORICAL"
+    },
+    {
+      "pattern": "PRODUCTIZATION_PROTOCOL.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "README_CN.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "CHANGELOG.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "TEST_RESULT.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "OPENAI_API_QUICKSTART_RC1.20.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "THIRD_PARTY_MLX_VISION_NOTICE.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "Vendor/README.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "device_tests/README.md",
+      "status": "REFERENCE"
+    }
+  ],
+  "unavailable_historical_links": [
+    {
+      "document": "docs/history/CURRENT_STATE_20261013.md",
+      "targets": [
+        "evidence/INPUTS.sha256",
+        "evidence/build106-artifact-index.json"
+      ],
+      "scope": "Exact original snapshot; evidence not available; see DOCUMENT_AUDIT.md",
+      "verification": "NOT_VERIFIED"
+    }
+  ]
+}

@@ -1,8 +1,10 @@
 # Bonsai iPad Project Workspace Policy
 
+Status: ACTIVE. Current rules defer to [AGENTS.md](../AGENTS.md); navigation: [INDEX](INDEX.md). Incident and old audit snapshots below are HISTORICAL.
+
 ## Purpose
 
-Bonsai uses one authoritative development workspace at D:\codexSpace\iPad27B. Keeping source edits, tests, commits, and pushes in one known checkout makes it possible to tell exactly which branch and commit contain the work. This policy records the workspace boundary, branch practices, release promotion steps, and CI gate.
+Bonsai uses one authoritative development workspace at D:\codexSpace\bonsai-ipad-runtime. Keeping source edits, tests, commits, and pushes in one known checkout makes it possible to tell exactly which branch and commit contain the work. This policy records the workspace boundary, branch practices, release promotion steps, and CI gate.
 
 ## Why Bonsai Uses a Single Workspace
 
@@ -18,7 +20,7 @@ If an existing external worktree contains useful work, record its branch and com
 
 ## Git Branch Management
 
-Before any development change, run and report pwd, git branch, git status, git rev-parse HEAD, and git remote -v. Confirm that the current directory is exactly D:\codexSpace\iPad27B.
+Before any development change, run and report pwd, git branch, git status, git rev-parse HEAD, and git remote -v. Confirm that the current directory is exactly D:\codexSpace\bonsai-ipad-runtime.
 
 Create or switch branches only inside the official workspace. Make formal commits from that checkout, and identify each delivered change by its full commit SHA and branch. Before declaring a task complete, report git log --oneline, git status, and git branch -vv. A completed agent task does not by itself mean that a release branch has been updated.
 
@@ -35,7 +37,7 @@ Promote a release through these gates:
 5. Run the required CI checks on the promoted commit.
 6. Confirm that the artifact was produced from that same verified commit.
 
-Agents must not automatically merge, cherry-pick, or push. Preserve the release branch and commit identity in the report so reviewers can distinguish source work from release work.
+An explicitly authorized task controls its Git actions; absent that authorization, agents must not automatically merge, cherry-pick, or push. Committing an authorized documentation task is not release promotion. Preserve the release branch and commit identity in the report so reviewers can distinguish source work from release work.
 
 ## CI Verification Flow
 
@@ -73,7 +75,7 @@ The resolution was:
 
 This is the example that motivates the single-workspace rule: work performed in one checkout must not be mistaken for a change already present in another branch or release workspace.
 
-## Read-Only Workspace Audit Snapshot
+## Read-Only Workspace Audit Snapshot (HISTORICAL)
 
 At the time this policy was written, the Git audit showed:
 
@@ -84,7 +86,9 @@ At the time this policy was written, the Git audit showed:
 
 The official workspace had pre-existing tracked deletions and untracked files. This documentation task does not alter or reconcile them.
 
-## Recommended Correction Plan
+## Recommended Correction Plan (SUPERSEDED historical proposal)
+
+The following proposal refers to the old workspace and is not an active task. The sole current development directory is D:\codexSpace\bonsai-ipad-runtime; do not switch to the paths below.
 
 1. Keep D:\codexSpace\iPad27B as the only future development location.
 2. Review and preserve the official workspace's existing changes before switching its branch; do not discard them as part of this policy setup.

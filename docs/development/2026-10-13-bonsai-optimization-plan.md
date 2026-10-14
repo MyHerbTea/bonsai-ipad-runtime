@@ -1,5 +1,7 @@
 # Bonsai RC1.26 Optimization Implementation Plan
 
+状态：DRAFT。当前官方工作区以 [AGENTS](../../AGENTS.md)为准：D:/codexSpace/bonsai-ipad-runtime。以下旧 checkout、候选文件／接口与任务为当时规划；缺原 Spec 与完整候选迁移证据，不是当前可直接执行的唯一计划。参见 [审计](../optimization/DOCUMENT_AUDIT.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking. 本次仅交付方案和计划；后续执行前由用户审阅并选择执行方式。
 
 **Goal:** 在 M5 12GB 上建立覆盖文本、图文、32K实际长输入、恢复和持续性能的可靠候选，再分离验证 Batch、内存、KV、Vision 和原生热点优化。
@@ -8,7 +10,7 @@
 
 **Tech Stack:** Swift 5.0、SwiftUI、Objective-C++/C++17、固定Prism/Metal、MLX Swift 0.31.3、Python 3.8+ stdlib、Windows PowerShell、GitHub Actions macOS。
 
-**Spec:** [2026-10-13-bonsai-optimization-design.md](../specs/2026-10-13-bonsai-optimization-design.md)
+**Spec（NOT_AVAILABLE / NOT_VERIFIED）:** 原引用 `../specs/2026-10-13-bonsai-optimization-design.md`未迁入；不能以此计划替代缺失设计审阅。
 
 ## Global Constraints
 

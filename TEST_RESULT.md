@@ -1,5 +1,33 @@
 # Test and Verification Results
 
+范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
+
+
+## 2026-10-14 — Documentation governance verification
+
+Scope: documentation candidate based on `dc169d6759e84e6b0f66c2c8ad87e6f073bd78c6`. Commands ran in the official workspace; new remote CI, Swift/iOS build, device and benchmarks NOT_RUN.
+
+| Check | Result and exact scope |
+|---|---|
+| `python tools/documentation_consistency.py` | PASS: local Markdown classification, relative file links, navigation and candidate-reference scope only |
+| `python -m unittest discover -s tools/tests -p test_documentation_consistency.py -v` | 6 tests PASS; broken-link, missing/false-PASS candidate, missing-scope, invalid authority status and missing-navigation negative fixtures included |
+| Authority inventory | 145 Markdown: ACTIVE 7, REFERENCE 9, HISTORICAL 126, DRAFT 2, SUPERSEDED 1; T16 CSV separately DRAFT |
+| Candidate references | 60 paths: PRESENT 11, NOT_AVAILABLE 49; all NOT_VERIFIED |
+| Workflow YAML parse | PASS: existing build job parses with 65 steps including the isolated document gate |
+| `git diff --check` | PASS |
+| Protected-source comparison against base | PASS: BonsaiLab, BonsaiUltraSmoke, project.yml, Vendor, archives, historical backburner evidence and T16 release files unchanged |
+| Historical CURRENT_STATE preservation | PASS: original checkout bytes copied; text identical to base Git blob after CRLF/LF normalization. Raw SHA256 `949fb6e6b58b3fd3542c3fe5484b4824ec78ecd796cd4a39eaf65a1ebad49dc5`; Git blob SHA256 `7b2a3f2518a5039745500f5789009c1b245c74638a7d2dc7a277724d643d3d87` |
+| Baseline main CI metadata | run 38579679479 completed/success for exact base SHA; API metadata only, no new IPA extraction, signing or device validation |
+| New documentation commit CI / M5 / performance | NOT_RUN / WAITING_DEVICE / NOT_RUN |
+
+TDD observation: the new document tests initially failed with ModuleNotFoundError for the unimplemented checker, then passed after implementation. Internal read-only review found no blocking factual/scope issue; both wording and negative-fixture suggestions were addressed. This is separate from the requested external ChatGPT cross-review.
+
+Known pre-existing candidate infrastructure gaps (not a complete tools test PASS):
+- `python -m unittest discover -s tools/tests -p test_current_release_contract.py -v`: 10 tests, 9 PASS, 1 FAIL. Source-contract check reports 45 missing candidate wiring/resources/identity gates.
+- `python -m unittest discover -s tools/tests -p test_release_manifest.py -v`: import ERROR: missing `tools.certification.identity`.
+- These candidate tests were retained. This task does not fill missing Runtime files, bypass tests or revise historical PASS statements into current PASS.
+
+
 ## T01 — Build106 evidence archival
 
 - `python` ZIP CRC checks: outer artifact, IPA, and runner ZIP all passed (`testzip() == None`).

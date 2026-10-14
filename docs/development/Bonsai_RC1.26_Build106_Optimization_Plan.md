@@ -1,8 +1,10 @@
 # Bonsai iPad RC1.26 Build106 后续优化推进计划
 
+状态：SUPERSEDED。v1 为原始研究输入；后续 [v2 计划](2026-10-13-bonsai-optimization-plan.md)仍为 DRAFT。当前不存在第二份 ACTIVE 实施计划，执行前读取 [INDEX](../INDEX.md) 与 CURRENT_STATE。
+
 版本：Optimization Plan v1.0
 基线：RC1.26 Build106
-目标：作为 Codex 持续开发、自动化测试、版本推进的唯一工作计划文档
+原目标（已被后续方案替代）：作为 Codex 持续开发、自动化测试、版本推进的工作计划输入
 
 ---
 

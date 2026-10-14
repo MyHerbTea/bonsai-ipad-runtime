@@ -57,6 +57,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Documentation consistency (offline scope only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/documentation_consistency.py
+          python3 -m unittest discover -s tools/tests -p test_documentation_consistency.py -v
+
       - name: Build93 and Build94 executable rollback lifecycle and integration contracts
         shell: bash
         run: |
