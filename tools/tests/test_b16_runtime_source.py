@@ -4,6 +4,16 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 class B16RuntimeSourceTests(unittest.TestCase):
+    def test_hash_workers_are_independent_and_report_actual_failures(self):
+        source=(ROOT/'BonsaiLab/B16RuntimeEvidence.swift').read_text()
+        self.assertIn('bonsai.b16.model-identity',source)
+        self.assertIn('bonsai.b16.vision-identity',source)
+        self.assertIn('autoreleasepool',source)
+        self.assertIn('"asset_hashing"',source)
+        for code in ('METADATA_FAILED','OPEN_FAILED','READ_FAILED','FILE_CHANGED','LENGTH_MISMATCH'):
+            self.assertIn(code,source)
+        self.assertNotIn('guard let digest = fileIdentity(modelURL) else { return }',source)
+
     def test_evidence_is_recorded_after_both_native_creation_successes(self):
         engine = (ROOT / "BonsaiLab/BonsaiEngine.swift").read_text(encoding="utf-8")
         load = engine[engine.index("guard let loadedContext = llama_init_from_model(loadedModel, contextParams)"):]
@@ -33,7 +43,7 @@ class B16RuntimeSourceTests(unittest.TestCase):
         server = (ROOT / "BonsaiLab/LocalOpenAIServer.swift").read_text(encoding="utf-8")
         self.assertIn('request.path == "/debug/b16/evidence"', server)
         self.assertIn('"source_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA', server)
-        self.assertIn('"candidate_build_id": "rc1.26-build110-b16-prefill"', server)
+        self.assertIn('"candidate_build_id": "rc1.26-build111-b16-prefill"', server)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,11 @@
-name: Build Bonsai iPad Lab v1 RC1.26 Build110 B16 Prefill Candidate
+name: Build Bonsai iPad Lab v1 RC1.26 Build111 B16 Prefill Candidate
 
 on:
   push:
     branches:
       - main
       - codex/32k-prefill-b16
+      - codex/build111-identity-fix
       - lab-v1-rc1-23-1-openai-multimodal-api
       - lab-v1-rc1-23-2-performance-session-reuse
       - lab-v1-rc1-23-3-production-hardening
@@ -48,7 +49,7 @@ permissions:
   contents: read
 
 env:
-  BUILD_NUMBER: "110"
+  BUILD_NUMBER: "111"
 
 jobs:
   build:
@@ -66,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
-          printf 'Build110 candidate CI verification; device measurement NOT RUN.\nSource SHA: %s\n' "$GITHUB_SHA" > build/AUTOMATED_TEST_REPORT.txt
+          printf 'Build111 candidate CI verification; device measurement NOT RUN.\nSource SHA: %s\n' "$GITHUB_SHA" > build/AUTOMATED_TEST_REPORT.txt
           cp .github/workflows/build-ios.yml build/AUTOMATED_TEST_COMMANDS.txt
           cat > "$RUNNER_TEMP/bonsai-test-report-env.sh" <<'BASH'
           exec > >(tee -a "$GITHUB_WORKSPACE/build/AUTOMATED_TEST_REPORT.txt") 2>&1
@@ -157,11 +158,11 @@ jobs:
           python3 -m py_compile tools/rc126_build106_full_stage_certification.py
           python3 tools/rc126_build106_full_stage_certification.py --dry-run
 
-      - name: Build110 B16 exact identity, recovery and native proof tests
+      - name: Build111 B16 exact identity, recovery and native proof tests
         shell: bash
         run: |
           set -euo pipefail
-          xcrun swiftc -swift-version 5 \
+          xcrun swiftc -DDEBUG -swift-version 5 \
             BonsaiLab/B16RuntimeEvidence.swift \
             BonsaiLab/B16AssetBookmarks.swift \
             tools/build110_runtime_evidence_tests.swift \
@@ -177,6 +178,8 @@ jobs:
           python3 -m unittest discover -s tools/tests -p test_b16_testkit.py -v
           python3 -m unittest discover -s tools/tests -p test_b16_runtime_source.py -v
           python3 -m unittest discover -s tools/tests -p test_b16_packaging.py -v
+          python3 -m unittest discover -s tools/tests -p test_b16_readiness.py -v
+          python3 -m unittest discover -s tools/tests -p test_b16_tool_identity.py -v
 
       - name: Live vision injection gate
         shell: bash
@@ -744,17 +747,17 @@ jobs:
         run: |
           set -euo pipefail
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
-          IPA_NAME="BonsaiLab-v1-RC1.26-build110-b16-prefill-unsigned.ipa"
+          IPA_NAME="BonsaiLab-v1-RC1.26-build111-b16-prefill-unsigned.ipa"
           rm -rf build/ipa
           mkdir -p build/ipa/Payload
           ditto "$APP" build/ipa/Payload/BonsaiLab.app
           cat > build/BUILD_INFO.txt <<'INFO'
-          Bonsai iPad Lab v1 RC1.26 Build110 B16 Prefill Candidate (NOT DEVICE CERTIFIED)
+          Bonsai iPad Lab v1 RC1.26 Build111 B16 Prefill Candidate (NOT DEVICE CERTIFIED)
           Prism source: adfffbe41b2cabcd51fff326ab045662265062bb; inherited patches83 through89.
           MLX 0.31.3; Swift Numerics 1.1.1; original unsigned Release signing configuration.
           Target: M5 iPad 32K B8/B16 measured prefill; B24/B32 are not default promotions.
           One-shot candidates retain sticky SAFE4 recovery. KV seq2 remains quarantined.
-          Legacy API build_id: rc1.26-build106-m5-governor; candidate_build_id: rc1.26-build110-b16-prefill.
+          Legacy API build_id: rc1.26-build106-m5-governor; candidate_build_id: rc1.26-build111-b16-prefill.
           Model and Vision Tower weights are not bundled. Real M5 performance and vision certification remain required.
           Windows Python3.12.10 amd64 from official python.org; archive SHA256:
           4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3
@@ -766,12 +769,12 @@ jobs:
           (cd build/ipa && zip -qry "../$IPA_NAME" Payload)
           (cd build && shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256")
 
-      - name: Package portable Build110 B16 Prefill TestKit
+      - name: Package portable Build111 B16 Prefill TestKit
         shell: bash
         run: |
           set -euo pipefail
-          KIT_NAME="BonsaiLab-v1-RC1.26-Build110-B16-Prefill-TestKit"
-          export IPA_NAME="BonsaiLab-v1-RC1.26-build110-b16-prefill-unsigned.ipa"
+          KIT_NAME="BonsaiLab-v1-RC1.26-Build111-B16-Prefill-TestKit"
+          export IPA_NAME="BonsaiLab-v1-RC1.26-build111-b16-prefill-unsigned.ipa"
           export KIT="build/$KIT_NAME"
           mkdir -p "$KIT"
           cp "build/$IPA_NAME" "build/$IPA_NAME.sha256" build/BUILD_INFO.txt "$KIT/"
@@ -799,7 +802,7 @@ jobs:
               assert (python_dir / required).is_file(), required
           print("Official Windows Python3.12.10 archive hash and contents: PASS")
           PY
-          # Build110 TestKit identity
+          # Build111 TestKit identity
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json, os
@@ -812,15 +815,23 @@ jobs:
               "unsigned_ipa_sha256": hashlib.sha256(ipa.read_bytes()).hexdigest(),
           }
           (kit / "TestKitIdentity.json").write_text(json.dumps(identity, indent=2) + "\n", encoding="utf-8")
+          files = {name: hashlib.sha256((kit/name).read_bytes()).hexdigest() for name in
+              ("b16_testkit.py", "rc126_build106_full_stage_certification.py", "RUN_B16_TESTKIT_GUI.ps1", "RUN_B16_TESTKIT.cmd")}
+          tool = {"runner_version": "111-identity-r1", "tool_source_git_sha": os.environ["GITHUB_SHA"],
+              "installed_ipa_source_sha": identity["source_git_sha"], "runner_sha256": files["b16_testkit.py"], "files_sha256": files}
+          (kit / "RunnerIdentity.json").write_text(json.dumps(tool, indent=2) + "\n", encoding="utf-8")
           PY
+          python3 -B "$KIT/b16_testkit.py" --dry-run
           cat > "$KIT/README.md" <<'README'
-          # BonsaiLab Build110 B16 Prefill TestKit
+          # BonsaiLab Build111 B16 Prefill TestKit
 
           1. Extract this entire ZIP to a writable folder on a Windows x64 PC.
           2. Install the unsigned IPA using your existing signing/sideloading process (signing is required). Import the Bonsai 27B GGUF and the same vision_tower.safetensors, select 32768 Context, and start OpenAI API. Wait for asset identity hashing to finish.
           3. Connect PC and iPad to a reachable LAN, double-click RUN_B16_TESTKIT.cmd, and enter the iPad API URL and key in the GUI.
           4. Start the B16 test workflow. Follow GUI prompts for app restart; results and evidence are written under RESULTS beside the kit.
 
+          Use a NEW folder; retain the old R2 RESULTS unchanged. Do not import/resume Build110 checkpoints into Build111. No previous inference is replayed.
+          Hash progress prints separate model/Vision phase, bytes and safe failure codes. Keep the app in foreground during identity hashing.
           Portable Python is included: no Python installation, repository checkout, configuration file edit, or manual Python command is needed. Model/vision weights are not included.
           Keep the IPA, its .sha256, BUILD_INFO.txt and TestKitIdentity.json together. Identity binds the exact source commit and unsigned IPA hash.
           AUTOMATED_TEST_REPORT.txt and AUTOMATED_TEST_COMMANDS.txt record CI checks. CI success is source/build readiness; only same-identity M5 evidence can establish a 32K B16 improvement or promotion.
@@ -839,6 +850,7 @@ jobs:
             "$KIT_NAME/b16_testkit.py" \
             "$KIT_NAME/rc126_build106_full_stage_certification.py" \
             "$KIT_NAME/TestKitIdentity.json" \
+            "$KIT_NAME/RunnerIdentity.json" \
             "$KIT_NAME/python/python.exe" \
             "$KIT_NAME/python/python312._pth" \
             "$KIT_NAME/AUTOMATED_TEST_REPORT.txt" \
@@ -850,8 +862,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BonsaiLab-iPad-v1-RC1.26-Build110-B16-Prefill-TestKit
-          path: build/BonsaiLab-v1-RC1.26-Build110-B16-Prefill-TestKit.zip
+          name: BonsaiLab-iPad-v1-RC1.26-Build111-B16-Prefill-TestKit
+          path: build/BonsaiLab-v1-RC1.26-Build111-B16-Prefill-TestKit.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -859,7 +871,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: BonsaiLab-Build110-B16-CI-Diagnostics
+          name: BonsaiLab-Build111-B16-CI-Diagnostics
           path: |
             build/AUTOMATED_TEST_REPORT.txt
             build/AUTOMATED_TEST_COMMANDS.txt

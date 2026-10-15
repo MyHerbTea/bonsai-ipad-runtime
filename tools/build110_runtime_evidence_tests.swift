@@ -103,6 +103,80 @@ struct Build110EvidenceTests {
         precondition(snapshot()["startup_ready"] as? Bool == false)
         let encoded = try JSONSerialization.data(withJSONObject: snapshot())
         precondition(!String(decoding: encoded, as: UTF8.self).contains(file.path))
+        func hashState(_ asset: String) -> [String: Any] {
+            (snapshot()["asset_hashing"] as! [String: Any])[asset] as! [String: Any]
+        }
+        func waitUntil(_ condition: () -> Bool) {
+            for _ in 0..<250 { if condition() { return }; Thread.sleep(forTimeInterval: 0.02) }
+            precondition(condition(), "Timed out waiting for deterministic identity test")
+        }
+        // Missing file is terminal, not an indefinitely active model hash.
+        B16RuntimeEvidence.created(parameters: ["context": 32768], modelURL: file.appendingPathExtension("absent"))
+        waitUntil { hashState("model")["phase"] as? String == "failed" }
+        precondition(hashState("model")["error_code"] as? String == "METADATA_FAILED")
+        precondition(snapshot()["identity_hashing_active"] as? Bool == false)
+        precondition(B16RuntimeEvidence.contextIDForQualification() == nil)
+        #if DEBUG
+        let blockedFile = file.appendingPathExtension("blocked")
+        try Data(repeating: 0x61, count: 3 * 1_048_576).write(to: blockedFile)
+        defer { try? FileManager.default.removeItem(at: blockedFile) }
+        let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        B16RuntimeEvidence.beforeReadForTesting = { asset in
+            if asset == "model" { entered.signal(); _ = release.wait(timeout: .now() + 10) }
+        }
+        B16RuntimeEvidence.created(parameters: ["context": 32768], modelURL: blockedFile)
+        precondition(entered.wait(timeout: .now() + 3) == .success)
+        precondition(hashState("model")["phase"] as? String == "reading")
+        precondition(hashState("model")["total_bytes"] as? Int == 3 * 1_048_576)
+        // Vision must finish despite the deliberately blocked model worker.
+        B16RuntimeEvidence.registerVisionAsset(visionFile)
+        waitUntil { hashState("vision")["phase"] as? String == "ready" }
+        precondition(snapshot()["startup_ready"] as? Bool == false)
+        release.signal()
+        waitUntil { hashState("model")["phase"] as? String == "ready" }
+        B16RuntimeEvidence.beforeReadForTesting = nil
+        let multi = (snapshot()["native_context"] as! [String: Any])["model_identity"] as! [String: Any]
+        precondition(multi["sha256"] as? String == "6f850bc94ae6f7de14297c01616c36d712d22864497b28a63b81d776b035e656")
+        precondition(hashState("model")["bytes_hashed"] as? Int == 3 * 1_048_576)
+        // A file changed after metadata acquisition must never produce valid proof.
+        let changing = file.appendingPathExtension("changing")
+        try Data("original".utf8).write(to: changing)
+        defer { try? FileManager.default.removeItem(at: changing) }
+        B16RuntimeEvidence.beforeReadForTesting = { asset in
+            if asset == "model" { entered.signal(); _ = release.wait(timeout: .now() + 10) }
+        }
+        B16RuntimeEvidence.created(parameters: ["context": 32768], modelURL: changing)
+        precondition(entered.wait(timeout: .now() + 3) == .success)
+        try Data("changed length".utf8).write(to: changing, options: [])
+        release.signal()
+        waitUntil { hashState("model")["phase"] as? String == "failed" }
+        precondition(["LENGTH_MISMATCH", "FILE_CHANGED"].contains(hashState("model")["error_code"] as! String))
+        precondition(B16RuntimeEvidence.contextIDForQualification() == nil)
+        B16RuntimeEvidence.beforeReadForTesting = nil
+        // Real permission denial must be terminal without leaking its NSError description.
+        let denied = file.appendingPathExtension("denied")
+        try Data("private".utf8).write(to: denied)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: denied.path)
+        B16RuntimeEvidence.created(parameters: ["context": 32768], modelURL: denied)
+        waitUntil { hashState("model")["phase"] as? String == "failed" }
+        precondition(hashState("model")["error_code"] as? String == "ACCESS_DENIED")
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: denied.path)
+        try FileManager.default.removeItem(at: denied)
+        // An open directory cannot be mistaken for hashed asset bytes.
+        let directory = file.appendingPathExtension("directory")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        B16RuntimeEvidence.created(parameters: ["context": 32768], modelURL: directory)
+        waitUntil { hashState("model")["phase"] as? String == "failed" }
+        precondition(["OPEN_FAILED", "READ_FAILED", "INVALID_METADATA"].contains(hashState("model")["error_code"] as! String))
+        try FileManager.default.removeItem(at: directory)
+        // A fresh successful creation can recover; failed work does not poison proof.
+        B16RuntimeEvidence.created(parameters: ["context": 32768], modelURL: file)
+        waitUntil { hashState("model")["phase"] as? String == "ready" }
+        precondition(snapshot()["startup_ready"] as? Bool == true)
+        #endif
+        let diagnostic = String(decoding: try JSONSerialization.data(withJSONObject: snapshot()), as: UTF8.self)
+        precondition(!diagnostic.contains(file.path))
+        print("PASS identity failure terminality, independent workers, multi-chunk SHA, changed file rejection and recovery")
         print("PASS Build110 successful-context identity, stream SHA, stale/absent identity, invalidation and privacy")
     }
 }

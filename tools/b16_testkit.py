@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build110 B8 -> B16 -> B8 experiment. Python 3.8+, stdlib; no default promotion.
+"""Build111 B8 -> B16 -> B8 experiment. Python 3.8+, stdlib; no default promotion.
 The one running process keeps its key in memory across manual iPad restarts.
 An uncertain inference is never replayed. Reports contain allowlisted evidence only.
 """
@@ -29,7 +29,8 @@ try:
 except ImportError:
     from rc126_build106_full_stage_certification import request, discover, sample_image_png, choices_text
 
-RUNNER_VERSION = '110-readiness-r2'
+RUNNER_VERSION = '111-identity-r1'
+# Historical Build110 source for explicit old-result provenance; never an installed Build111 identity.
 INSTALLED_SOURCE_SHA = '8e62dce2930f93ecaf4c21973b7456b480a4644c'
 
 STAGES = ('identity', 'A1_restart', 'A1_performance', 'A1_regression', 'B_restart',
@@ -55,24 +56,26 @@ def hex_string(value, length):
     return isinstance(value, str) and len(value) == length and all(c in '0123456789abcdef' for c in value)
 
 def validate_identity(identity):
-    if not isinstance(identity, dict) or str(identity.get('build_number')) != '110' or not hex_string(identity.get('source_git_sha'), 40):
-        raise Incomplete('Generated TestKitIdentity.json missing or not Build110 full source SHA')
-    return {'build_number': '110', 'source_git_sha': identity['source_git_sha']}
+    if not isinstance(identity, dict) or str(identity.get('build_number')) != '111' or not hex_string(identity.get('source_git_sha'), 40):
+        raise Incomplete('Generated TestKitIdentity.json missing or not Build111 full source SHA')
+    return {'build_number': '111', 'source_git_sha': identity['source_git_sha']}
 
 def verify_tool_identity(folder):
     folder=Path(folder)
     try:
         obj=json.loads((folder/'RunnerIdentity.json').read_text(encoding='utf-8-sig'))
         allowed={'b16_testkit.py','rc126_build106_full_stage_certification.py','RUN_B16_TESTKIT_GUI.ps1','RUN_B16_TESTKIT.cmd'}
+        installed=validate_identity(json.loads((folder/'TestKitIdentity.json').read_text(encoding='utf-8-sig')))
+        if obj.get('installed_ipa_source_sha')!=installed['source_git_sha']: raise ValueError()
         files=obj['files_sha256']
-        if (obj.get('runner_version')!=RUNNER_VERSION or obj.get('installed_ipa_source_sha')!=INSTALLED_SOURCE_SHA
+        if (obj.get('runner_version')!=RUNNER_VERSION or not hex_string(obj.get('installed_ipa_source_sha'),40)
             or not hex_string(obj.get('tool_source_git_sha'),40) or not isinstance(files,dict)
             or 'b16_testkit.py' not in files or set(files)-allowed): raise ValueError()
         if any(digest((folder/name).read_bytes())!=value for name,value in files.items()): raise ValueError()
         if obj.get('runner_sha256')!=files['b16_testkit.py']: raise ValueError()
         return obj
     except (OSError,ValueError,KeyError,TypeError):
-        raise Incomplete('TOOL_IDENTITY_MISMATCH: use the complete unmodified TestKit R2 ZIP')
+        raise Incomplete('TOOL_IDENTITY_MISMATCH: use the complete unmodified Build111 TestKit ZIP')
 
 
 def validate_evidence(obj, identity, batch, previous=None):
@@ -423,8 +426,7 @@ class ReadinessError(Incomplete):
 
 
 def startup_status(obj):
-    # Build110 exposes one combined flag. Missing model identity also keeps it
-    # true after a hash error, so MODEL_HASH_PENDING is not a confirmed cause.
+    # Explicit native phases are authoritative; legacy combined flags alone cannot diagnose failure.
     native=obj.get('native_context')
     native=native if isinstance(native,dict) else None
     def has_identity(value):
@@ -435,7 +437,27 @@ def startup_status(obj):
     flags={'native_context_present':native is not None,'model_identity_present':model,
         'vision_identity_present':vision,'combined_hashing_active':hashing,
         'startup_ready':obj.get('startup_ready') is True}
-    if native is None: state='NATIVE_CONTEXT_MISSING'
+    states={}
+    raw=obj.get('asset_hashing')
+    if isinstance(raw,dict):
+        for asset in ('model','vision'):
+            value=raw.get(asset)
+            if not isinstance(value,dict): continue
+            safe={}
+            if value.get('phase') in ('idle','unconfigured','queued','metadata','opening','reading','verifying','ready','failed'):
+                safe['phase']=value['phase']
+            if value.get('error_code') in ('NO_ASSET_URL','INVALID_METADATA','METADATA_FAILED','OPEN_FAILED','READ_FAILED','ACCESS_DENIED','FILE_CHANGED','LENGTH_MISMATCH'):
+                safe['error_code']=value['error_code']
+            for name in ('bytes_hashed','total_bytes','elapsed_s','last_progress_age_s','os_error_code'):
+                number_value=value.get(name)
+                if isinstance(number_value,(int,float)) and not isinstance(number_value,bool) and math.isfinite(number_value) and 0<=number_value<1e16:
+                    safe[name]=number_value
+            if isinstance(value.get('security_scope_acquired'),bool): safe['security_scope_acquired']=value['security_scope_acquired']
+            states[asset]=safe
+        flags['asset_hashing']=states
+    if states.get('model',{}).get('phase')=='failed': state='MODEL_HASH_FAILED'
+    elif states.get('vision',{}).get('phase')=='failed': state='VISION_HASH_FAILED'
+    elif native is None: state='NATIVE_CONTEXT_MISSING'
     elif not model: state='MODEL_HASH_PENDING'
     elif not vision and hashing: state='VISION_HASH_PENDING'
     elif not vision: state='ASSET_MISSING'
@@ -452,7 +474,7 @@ def archive_readonly_failure(folder, archive_root, identity):
         'status','reason','readiness','restart','waiting_restart','tool_identity','prior_archive'}
     legacy=saved.get('reason')=='Native startup evidence is missing or not ready'
     recorded=bool(saved.get('readiness')) and saved.get('reason','').split(':')[0] in (
-        'READY_TIMEOUT','AUTH_FAILED','VERSION_MISMATCH','ASSET_MISSING','EVIDENCE_UNAVAILABLE')
+        'READY_TIMEOUT','AUTH_FAILED','VERSION_MISMATCH','ASSET_MISSING','EVIDENCE_UNAVAILABLE','MODEL_HASH_FAILED','VISION_HASH_FAILED')
     if (saved.get('identity')!=identity or saved.get('schema')!=1 or saved.get('status')!='INCOMPLETE'
         or saved.get('stage')!='A1_restart' or saved.get('inflight') is not None
         or saved.get('events')!=[] or saved.get('measurements')!=[] or saved.get('arm_evidence')!={}
@@ -530,11 +552,13 @@ class DeviceRun:
     def wait_ready(self,batch=None,previous=None,timeout=None):
         limit=self.ready_timeout if timeout is None else timeout
         start=time.monotonic();deadline=start+max(0,limit);last=None;last_print=-30;polls=0
-        hints={'MODEL_HASH_PENDING':'Model identity pending or unavailable; Build110 cannot distinguish a running hash from a hash failure.',
+        hints={'MODEL_HASH_PENDING':'Waiting for exact model SHA256; inspect the separate hash phase and bytes below.',
             'VISION_HASH_PENDING':'Waiting for Vision identity hashing; keep the iPad app open.',
             'NATIVE_CONTEXT_MISSING':'Native context proof not present yet; waiting for API startup.',
             'ASSET_MISSING':'Required Vision identity is unavailable; API cannot distinguish unselected, unreadable or missing asset.',
             'RESTART_REQUIRED':'Same iPad process; fully close the app, reopen and start API.',
+            'MODEL_HASH_FAILED':'Model identity failed; retain the safe phase/error evidence. No inference or arm was sent.',
+            'VISION_HASH_FAILED':'Vision identity failed; retain the safe phase/error evidence. No inference or arm was sent.',
             'READY':'Assets and native context are ready.'}
         while True:
             polls+=1;flags={};state='CONNECTION_UNAVAILABLE'
@@ -565,10 +589,11 @@ class DeviceRun:
                 history=self.journal.state.setdefault('readiness',[]);history.append(item);del history[:-40]
                 self.journal.save()
                 print('[READY] '+state+' | '+str(round(elapsed,1))+'s / '+str(limit)+'s | '+hints.get(state,'Read-only startup check; no inference or arm POST.'),flush=True)
+                if flags.get('asset_hashing'): print('[HASH] '+json.dumps(flags['asset_hashing'],sort_keys=True),flush=True)
                 last_print=elapsed
             last=state
             if state=='READY' and time.monotonic()<deadline: return obj
-            if state in ('AUTH_FAILED','VERSION_MISMATCH','ASSET_MISSING','EVIDENCE_UNAVAILABLE'):
+            if state in ('AUTH_FAILED','VERSION_MISMATCH','ASSET_MISSING','EVIDENCE_UNAVAILABLE','MODEL_HASH_FAILED','VISION_HASH_FAILED'):
                 raise ReadinessError(state)
             if time.monotonic()>=deadline:
                 raise ReadinessError('READY_TIMEOUT',state)
@@ -818,7 +843,7 @@ def latest_checkpoint(output):
     return None
 
 def run(argv=None):
-    ap=argparse.ArgumentParser(description='Build110 B8/B16/B8 TestKit; candidate experiment only')
+    ap=argparse.ArgumentParser(description='Build111 B8/B16/B8 TestKit; candidate experiment only')
     ap.add_argument('--dry-run',action='store_true')
     ap.add_argument('--base-url',default=os.environ.get('BONSAI_BASE_URL',''))
     ap.add_argument('--resume-latest',action='store_true',help='GUI automatically resumes latest safe checkpoint; uncertainty stops')
@@ -838,13 +863,13 @@ def run(argv=None):
     stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
     identity_path=Path(__file__).resolve().parent/'TestKitIdentity.json'
     folder=Path(args.output)/('B16-'+stamp)
-    identity={'build_number':'110','source_git_sha':'UNVERIFIED'}
+    identity={'build_number':'111','source_git_sha':'UNVERIFIED'}
     journal=None; verdict='INCOMPLETE'; reason='Experiment has not completed'; metrics={};resume_folder=None
     try:
         tool=verify_tool_identity(Path(__file__).resolve().parent)
         try: identity=validate_identity(json.loads(identity_path.read_text(encoding='utf-8-sig')))
         except (OSError,ValueError): raise Incomplete('Generated TestKitIdentity.json missing or malformed; use the complete CI TestKit ZIP')
-        if identity['source_git_sha']!=INSTALLED_SOURCE_SHA: raise ReadinessError('VERSION_MISMATCH')
+        if identity['source_git_sha']!=tool['installed_ipa_source_sha']: raise ReadinessError('VERSION_MISMATCH')
         resume_folder=Path(args.resume) if args.resume else latest_checkpoint(args.output) if args.resume_latest else None
         prior=None
         if args.previous_results:
@@ -866,7 +891,7 @@ def run(argv=None):
         if prior:
             journal.state['prior_archive']={'preserved':True,'new_experiment':True,
                 'files_sha256':{p.name:digest(p.read_bytes()) for p in prior.iterdir() if p.is_file()}}
-        journal.state['tool_identity']={'runner_version':RUNNER_VERSION,'runner_sha256':digest(Path(__file__).read_bytes()),'tool_source_git_sha':tool['tool_source_git_sha'],'installed_ipa_source_sha':INSTALLED_SOURCE_SHA}
+        journal.state['tool_identity']={'runner_version':RUNNER_VERSION,'runner_sha256':digest(Path(__file__).read_bytes()),'tool_source_git_sha':tool['tool_source_git_sha'],'installed_ipa_source_sha':identity['source_git_sha']}
         journal.save()
         key=os.environ.get('BONSAI_API_KEY','').strip()
         if not key: key=getpass.getpass('Bonsai API Key (memory only, never saved): ').strip()

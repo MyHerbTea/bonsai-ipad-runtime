@@ -22,8 +22,8 @@ class B16PackagingTests(unittest.TestCase):
         self.assertNotIn('codex/*', branches)
         self.assertEqual(self.workflow.count('      - name: Full Xcode build\n'), 1)
         upload = self.workflow.split('      - name: Upload artifact\n', 1)[1].split('      - name:', 1)[0]
-        self.assertIn('name: BonsaiLab-iPad-v1-RC1.26-Build110-B16-Prefill-TestKit', upload)
-        self.assertIn('path: build/BonsaiLab-v1-RC1.26-Build110-B16-Prefill-TestKit.zip', upload)
+        self.assertIn('name: BonsaiLab-iPad-v1-RC1.26-Build111-B16-Prefill-TestKit', upload)
+        self.assertIn('path: build/BonsaiLab-v1-RC1.26-Build111-B16-Prefill-TestKit.zip', upload)
         self.assertEqual(upload.count('path:'), 1)
 
     def test_native_and_vision_safety_suites_are_retained(self):
@@ -80,7 +80,7 @@ class B16PackagingTests(unittest.TestCase):
                 self.assertTrue((python_dir / name).is_file())
 
     def test_identity_hashes_exact_bundled_ipa(self):
-        marker = '          # Build110 TestKit identity\n'
+        marker = '          # Build111 TestKit identity\n'
         self.assertIn(marker, self.workflow)
         block = self.workflow.split(marker, 1)[1].split('          PY\n', 1)[0]
         script = block.split("          python3 - <<'PY'\n", 1)[1]
@@ -89,10 +89,11 @@ class B16PackagingTests(unittest.TestCase):
             kit = Path(directory)
             ipa = kit / 'candidate.ipa'
             ipa.write_bytes(b'exact unsigned candidate bytes')
-            with patch.dict(os.environ, {'KIT': str(kit), 'IPA_NAME': ipa.name, 'BUILD_NUMBER': '110', 'GITHUB_SHA': 'a' * 40}):
+            for name in ('b16_testkit.py','rc126_build106_full_stage_certification.py','RUN_B16_TESTKIT_GUI.ps1','RUN_B16_TESTKIT.cmd'): (kit/name).write_bytes(b'tool fixture')
+            with patch.dict(os.environ, {'KIT': str(kit), 'IPA_NAME': ipa.name, 'BUILD_NUMBER': '111', 'GITHUB_SHA': 'a' * 40}):
                 exec(compile(script, 'workflow-testkit-identity', 'exec'), {})
             identity = json.loads((kit / 'TestKitIdentity.json').read_text())
-            self.assertEqual(identity['build_number'], '110')
+            self.assertEqual(identity['build_number'], '111')
             self.assertEqual(identity['source_git_sha'], 'a' * 40)
             self.assertEqual(identity['prism_sha'], 'adfffbe41b2cabcd51fff326ab045662265062bb')
             self.assertEqual(identity['unsigned_ipa_sha256'], hashlib.sha256(ipa.read_bytes()).hexdigest())

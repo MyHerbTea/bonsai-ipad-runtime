@@ -67,6 +67,8 @@ def main():
     source=subprocess.run(['git','rev-parse','HEAD'],capture_output=True,check=True,text=True).stdout.strip()
     subprocess.run(['git','merge-base','--is-ancestor',ORIGINAL_SOURCE_SHA,source],check=True)
     files={name:subprocess.run(['git','show',source+':tools/'+name],capture_output=True,check=True).stdout for name in TOOL_FILES}
+    if b"RUNNER_VERSION = '110-readiness-r2'" not in files['b16_testkit.py']:
+        raise SystemExit('Historical R2 packager requires the R2 source checkout; use the matching current CI artifact')
     result=build_kit(Path(args.artifact).read_bytes(),source,files,Path(args.verification).read_text(encoding='utf-8'))
     output=Path(args.output);output.parent.mkdir(parents=True,exist_ok=True)
     if output.exists(): raise SystemExit('Refusing to overwrite an existing delivery')

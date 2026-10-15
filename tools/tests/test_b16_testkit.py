@@ -11,7 +11,7 @@ except ImportError:
 
 def evidence(batch=8):
     return {'process_id': str(uuid.uuid4()), 'source_git_sha': 'a'*40,
-        'build_number': '110', 'startup_ready': True, 'identity_hashing_active': False,
+        'build_number': '111', 'startup_ready': True, 'identity_hashing_active': False,
         'physical_memory_bytes':16*1024**3, 'operating_system':'iPadOS 26', 'native_context': {
         'context_id': str(uuid.uuid4()), 'context': 32768, 'batch': batch,
         'ubatch': batch, 'sequence_max': 1, 'kv_k': 'Q4_0', 'kv_v': 'Q4_0',
@@ -32,7 +32,7 @@ def decode_records():
 class TestKitTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(kit, 'B16 TestKit must exist')
-        self.identity = {'source_git_sha': 'a'*40, 'build_number': '110'}
+        self.identity = {'source_git_sha': 'a'*40, 'build_number': '111'}
 
     def test_identity_and_actual_creation_parameters_required(self):
         good = evidence(); kit.validate_evidence(good, self.identity, 8)
@@ -125,7 +125,7 @@ class TestKitTests(unittest.TestCase):
 class OrchestrationTests(unittest.TestCase):
     def test_missing_vision_or_active_hashing_cannot_start_full_run(self):
         self.assertIsNotNone(kit)
-        identity = {'source_git_sha':'a'*40,'build_number':'110'}
+        identity = {'source_git_sha':'a'*40,'build_number':'111'}
         good = evidence()
         with self.assertRaises(kit.Incomplete): kit.validate_assets(good)
         good['vision_identity'] = {'sha256':'c'*64,'size_bytes':50}
@@ -144,7 +144,7 @@ class OrchestrationTests(unittest.TestCase):
     def test_export_incomplete_preserves_inflight_and_has_hash_manifest(self):
         self.assertIsNotNone(kit)
         import zipfile
-        identity = {'source_git_sha':'a'*40,'build_number':'110'}
+        identity = {'source_git_sha':'a'*40,'build_number':'111'}
         with tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2])) as folder:
             journal = kit.Journal(Path(folder)/'session',identity)
             journal.begin('A1.uncertain')
@@ -159,14 +159,14 @@ class OrchestrationTests(unittest.TestCase):
 
 class GateExtensionsTests(unittest.TestCase):
     def test_environment_must_match_after_restart(self):
-        identity={'source_git_sha':'a'*40,'build_number':'110'}
+        identity={'source_git_sha':'a'*40,'build_number':'111'}
         old=evidence(); new=evidence(16)
         old.update(physical_memory_bytes=16*1024**3,operating_system='iPadOS 26')
         new.update(physical_memory_bytes=16*1024**3,operating_system='iPadOS 27')
         with self.assertRaises(kit.Incomplete): kit.validate_evidence(new,identity,16,old)
 
     def test_missing_native_observation_provenance_and_invalid_threads_stop(self):
-        identity={'source_git_sha':'a'*40,'build_number':'110'}
+        identity={'source_git_sha':'a'*40,'build_number':'111'}
         for field,value in (('observation_source','advertised_defaults'),('threads',0)):
             bad=evidence(); bad['native_context'][field]=value
             with self.assertRaises(kit.Incomplete): kit.validate_evidence(bad,identity,8)
@@ -193,7 +193,7 @@ class LoopbackFixture:
                 self.send_response(status); self.send_header('Content-Type',mime)
                 self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
             def do_GET(self):
-                if self.path=='/debug/build': self.send(state.get('build',{'build_number':'110','source_git_sha':'a'*40}),status=state.get('auth_status',200))
+                if self.path=='/debug/build': self.send(state.get('build',{'build_number':'111','source_git_sha':'a'*40}),status=state.get('auth_status',200))
                 elif self.path=='/debug/b16/evidence':
                     frames=state.get('readiness_frames',[])
                     self.send(frames.pop(0) if frames else state['evidence'])
@@ -248,7 +248,7 @@ class LoopbackFixture:
         self.server=TestHTTPServer(('127.0.0.1',0),Handler)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
         self.temp=tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2]))
-        self.identity={'build_number':'110','source_git_sha':'a'*40}
+        self.identity={'build_number':'111','source_git_sha':'a'*40}
         self.journal=kit.Journal(Path(self.temp.name)/'session',self.identity)
         self.device=kit.DeviceRun(self.journal,self.identity,'http://127.0.0.1:'+str(self.server.server_port),'PRIVATE_KEY',timeout=5,restart_timeout=2)
         # Embedded CPython can hit Windows loopback endpoint conflicts in zero-latency
@@ -326,7 +326,7 @@ class SamplerTests(unittest.TestCase):
 
 class ResumeTests(unittest.TestCase):
     def test_completed_checkpoint_resumes_without_losing_measurements(self):
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         with tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2])) as folder:
             journal=kit.Journal(Path(folder),identity)
             journal.finish('A1.nonstream',request_sha256='b'*64)
@@ -336,7 +336,7 @@ class ResumeTests(unittest.TestCase):
             self.assertIsNotNone(restored.completed('A1.nonstream'))
 
     def test_resume_rejects_inflight_changed_workload_and_unknown_cases(self):
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         with tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2])) as folder:
             journal=kit.Journal(Path(folder),identity)
             for mutation in ({'inflight':'A1.medium.1'},{'workload_fingerprint':'wrong'},
@@ -347,7 +347,7 @@ class ResumeTests(unittest.TestCase):
 
     def test_export_excludes_arbitrary_files_in_report_folder(self):
         import zipfile
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         with tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2])) as folder:
             journal=kit.Journal(Path(folder)/'session',identity)
             (journal.folder/'private-photo.txt').write_text('PRIVATE_FILE')
@@ -404,19 +404,19 @@ class ResumeLoopbackTests(LoopbackFixture,unittest.TestCase):
 
 class FinalGateTests(unittest.TestCase):
     def test_batch_threads_swa_and_tensor_backend_proofs_are_required(self):
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         for field in ('threads_batch','swa_full','metal_tensor_disabled'):
             bad=evidence();bad['native_context'].pop(field)
             with self.assertRaises(kit.Incomplete): kit.validate_evidence(bad,identity,8)
 
     def test_native_flag_values_cannot_export_untrusted_diagnostic_strings(self):
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         for field in ('flash_attention','offload_kqv','op_offload','mmap','kv_unified'):
             bad=evidence();bad['native_context'][field]='PRIVATE_PATH'
             with self.assertRaises(kit.Incomplete): kit.validate_evidence(bad,identity,8)
 
     def test_latest_checkpoint_never_skips_an_uncertain_run(self):
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         with tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2])) as folder:
             older=kit.Journal(Path(folder)/'B16-old',identity)
             newer=kit.Journal(Path(folder)/'B16-new',identity);newer.begin('A1.nonstream')
@@ -428,7 +428,7 @@ class FinalGateTests(unittest.TestCase):
 class WindowsCheckpointTests(unittest.TestCase):
     def test_transient_atomic_replace_sharing_error_retries_locally_with_unique_staging(self):
         from unittest.mock import patch
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         with tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2])) as folder:
             journal=kit.Journal(Path(folder),identity)
             original=Path.replace;attempts=[]
@@ -443,7 +443,7 @@ class WindowsCheckpointTests(unittest.TestCase):
 
     def test_exhausted_checkpoint_replace_fails_closed_and_keeps_last_durable_state(self):
         from unittest.mock import patch
-        identity={'build_number':'110','source_git_sha':'a'*40}
+        identity={'build_number':'111','source_git_sha':'a'*40}
         with tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2])) as folder:
             journal=kit.Journal(Path(folder),identity)
             with patch.object(Path,'replace',side_effect=PermissionError(13,'PRIVATE_WINDOWS_PATH')) as replace:
@@ -504,7 +504,7 @@ class StreamTimingTests(unittest.TestCase):
             def readline(self):return next(self.lines,b'')
         class Opener:
             def open(self,*args,**kwargs):moment[0]+=5;return Response()
-        device=kit.DeviceRun(None,{'build_number':'110','source_git_sha':'a'*40},'http://fixture','key')
+        device=kit.DeviceRun(None,{'build_number':'111','source_git_sha':'a'*40},'http://fixture','key')
         with patch.object(kit.urllib.request,'build_opener',return_value=Opener()),patch.object(kit.time,'monotonic',side_effect=lambda:moment[0]):
             result,first=device.stream({'stream':True},'fixture')
         self.assertEqual(first,5.0)

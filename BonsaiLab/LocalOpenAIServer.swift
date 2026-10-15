@@ -1927,7 +1927,7 @@ final class LocalOpenAIServer: ObservableObject {
             "build_id": "rc1.26-build106-m5-governor",
             "product_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA,
             "source_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA,
-            "candidate_build_id": "rc1.26-build110-b16-prefill",
+            "candidate_build_id": "rc1.26-build111-b16-prefill",
             "build_number": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown",
             "workflow_run_id": BonsaiCertificationBuildIdentity.workflowRunID,
             "prism_upstream_sha": "adfffbe41b2cabcd51fff326ab045662265062bb",

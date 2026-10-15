@@ -7,14 +7,14 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form=New-Object System.Windows.Forms.Form
-$form.Text='Bonsai Build110 TestKit R2 - Existing IPA'
+$form.Text='Bonsai Build111 Identity Fix - Matching IPA Required'
 $form.ClientSize=New-Object System.Drawing.Size(580,380)
 $form.StartPosition='CenterScreen'
 $form.FormBorderStyle='FixedDialog'
 $form.MaximizeBox=$false
 $form.Font=New-Object System.Drawing.Font('Microsoft YaHei UI',10)
 $title=New-Object System.Windows.Forms.Label
-$title.Text='Build110 B8-B16-B8 只需输入一次 API Key'
+$title.Text='Build111 B8-B16-B8 只需输入一次 API Key'
 $title.SetBounds(20,14,530,30);$form.Controls.Add($title)
 $lab=New-Object System.Windows.Forms.Label
 $lab.Text='API URL（可留空自动发现）'
@@ -43,7 +43,7 @@ $fresh=New-Object System.Windows.Forms.CheckBox
 $fresh.Text='从新实验开始（保留旧报告）';$fresh.SetBounds(270,183,290,24)
 $form.Controls.Add($fresh)
 $priorLabel=New-Object System.Windows.Forms.Label
-$priorLabel.Text='Previous RESULTS folder (optional; originals are preserved)'
+$priorLabel.Text='Same Build111 RESULTS only (optional; keep old R2 folder)'
 $priorLabel.SetBounds(20,216,535,24);$form.Controls.Add($priorLabel)
 $previous=New-Object System.Windows.Forms.TextBox
 $previous.SetBounds(20,242,322,28);$form.Controls.Add($previous)
@@ -51,7 +51,7 @@ $browse=New-Object System.Windows.Forms.Button
 $browse.Text='Folder';$browse.SetBounds(350,242,96,30)
 $browse.Add_Click({
  $dialog=New-Object System.Windows.Forms.FolderBrowserDialog
- $dialog.Description='Select the original RESULTS directory (read-only import)'
+ $dialog.Description='Select same-Build111 RESULTS only; keep Build110 R2 separately'
  if($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){$previous.Text=$dialog.SelectedPath}
  $dialog.Dispose()
 });$form.Controls.Add($browse)
@@ -91,7 +91,7 @@ $exe=$null;$py=@()
 if(Test-Path -LiteralPath (Join-Path $root 'python\python.exe')){$exe=Join-Path $root 'python\python.exe';$py=@('-u')} elseif(Test-Path -LiteralPath (Join-Path $root 'runtime\python.exe')){$exe=Join-Path $root 'runtime\python.exe';$py=@('-u')} elseif(Get-Command 'py.exe' -ErrorAction SilentlyContinue){$exe='py.exe';$py=@('-3','-u')}
 elseif(Get-Command 'python.exe' -ErrorAction SilentlyContinue){$exe='python.exe';$py=@('-u')}
 if(-not $exe){Write-Host '[ERROR] Python 3 is missing';Remove-Item Env:BONSAI_API_KEY;exit 2}
-Write-Host 'Bonsai Build110 B8-B16-B8 - API KEY [REDACTED]'
+Write-Host 'Bonsai Build111 B8-B16-B8 - API KEY [REDACTED]'
 Write-Host '[PREFLIGHT] Local registration only: static INCOMPLETE is normal. Live startup wait follows (up to 900s, no inference or arm POST during wait).'
 $rc=2
 try {
