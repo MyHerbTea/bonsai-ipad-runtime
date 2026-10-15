@@ -2,13 +2,13 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $runner=Join-Path $root 'b16_testkit.py'
-if(-not (Test-Path -LiteralPath $runner) -or -not (Test-Path -LiteralPath (Join-Path $root 'TestKitIdentity.json'))){Write-Host '[ERROR] Please extract full ZIP';exit 2}
+if(-not (Test-Path -LiteralPath $runner) -or -not (Test-Path -LiteralPath (Join-Path $root 'TestKitIdentity.json')) -or -not (Test-Path -LiteralPath (Join-Path $root 'RunnerIdentity.json'))){Write-Host '[ERROR] Please extract full ZIP';exit 2}
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form=New-Object System.Windows.Forms.Form
-$form.Text='Bonsai Build110 B8 -> B16 -> B8 TestKit'
-$form.ClientSize=New-Object System.Drawing.Size(580,300)
+$form.Text='Bonsai Build110 TestKit R2 - Existing IPA'
+$form.ClientSize=New-Object System.Drawing.Size(580,380)
 $form.StartPosition='CenterScreen'
 $form.FormBorderStyle='FixedDialog'
 $form.MaximizeBox=$false
@@ -42,11 +42,32 @@ $form.Controls.Add($show)
 $fresh=New-Object System.Windows.Forms.CheckBox
 $fresh.Text='从新实验开始（保留旧报告）';$fresh.SetBounds(270,183,290,24)
 $form.Controls.Add($fresh)
+$priorLabel=New-Object System.Windows.Forms.Label
+$priorLabel.Text='Previous RESULTS folder (optional; originals are preserved)'
+$priorLabel.SetBounds(20,216,535,24);$form.Controls.Add($priorLabel)
+$previous=New-Object System.Windows.Forms.TextBox
+$previous.SetBounds(20,242,322,28);$form.Controls.Add($previous)
+$browse=New-Object System.Windows.Forms.Button
+$browse.Text='Folder';$browse.SetBounds(350,242,96,30)
+$browse.Add_Click({
+ $dialog=New-Object System.Windows.Forms.FolderBrowserDialog
+ $dialog.Description='Select the original RESULTS directory (read-only import)'
+ if($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){$previous.Text=$dialog.SelectedPath}
+ $dialog.Dispose()
+});$form.Controls.Add($browse)
+$zipBrowse=New-Object System.Windows.Forms.Button
+$zipBrowse.Text='ZIP';$zipBrowse.SetBounds(454,242,102,30)
+$zipBrowse.Add_Click({
+ $dialog=New-Object System.Windows.Forms.OpenFileDialog
+ $dialog.Filter='Original result ZIP (*.zip)|*.zip'
+ if($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){$previous.Text=$dialog.FileName}
+ $dialog.Dispose()
+});$form.Controls.Add($zipBrowse)
 $hint=New-Object System.Windows.Forms.Label
 $hint.Text='Key 仅保留在进程内；按提示完整关闭并重启 iPad App。'
-$hint.SetBounds(20,220,540,25);$form.Controls.Add($hint)
+$hint.SetBounds(20,285,540,25);$form.Controls.Add($hint)
 $go=New-Object System.Windows.Forms.Button
-$go.Text='开始 B8/B16/B8 测试';$go.SetBounds(305,260,158,32)
+$go.Text='开始 B8/B16/B8 测试';$go.SetBounds(305,330,158,32)
 $go.Add_Click({
  if([string]::IsNullOrWhiteSpace($key.Text)){[System.Windows.Forms.MessageBox]::Show('请粘贴 API Key')|Out-Null;return}
  if($url.Text.Trim() -and $url.Text.Trim() -notmatch '^https?://[^\s]+$'){
@@ -55,7 +76,7 @@ $go.Add_Click({
  $form.DialogResult=[System.Windows.Forms.DialogResult]::OK;$form.Close()
 });$form.Controls.Add($go);$form.AcceptButton=$go
 $cancel=New-Object System.Windows.Forms.Button
-$cancel.Text='取消';$cancel.SetBounds(478,260,78,32)
+$cancel.Text='取消';$cancel.SetBounds(478,330,78,32)
 $cancel.Add_Click({$form.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$form.Close()})
 $form.Controls.Add($cancel);$form.CancelButton=$cancel
 $result=$form.ShowDialog()
@@ -64,13 +85,14 @@ $env:BONSAI_API_KEY=$key.Text.Trim()
 if($url.Text.Trim()){$env:BONSAI_BASE_URL=$url.Text.Trim()}
 $resumeArgs=@('--resume-latest')
 if($fresh.Checked){$resumeArgs=@()}
+if($previous.Text.Trim()){$resumeArgs=@('--previous-results',$previous.Text.Trim())}
 $form.Dispose()
 $exe=$null;$py=@()
 if(Test-Path -LiteralPath (Join-Path $root 'python\python.exe')){$exe=Join-Path $root 'python\python.exe';$py=@('-u')} elseif(Test-Path -LiteralPath (Join-Path $root 'runtime\python.exe')){$exe=Join-Path $root 'runtime\python.exe';$py=@('-u')} elseif(Get-Command 'py.exe' -ErrorAction SilentlyContinue){$exe='py.exe';$py=@('-3','-u')}
 elseif(Get-Command 'python.exe' -ErrorAction SilentlyContinue){$exe='python.exe';$py=@('-u')}
 if(-not $exe){Write-Host '[ERROR] Python 3 is missing';Remove-Item Env:BONSAI_API_KEY;exit 2}
 Write-Host 'Bonsai Build110 B8-B16-B8 - API KEY [REDACTED]'
-Write-Host '[PREFLIGHT] Testing Python compatibility before accessing iPad...'
+Write-Host '[PREFLIGHT] Local registration only: static INCOMPLETE is normal. Live startup wait follows (up to 900s, no inference or arm POST during wait).'
 $rc=2
 try {
  & $exe @py $runner '--dry-run'

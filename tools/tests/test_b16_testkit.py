@@ -188,13 +188,15 @@ class LoopbackFixture:
         state=self.state
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self,*args): pass
-            def send(self,obj,mime='application/json'):
+            def send(self,obj,mime='application/json',status=200):
                 raw=obj.encode() if isinstance(obj,str) else json.dumps(obj).encode()
-                self.send_response(200); self.send_header('Content-Type',mime)
+                self.send_response(status); self.send_header('Content-Type',mime)
                 self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
             def do_GET(self):
-                if self.path=='/debug/build': self.send({'build_number':'110','source_git_sha':'a'*40})
-                elif self.path=='/debug/b16/evidence': self.send(state['evidence'])
+                if self.path=='/debug/build': self.send(state.get('build',{'build_number':'110','source_git_sha':'a'*40}),status=state.get('auth_status',200))
+                elif self.path=='/debug/b16/evidence':
+                    frames=state.get('readiness_frames',[])
+                    self.send(frames.pop(0) if frames else state['evidence'])
                 elif self.path=='/debug/telemetry': self.send({'phys_footprint_bytes':2*1024**3,
                     'available_bytes':4*1024**3,'thermal_state':'nominal','private_path':'PRIVATE_DIAGNOSTIC'})
                 elif self.path=='/v1/models': self.send({'data':[{'id':'fixture-model'}]})
@@ -248,11 +250,21 @@ class LoopbackFixture:
         self.temp=tempfile.TemporaryDirectory(dir=str(Path(__file__).parents[2]))
         self.identity={'build_number':'110','source_git_sha':'a'*40}
         self.journal=kit.Journal(Path(self.temp.name)/'session',self.identity)
-        self.device=kit.DeviceRun(self.journal,self.identity,'http://127.0.0.1:'+str(self.server.server_port),'PRIVATE_KEY',timeout=5,restart_timeout=0)
+        self.device=kit.DeviceRun(self.journal,self.identity,'http://127.0.0.1:'+str(self.server.server_port),'PRIVATE_KEY',timeout=5,restart_timeout=2)
+        # Embedded CPython can hit Windows loopback endpoint conflicts in zero-latency
+        # synthetic bursts. Model ordinary LAN latency in the test transport only;
+        # execute every real HTTP operation exactly once, never retry a POST.
+        from unittest.mock import patch
+        original_request=kit.request
+        def paced_request(*args,**kwargs):
+            threading.Event().wait(.05)
+            return original_request(*args,**kwargs)
+        self.request_patch=patch.object(kit,'request',paced_request)
+        self.request_patch.start()
         import contextlib,io
         self.capture=contextlib.redirect_stdout(io.StringIO());self.capture.__enter__()
     def tearDown(self):
-        self.server.shutdown();self.server.server_close();self.thread.join(2);self.temp.cleanup();self.capture.__exit__(None,None,None)
+        self.server.shutdown();self.server.server_close();self.thread.join(2);self.request_patch.stop();self.temp.cleanup();self.capture.__exit__(None,None,None)
     def restart_ipad(self,*args):
         state=self.state; batch=16 if state['next']=='CANDIDATE16' else 8
         state['batch']=batch;state['evidence']=evidence(batch)
@@ -273,6 +285,7 @@ class LoopbackTests(LoopbackFixture,unittest.TestCase):
                 for secret in ('PRIVATE_KEY','PRIVATE_DIAGNOSTIC','PRIVATE_USAGE','http://127.0.0.1'):
                     self.assertNotIn(secret,raw)
     def test_same_process_restart_never_runs_inference(self):
+        self.device.restart_timeout=.1
         from unittest.mock import patch
         with patch('builtins.input',lambda *args:None):
             with self.assertRaises(kit.Incomplete): self.device.restart('A1','BASELINE8')
@@ -351,7 +364,7 @@ class ResumeLoopbackTests(LoopbackFixture,unittest.TestCase):
         original_calls=self.state['calls']
         kit.export(self.journal,'INCOMPLETE','Stopped between completed cases')
         restored=kit.Journal(self.journal.folder,self.identity,resume=True)
-        resumed=kit.DeviceRun(restored,self.identity,self.device.base,'PRIVATE_KEY',timeout=5,restart_timeout=0)
+        resumed=kit.DeviceRun(restored,self.identity,self.device.base,'PRIVATE_KEY',timeout=5,restart_timeout=2)
         with patch('builtins.input',self.restart_ipad): verdict,metrics=resumed.execute()
         self.assertEqual(verdict,'PASS');self.assertEqual(len(restored.state['measurements']),18)
         self.assertEqual(self.state['calls'],63)
@@ -365,7 +378,7 @@ class ResumeLoopbackTests(LoopbackFixture,unittest.TestCase):
         missing=self.journal.completed('A1.strict_sse')
         self.journal.state['events']=[x for x in self.journal.state['events'] if x['case']!='A1.strict_sse']
         calls=self.state['calls']
-        resumed=kit.DeviceRun(self.journal,self.identity,self.device.base,'PRIVATE_KEY',timeout=5,restart_timeout=0)
+        resumed=kit.DeviceRun(self.journal,self.identity,self.device.base,'PRIVATE_KEY',timeout=5,restart_timeout=2)
         verdict,metrics=resumed.execute()
         self.assertEqual(verdict,'INCOMPLETE')
         self.assertEqual(self.state['calls'],calls)
@@ -383,7 +396,7 @@ class ResumeLoopbackTests(LoopbackFixture,unittest.TestCase):
         self.assertEqual(len(self.state['arms']),2)
         kit.export(self.journal,'INCOMPLETE','Operator stopped at restart boundary')
         restored=kit.Journal(self.journal.folder,self.identity,resume=True)
-        resumed=kit.DeviceRun(restored,self.identity,self.device.base,'PRIVATE_KEY',timeout=5,restart_timeout=0)
+        resumed=kit.DeviceRun(restored,self.identity,self.device.base,'PRIVATE_KEY',timeout=5,restart_timeout=2)
         with patch('builtins.input',self.restart_ipad): verdict,metrics=resumed.execute()
         self.assertEqual(verdict,'PASS');self.assertEqual(len(self.state['arms']),3)
         self.assertEqual(self.state['calls'],63)

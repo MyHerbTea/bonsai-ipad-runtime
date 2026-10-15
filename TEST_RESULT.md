@@ -3,6 +3,18 @@
 范围说明：以下旧 T01–T16 / Build109 记录是历史候选记录。当前仓库缺部分对应实现与证据，历史 PASS 不证明当前 main。以 [CURRENT_STATE](docs/optimization/CURRENT_STATE.md) 和 [候选引用清单](docs/optimization/candidate-references.json)为准。
 
 
+## 2026-10-15 - Build110 TestKit-only R2 startup readiness repair
+
+Installed IPA remains `8e62dce2930f93ecaf4c21973b7456b480a4644c` / Build110; IPA SHA256 `9fb9b421fffe5a307449c3c015582130b087bba1f5f09ba60fbe1214b9866a07`. Tool version `110-readiness-r2`; exact tool commit/runner SHA are generated in RunnerIdentity.json. No new IPA build or signing/install is needed.
+
+- Reproduced the original first-A1 defect with real local HTTP frames: current() raised the same startup-evidence exception before any arm POST. New timing, auth/version, unavailable identity, timeout, restart and CLI migration negatives failed before implementation, then passed.
+- `python -m unittest discover -s tools/tests -p test_b16_*.py -q`: 61 PASS, exit0, 67.914s on host Python3.11.4 before test-only pacing. Actual bundled Windows Python3.12.10, with repo/tests added to its isolated import path, ran the same full discovery: 61 PASS, exit0, 423.063s. Earlier zero-latency portable simulation runs hit Win10048; a minimal paced HTTP control passed500 requests. Only the mock transport now simulates50ms LAN latency; production requests are unchanged and never retried.
+- Covers initial unready -> model identity pending -> Vision hashing -> READY; missing native proof, unavailable asset identity, sustained unready, slow/trickling response wall-clock deadline,401/403, wrong build/source and restart recovery. Timeout reports contain only state/presence flags, elapsed time and poll count; combined model flag cannot prove active hashing versus failure.
+- Safe original pre-arm failure ZIP/checkpoint bytes preserved through archive/new-experiment migration. In-flight inference/arm, scheduled restart, measured/event-bearing checkpoints and unknown failures reject migration. RED/GREEN regression proves rejected imports remain blocked on the next default run, including unsafe external ZIPs.
+- Four repackage tests and independent tool identity negatives included. Original artifact wrapper pinned to SHA256 `c8bcc6d3740bd63295e57fa8a00f6b1289df93408c673f1a700090f38ea9ad7c`; only its Python assets and original identity/reference CI report are reused. New tool identity never substitutes for installed source.
+- Fourteen original workload/performance/SSE/qualification/regression functions are AST-identical to8e62dce. Git diff for BonsaiLab, project.yml, Vendor, .github and BonsaiUltraSmoke is empty. Windows PowerShell5.1 GUI AST and Python3.8 syntax checks passed. Final ZIP CRC/hash/identity and packaged portable dry-run are separate delivery checks.
+- Independent read-only review: wait bound, import/default-resume rejection and packaging findings addressed; no remaining important finding. Device retest/performance NOT_RUN; original INCOMPLETE is not evidence of Runtime performance failure.
+
 ## Build110 initial CI fixture correction
 
 Run 38625066678 for `fbd51e09a75ceb12969dd3d1832c8098e93d40bb` passed retained rollback/Governor suites and compiled the new evidence/bookmark test, then failed its raw bookmark path equality assertion at line21 (exit133), before Xcode/native build. The fixture now checks non-nil restored URL, canonical file path equality and exact file bytes, and reports only canonical_same/path_alias flags. This handles Darwin /var symlink aliases without dropping file identity or changing production code. The corrected exact-source run must pass before delivery.

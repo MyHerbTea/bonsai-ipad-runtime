@@ -12,6 +12,9 @@ import json
 import math
 import os
 from pathlib import Path
+import queue
+import tempfile
+import shutil
 import statistics
 import struct
 import sys
@@ -25,6 +28,9 @@ try:
     from .rc126_build106_full_stage_certification import request, discover, sample_image_png, choices_text
 except ImportError:
     from rc126_build106_full_stage_certification import request, discover, sample_image_png, choices_text
+
+RUNNER_VERSION = '110-readiness-r2'
+INSTALLED_SOURCE_SHA = '8e62dce2930f93ecaf4c21973b7456b480a4644c'
 
 STAGES = ('identity', 'A1_restart', 'A1_performance', 'A1_regression', 'B_restart',
           'B_performance', 'B_regression', 'A2_restart', 'A2_performance', 'A2_regression', 'comparison')
@@ -52,6 +58,22 @@ def validate_identity(identity):
     if not isinstance(identity, dict) or str(identity.get('build_number')) != '110' or not hex_string(identity.get('source_git_sha'), 40):
         raise Incomplete('Generated TestKitIdentity.json missing or not Build110 full source SHA')
     return {'build_number': '110', 'source_git_sha': identity['source_git_sha']}
+
+def verify_tool_identity(folder):
+    folder=Path(folder)
+    try:
+        obj=json.loads((folder/'RunnerIdentity.json').read_text(encoding='utf-8-sig'))
+        allowed={'b16_testkit.py','rc126_build106_full_stage_certification.py','RUN_B16_TESTKIT_GUI.ps1','RUN_B16_TESTKIT.cmd'}
+        files=obj['files_sha256']
+        if (obj.get('runner_version')!=RUNNER_VERSION or obj.get('installed_ipa_source_sha')!=INSTALLED_SOURCE_SHA
+            or not hex_string(obj.get('tool_source_git_sha'),40) or not isinstance(files,dict)
+            or 'b16_testkit.py' not in files or set(files)-allowed): raise ValueError()
+        if any(digest((folder/name).read_bytes())!=value for name,value in files.items()): raise ValueError()
+        if obj.get('runner_sha256')!=files['b16_testkit.py']: raise ValueError()
+        return obj
+    except (OSError,ValueError,KeyError,TypeError):
+        raise Incomplete('TOOL_IDENTITY_MISMATCH: use the complete unmodified TestKit R2 ZIP')
+
 
 def validate_evidence(obj, identity, batch, previous=None):
     if not isinstance(obj, dict) or obj.get('startup_ready') is not True:
@@ -271,6 +293,8 @@ class Journal:
                     'stage':'identity','inflight':None,'events':[],'measurements':[],'arm_evidence':{}}
         if self.path.exists():
             saved=json.loads(self.path.read_text(encoding='utf-8'))
+            if saved.get('resume_blocked'):
+                raise Incomplete('CHECKPOINT_UNSAFE: prior import was rejected; originals and uncertainty remain preserved, no automatic continuation')
             if saved.get('inflight') or saved.get('identity')!=identity:
                 raise Incomplete('Interrupted/uncertain request or identity changed; no automatic replay')
             if not resume: raise Incomplete('Existing checkpoint requires explicit safe resume')
@@ -337,7 +361,7 @@ def dry_run():
                 'qualification_min_actual_prompt_tokens':200,'long_min_actual_prompt_tokens':512,
                 'full_32k_input_certified':False,'short_decode_descriptive_only':True,
                 'sustained_decode_existing_cases_per_arm':4},
-            'note':'Host registration check only; controlled short/medium inputs, no device certification'}
+            'runner_version':RUNNER_VERSION,'note':'LOCAL REGISTRATION ONLY: INCOMPLETE is expected here; live startup wait runs next. No device certification'}
 
 def export(journal, status, reason, comparison=None):
     folder = journal.folder
@@ -357,7 +381,9 @@ def export(journal, status, reason, comparison=None):
     manifest = {'schema':'bonsai-b16-testkit-v1','identity':journal.state['identity'],
         'status':status,'candidate_status':'EXPERIMENT_PASS' if status == 'PASS' else 'CERTIFICATION_PENDING',
         'default_promoted':False,'credential_saved':False,'url_saved':False,'raw_content_saved':False,
-        'registered_stages':list(STAGES),'files_sha256':hashes}
+        'registered_stages':list(STAGES),'files_sha256':hashes,
+        'tool_identity':journal.state.get('tool_identity',{}),
+        'readiness_api_limit':'MODEL_HASH_PENDING means pending OR unavailable; combined flag cannot prove active model hashing or a specific file failure'}
     (folder/'manifest.json').write_text(json.dumps(manifest,sort_keys=True,indent=2),encoding='utf-8')
     archive = folder.with_suffix('.zip')
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as out:
@@ -390,15 +416,91 @@ class TelemetrySampler:
                 'sampled_peak_footprint_bytes':max((x['phys_footprint_bytes'] for x in samples),default=None),
                 'universal_peak_proven':False}
 
+class ReadinessError(Incomplete):
+    def __init__(self, code, last_state=None):
+        self.code,self.last_state=code,last_state
+        super().__init__(code + (': last observed '+last_state if last_state else ''))
+
+
+def startup_status(obj):
+    # Build110 exposes one combined flag. Missing model identity also keeps it
+    # true after a hash error, so MODEL_HASH_PENDING is not a confirmed cause.
+    native=obj.get('native_context')
+    native=native if isinstance(native,dict) else None
+    def has_identity(value):
+        return isinstance(value,dict) and hex_string(value.get('sha256'),64) and number(value.get('size_bytes'))
+    model=has_identity((native or {}).get('model_identity'))
+    vision=has_identity(obj.get('vision_identity'))
+    hashing=obj.get('identity_hashing_active') is True
+    flags={'native_context_present':native is not None,'model_identity_present':model,
+        'vision_identity_present':vision,'combined_hashing_active':hashing,
+        'startup_ready':obj.get('startup_ready') is True}
+    if native is None: state='NATIVE_CONTEXT_MISSING'
+    elif not model: state='MODEL_HASH_PENDING'
+    elif not vision and hashing: state='VISION_HASH_PENDING'
+    elif not vision: state='ASSET_MISSING'
+    elif flags['startup_ready'] and not hashing: state='READY'
+    else: state='EVIDENCE_NOT_READY'
+    return state,flags
+
+
+def archive_readonly_failure(folder, archive_root, identity):
+    folder=Path(folder)
+    try: saved=json.loads((folder/'checkpoint.json').read_text(encoding='utf-8'))
+    except (OSError,ValueError): raise Incomplete('CHECKPOINT_UNSAFE: unreadable prior checkpoint; original retained')
+    known={'schema','identity','workload_fingerprint','stage','inflight','events','measurements','arm_evidence',
+        'status','reason','readiness','restart','waiting_restart','tool_identity','prior_archive'}
+    legacy=saved.get('reason')=='Native startup evidence is missing or not ready'
+    recorded=bool(saved.get('readiness')) and saved.get('reason','').split(':')[0] in (
+        'READY_TIMEOUT','AUTH_FAILED','VERSION_MISMATCH','ASSET_MISSING','EVIDENCE_UNAVAILABLE')
+    if (saved.get('identity')!=identity or saved.get('schema')!=1 or saved.get('status')!='INCOMPLETE'
+        or saved.get('stage')!='A1_restart' or saved.get('inflight') is not None
+        or saved.get('events')!=[] or saved.get('measurements')!=[] or saved.get('arm_evidence')!={}
+        or saved.get('restart') is not None or saved.get('waiting_restart') is not None
+        or set(saved)-known or not (legacy or recorded)):
+        raise Incomplete('CHECKPOINT_UNSAFE: prior operations or uncertainty cannot be excluded; originals retained, no replay')
+    destination=Path(archive_root)/('prior-'+uuid.uuid4().hex)
+    destination.mkdir(parents=True,exist_ok=False)
+    for name in REPORT_FILES:
+        source=folder/name
+        if source.is_symlink(): raise Incomplete('CHECKPOINT_UNSAFE: report symlink; originals retained')
+        if source.is_file(): shutil.copy2(str(source),str(destination/name))
+    old_zip=folder.with_suffix('.zip')
+    if old_zip.is_file() and not old_zip.is_symlink(): shutil.copy2(str(old_zip),str(destination/'original-result.zip'))
+    return destination
+
+
+def archive_previous(source, archive_root, identity):
+    source=Path(source)
+    if source.is_file() and source.suffix.lower()=='.zip':
+        Path(archive_root).mkdir(parents=True,exist_ok=True)
+        with zipfile.ZipFile(source) as old:
+            members=old.infolist()
+            if len(members)>50 or sum(x.file_size for x in members)>10*1024*1024 or old.testzip() is not None:
+                raise Incomplete('CHECKPOINT_UNSAFE: unsupported prior result ZIP')
+            if any('/' in x.filename or '\\' in x.filename or x.filename not in REPORT_FILES for x in members) or len(members)!=len(set(x.filename for x in members)):
+                raise Incomplete('CHECKPOINT_UNSAFE: prior result ZIP must contain only original report files')
+            with tempfile.TemporaryDirectory(dir=archive_root) as directory:
+                for entry in members: (Path(directory)/entry.filename).write_bytes(old.read(entry))
+                destination=archive_readonly_failure(directory,archive_root,identity)
+        shutil.copy2(str(source),str(destination/'original-result.zip'))
+        return destination
+    folder=source if (source/'checkpoint.json').is_file() else latest_checkpoint(source)
+    if folder is None: raise Incomplete('No incomplete prior result found; originals retained')
+    return archive_readonly_failure(folder,archive_root,identity)
+
+
 class DeviceRun:
-    def __init__(self, journal, identity, base, key, timeout=900, restart_timeout=300):
+    def __init__(self, journal, identity, base, key, timeout=900, restart_timeout=300, ready_timeout=900):
         self.journal, self.identity, self.base, self.key = journal, identity, base, key
         self.timeout, self.restart_timeout = timeout, restart_timeout
+        self.ready_timeout=ready_timeout
         self.evidence = None; self.model = None; self.arm = None
         self.work = workloads(); self.fixtures = public_images()
-    def get(self, route):
-        try: code,obj = request(self.base+route,self.key,timeout=20)
+    def get(self, route, timeout=20):
+        try: code,obj = request(self.base+route,self.key,timeout=timeout)
         except Exception: raise Incomplete('Device connection unavailable: '+route)
+        if code in (401,403): raise ReadinessError('AUTH_FAILED')
         if code != 200 or not isinstance(obj,dict): raise Incomplete('Required endpoint unavailable: '+route)
         return obj
     def current(self, batch=None):
@@ -411,6 +513,67 @@ class DeviceRun:
         validate_assets(obj)
         if observed not in (8,16): raise Incomplete('Native context is not B8/B16')
         return obj
+    def readiness_get(self,route,deadline):
+        remaining=deadline-time.monotonic()
+        if remaining<=0: raise ReadinessError('READY_TIMEOUT')
+        result=queue.Queue(maxsize=1)
+        def read_only():
+            try: result.put((True,self.get(route,timeout=min(5,remaining))))
+            except Exception as exc: result.put((False,exc))
+        worker=threading.Thread(target=read_only,daemon=True)
+        worker.start();worker.join(max(0,deadline-time.monotonic()))
+        if worker.is_alive() or time.monotonic()>=deadline: raise ReadinessError('READY_TIMEOUT')
+        ok,value=result.get_nowait()
+        if not ok: raise value
+        return value
+
+    def wait_ready(self,batch=None,previous=None,timeout=None):
+        limit=self.ready_timeout if timeout is None else timeout
+        start=time.monotonic();deadline=start+max(0,limit);last=None;last_print=-30;polls=0
+        hints={'MODEL_HASH_PENDING':'Model identity pending or unavailable; Build110 cannot distinguish a running hash from a hash failure.',
+            'VISION_HASH_PENDING':'Waiting for Vision identity hashing; keep the iPad app open.',
+            'NATIVE_CONTEXT_MISSING':'Native context proof not present yet; waiting for API startup.',
+            'ASSET_MISSING':'Required Vision identity is unavailable; API cannot distinguish unselected, unreadable or missing asset.',
+            'RESTART_REQUIRED':'Same iPad process; fully close the app, reopen and start API.',
+            'READY':'Assets and native context are ready.'}
+        while True:
+            polls+=1;flags={};state='CONNECTION_UNAVAILABLE'
+            try:
+                build=self.readiness_get('/debug/build',deadline)
+                if str(build.get('build_number',build.get('build')))!=self.identity['build_number'] or build.get('source_git_sha')!=self.identity['source_git_sha']:
+                    raise ReadinessError('VERSION_MISMATCH')
+                obj=self.readiness_get('/debug/b16/evidence',deadline)
+                if str(obj.get('build_number'))!=self.identity['build_number'] or obj.get('source_git_sha')!=self.identity['source_git_sha']:
+                    raise ReadinessError('VERSION_MISMATCH')
+                state,flags=startup_status(obj)
+                if state=='READY':
+                    observed=obj['native_context'].get('batch')
+                    same_process=previous and obj.get('process_id')==previous.get('process_id')
+                    validate_evidence(obj,self.identity,observed if same_process else batch if batch is not None else observed)
+                    validate_assets(obj)
+                    if observed not in (8,16): raise Incomplete('Native context is not B8/B16')
+                    if previous and obj.get('process_id')==previous.get('process_id'): state='RESTART_REQUIRED'
+                    elif previous: validate_evidence(obj,self.identity,batch,previous)
+            except ReadinessError as exc: state=(last or 'NO_RESPONSE') if exc.code=='READY_TIMEOUT' else exc.code
+            except Incomplete as exc:
+                if 'connection unavailable' in str(exc): state='CONNECTION_UNAVAILABLE'
+                elif 'endpoint unavailable' in str(exc): state='EVIDENCE_UNAVAILABLE'
+                else: raise
+            elapsed=time.monotonic()-start
+            if state!=last or elapsed-last_print>=30:
+                item={'state':state,'elapsed_s':round(elapsed,2),'polls':polls,**flags}
+                history=self.journal.state.setdefault('readiness',[]);history.append(item);del history[:-40]
+                self.journal.save()
+                print('[READY] '+state+' | '+str(round(elapsed,1))+'s / '+str(limit)+'s | '+hints.get(state,'Read-only startup check; no inference or arm POST.'),flush=True)
+                last_print=elapsed
+            last=state
+            if state=='READY' and time.monotonic()<deadline: return obj
+            if state in ('AUTH_FAILED','VERSION_MISMATCH','ASSET_MISSING','EVIDENCE_UNAVAILABLE'):
+                raise ReadinessError(state)
+            if time.monotonic()>=deadline:
+                raise ReadinessError('READY_TIMEOUT',state)
+            time.sleep(min(2,max(0,deadline-time.monotonic())))
+
     def telemetry(self): return validate_telemetry(self.get('/debug/telemetry'))
     def memory_poll(self):
         code,obj=request(self.base+'/debug/telemetry',self.key,timeout=2)
@@ -437,7 +600,8 @@ class DeviceRun:
                 old=scheduled['previous']
                 print('[RESUME] Next launch already armed; no arm POST will be repeated.',flush=True)
             else:
-                old=self.current();launch=self.get('/debug/build94/launch')
+                old=self.wait_ready() if label=='A1' else self.current()
+                launch=self.get('/debug/build94/launch')
                 if launch.get('sticky_fallback') is True or launch.get('active_arm')=='SAFE4':
                     raise Incomplete('SAFE4 recovery active. Inspect crash evidence and recover on iPad before a fresh experiment')
                 if arm=='CANDIDATE16' and launch.get('baseline8_completed') is not True:
@@ -451,19 +615,8 @@ class DeviceRun:
                 self.journal.finish(label+'.arm_next_launch',requested_arm=arm)
             print('\n['+label+'] Fully close Bonsai from the iPad app switcher, reopen it, and start API. The key is retained.',flush=True)
             input('Press Enter after full iPad process restart (Ctrl+C ends INCOMPLETE): ')
-            deadline=time.monotonic()+self.restart_timeout
-            while True:
-                try:
-                    new=self.current(batch)
-                    if new['process_id']==old['process_id']:
-                        raise Incomplete('Same iPad process still running; full app-switcher restart required')
-                    validate_evidence(new,self.identity,batch,old)
-                    validate_launch(self.get('/debug/build94/launch'),arm);break
-                except Incomplete as exc:
-                    message=str(exc)
-                    if not any(x in message for x in ('connection unavailable','not ready','hashing','Same iPad process')): raise
-                    if time.monotonic()>=deadline: raise Incomplete('Timed out waiting for new ready iPad process: '+message)
-                    time.sleep(2)
+            new=self.wait_ready(batch,previous=old,timeout=self.restart_timeout)
+            validate_launch(self.get('/debug/build94/launch'),arm)
             self.journal.state['restart']=None;self.journal.state['waiting_restart']=None
             self.journal.state.setdefault('arm_evidence',{})[label]=safe_evidence(new)
             ctx=new['native_context']
@@ -658,6 +811,7 @@ def latest_checkpoint(output):
         if not path.exists(): continue
         try: saved=json.loads(path.read_text(encoding='utf-8'))
         except (OSError,ValueError): return folder
+        if saved.get('resume_blocked'): return folder
         if saved.get('resume_rejected'): continue
         if saved.get('status') in ('PASS','FAIL'): return None
         return folder
@@ -672,8 +826,14 @@ def run(argv=None):
     ap.add_argument('--output',default=str(Path(__file__).resolve().parent/'RESULTS'))
     ap.add_argument('--timeout',type=int,default=900)
     ap.add_argument('--restart-timeout',type=int,default=300)
+    ap.add_argument('--ready-timeout',type=int,default=900)
+    ap.add_argument('--previous-results',default='',help='Optional original RESULTS folder; safe first failure is copied to archive, never overwritten')
     args=ap.parse_args(argv)
     if args.dry_run:
+        if (Path(__file__).resolve().parent/'RunnerIdentity.json').exists():
+            try: verify_tool_identity(Path(__file__).resolve().parent)
+            except Incomplete as exc:
+                print(str(exc));return 3
         print(json.dumps(dry_run(),indent=2)); return 0
     stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
     identity_path=Path(__file__).resolve().parent/'TestKitIdentity.json'
@@ -681,10 +841,33 @@ def run(argv=None):
     identity={'build_number':'110','source_git_sha':'UNVERIFIED'}
     journal=None; verdict='INCOMPLETE'; reason='Experiment has not completed'; metrics={};resume_folder=None
     try:
+        tool=verify_tool_identity(Path(__file__).resolve().parent)
         try: identity=validate_identity(json.loads(identity_path.read_text(encoding='utf-8-sig')))
         except (OSError,ValueError): raise Incomplete('Generated TestKitIdentity.json missing or malformed; use the complete CI TestKit ZIP')
+        if identity['source_git_sha']!=INSTALLED_SOURCE_SHA: raise ReadinessError('VERSION_MISMATCH')
         resume_folder=Path(args.resume) if args.resume else latest_checkpoint(args.output) if args.resume_latest else None
+        prior=None
+        if args.previous_results:
+            if args.resume: raise Incomplete('Select either current resume or previous RESULTS, not both')
+            local=latest_checkpoint(args.output)
+            if local is not None:
+                archive_readonly_failure(local,Path(args.output)/'ARCHIVED_PREVIOUS',identity)
+            prior=archive_previous(args.previous_results,Path(args.output)/'ARCHIVED_PREVIOUS',identity)
+            resume_folder=None
+            print('[ARCHIVE] Prior report/checkpoint preserved; verified empty pre-arm failure. Starting a NEW experiment, no replay.',flush=True)
+        if resume_folder:
+            try: saved=json.loads((resume_folder/'checkpoint.json').read_text(encoding='utf-8'))
+            except (OSError,ValueError): raise Incomplete('CHECKPOINT_UNSAFE: unreadable prior checkpoint')
+            if args.previous_results or saved.get('workload_fingerprint')!=workload_fingerprint() or (saved.get('stage')=='A1_restart' and saved.get('status')=='INCOMPLETE' and not saved.get('events')):
+                prior=archive_readonly_failure(resume_folder,Path(args.output)/'ARCHIVED_PREVIOUS',identity)
+                print('[ARCHIVE] Original result/checkpoint retained. Verified no uncertain inference/arm operation. Starting a NEW experiment with this runner.',flush=True)
+                resume_folder=None
         journal=Journal(resume_folder if resume_folder else folder,identity,resume=bool(resume_folder))
+        if prior:
+            journal.state['prior_archive']={'preserved':True,'new_experiment':True,
+                'files_sha256':{p.name:digest(p.read_bytes()) for p in prior.iterdir() if p.is_file()}}
+        journal.state['tool_identity']={'runner_version':RUNNER_VERSION,'runner_sha256':digest(Path(__file__).read_bytes()),'tool_source_git_sha':tool['tool_source_git_sha'],'installed_ipa_source_sha':INSTALLED_SOURCE_SHA}
+        journal.save()
         key=os.environ.get('BONSAI_API_KEY','').strip()
         if not key: key=getpass.getpass('Bonsai API Key (memory only, never saved): ').strip()
         if not key: raise Incomplete('API key not supplied')
@@ -692,7 +875,7 @@ def run(argv=None):
         os.environ.pop('BONSAI_API_KEY',None)
         try: base=discover(args.base_url)
         except Exception: raise Incomplete('API unavailable. Start Bonsai LAN API and a fresh experiment')
-        device=DeviceRun(journal,identity,base,key,args.timeout,args.restart_timeout)
+        device=DeviceRun(journal,identity,base,key,args.timeout,args.restart_timeout,args.ready_timeout)
         verdict,metrics=device.execute()
         reason={'PASS':'All registered regressions and measured B8/B16/B8 gates passed. Candidate EXPERIMENT_PASS; default remains B8.',
                 'FAIL':'A measured performance, memory or regression gate failed; candidate cannot be promoted.',
@@ -705,7 +888,9 @@ def run(argv=None):
     finally:
         if journal is None:
             journal=Journal(folder,identity)
-            if resume_folder: journal.state['resume_rejected']=True
+            if resume_folder or args.previous_results:
+                journal.state['resume_rejected']=True
+                journal.state['resume_blocked']=True
         path=export(journal,verdict,reason,metrics)
         print('\nFINAL: '+verdict+' | '+reason+'\nEvidence ZIP: '+str(path.resolve()),flush=True)
     return 0 if verdict=='PASS' else 1 if verdict=='FAIL' else 3
