@@ -8,7 +8,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form=New-Object System.Windows.Forms.Form
 $form.Text='Bonsai Build111 Identity Fix - Matching IPA Required'
-$form.ClientSize=New-Object System.Drawing.Size(580,380)
+$form.ClientSize=New-Object System.Drawing.Size(580,420)
 $form.StartPosition='CenterScreen'
 $form.FormBorderStyle='FixedDialog'
 $form.MaximizeBox=$false
@@ -66,8 +66,11 @@ $zipBrowse.Add_Click({
 $hint=New-Object System.Windows.Forms.Label
 $hint.Text='Key 仅保留在进程内；按提示完整关闭并重启 iPad App。'
 $hint.SetBounds(20,285,540,25);$form.Controls.Add($hint)
+ $mode=New-Object System.Windows.Forms.ComboBox
+$mode.DropDownStyle='DropDownList';$mode.Items.AddRange(@('Quick - prefill-batch (exploratory)','Full - existing certification'));$mode.SelectedIndex=0
+$mode.SetBounds(20,315,536,28);$form.Controls.Add($mode)
 $go=New-Object System.Windows.Forms.Button
-$go.Text='开始 B8/B16/B8 测试';$go.SetBounds(305,330,158,32)
+$go.Text='开始 B8/B16/B8 测试';$go.SetBounds(305,370,158,32)
 $go.Add_Click({
  if([string]::IsNullOrWhiteSpace($key.Text)){[System.Windows.Forms.MessageBox]::Show('请粘贴 API Key')|Out-Null;return}
  if($url.Text.Trim() -and $url.Text.Trim() -notmatch '^https?://[^\s]+$'){
@@ -76,7 +79,7 @@ $go.Add_Click({
  $form.DialogResult=[System.Windows.Forms.DialogResult]::OK;$form.Close()
 });$form.Controls.Add($go);$form.AcceptButton=$go
 $cancel=New-Object System.Windows.Forms.Button
-$cancel.Text='取消';$cancel.SetBounds(478,330,78,32)
+$cancel.Text='取消';$cancel.SetBounds(478,370,78,32)
 $cancel.Add_Click({$form.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$form.Close()})
 $form.Controls.Add($cancel);$form.CancelButton=$cancel
 $result=$form.ShowDialog()
@@ -86,6 +89,8 @@ if($url.Text.Trim()){$env:BONSAI_BASE_URL=$url.Text.Trim()}
 $resumeArgs=@('--resume-latest')
 if($fresh.Checked){$resumeArgs=@()}
 if($previous.Text.Trim()){$resumeArgs=@('--previous-results',$previous.Text.Trim())}
+$modeArgs=@('--mode','full')
+if($mode.SelectedIndex -eq 0){$modeArgs=@('--mode','quick','--direction','prefill-batch');$resumeArgs=@()}
 $form.Dispose()
 $exe=$null;$py=@()
 if(Test-Path -LiteralPath (Join-Path $root 'python\python.exe')){$exe=Join-Path $root 'python\python.exe';$py=@('-u')} elseif(Test-Path -LiteralPath (Join-Path $root 'runtime\python.exe')){$exe=Join-Path $root 'runtime\python.exe';$py=@('-u')} elseif(Get-Command 'py.exe' -ErrorAction SilentlyContinue){$exe='py.exe';$py=@('-3','-u')}
@@ -95,12 +100,12 @@ Write-Host 'Bonsai Build111 B8-B16-B8 - API KEY [REDACTED]'
 Write-Host '[PREFLIGHT] Local registration only: static INCOMPLETE is normal. Live startup wait follows (up to 900s, no inference or arm POST during wait).'
 $rc=2
 try {
- & $exe @py $runner '--dry-run'
+ & $exe @py $runner @modeArgs '--dry-run'
  if ($LASTEXITCODE -ne 0) {
    Write-Host '[ERROR] Local runner compatibility check failed before API test.'
    $rc=2
  } else {
-   & $exe @py $runner @resumeArgs '--output' (Join-Path $root 'RESULTS')
+   & $exe @py $runner @modeArgs @resumeArgs '--output' (Join-Path $root 'RESULTS')
    $rc=$LASTEXITCODE
  }
 }finally{

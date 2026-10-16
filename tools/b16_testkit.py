@@ -379,6 +379,14 @@ def export(journal, status, reason, comparison=None):
               'Decode guard: four existing quality-validated >256-token output cases per arm; short sentinel decode is descriptive only.\n\n'
               'Thermal and memory evidence covers API boundary snapshots and bounded one-second in-flight samples; sampled peak is not a universal peak. iPadOS crash reports are not exposed by HTTP. '
               'Uncertain requests are preserved and never replayed. Missing or ambiguous measurements cannot pass.\n')
+    quick=journal.state.get('mode')=='quick'
+    if quick:
+        report=('# Bonsai Prefill Batch Quick — EXPLORATORY\n\n**'+status+'**\n\n'+reason+
+                '\n\nNo Full PASS, candidate promotion or default Batch change. Completed workflow ends in B8.\n'
+                'Two samples per workload per arm; B8/B16/B8, same 24/96-record inputs. Short decode screening only.\n'
+                'Boundary memory/thermal checks required. Auxiliary sampling gaps do not prove memory/performance failure.\n'
+                'No SSE, Vision, sustained long-output or full 32K certification. See comparison.json and traces.json for metrics and evidence limits.\n'
+                'No uncertain inference is replayed. Failure/interruption may leave the current arm active; inspect iPad/SAFE4 before a new experiment.\n')
     (folder/'FINAL_REPORT.md').write_text(report,encoding='utf-8')
     hashes={name:digest((folder/name).read_bytes()) for name in REPORT_FILES if name!='manifest.json'}
     manifest = {'schema':'bonsai-b16-testkit-v1','identity':journal.state['identity'],
@@ -387,6 +395,9 @@ def export(journal, status, reason, comparison=None):
         'registered_stages':list(STAGES),'files_sha256':hashes,
         'tool_identity':journal.state.get('tool_identity',{}),
         'readiness_api_limit':'MODEL_HASH_PENDING means pending OR unavailable; combined flag cannot prove active model hashing or a specific file failure'}
+    if quick:
+        manifest.update(mode='quick',direction='prefill-batch',candidate_status='EXPLORATORY',device_certified=False,
+                        registered_stages=['identity','A1_restart','A1_quick_prefill','B_restart','B_quick_prefill','A2_restart','A2_quick_prefill','quick_comparison'])
     (folder/'manifest.json').write_text(json.dumps(manifest,sort_keys=True,indent=2),encoding='utf-8')
     archive = folder.with_suffix('.zip')
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as out:
@@ -599,6 +610,11 @@ class DeviceRun:
                 raise ReadinessError('READY_TIMEOUT',state)
             time.sleep(min(2,max(0,deadline-time.monotonic())))
 
+    def check_sampling(self, sampling):
+        if sampling['issue']=='MEMORY_ANOMALY': raise Failure('Observed in-flight memory anomaly')
+        if sampling['issue'] or not sampling['samples']:
+            raise Incomplete('In-flight memory/thermal sampling unavailable; measurement cannot pass')
+
     def telemetry(self): return validate_telemetry(self.get('/debug/telemetry'))
     def memory_poll(self):
         code,obj=request(self.base+'/debug/telemetry',self.key,timeout=2)
@@ -708,9 +724,7 @@ class DeviceRun:
             sampling=sampler.stop()
             self.journal.state['inflight_memory']=sampling;self.journal.save()
         elapsed=time.monotonic()-elapsed
-        if sampling['issue']=='MEMORY_ANOMALY': raise Failure('Observed in-flight memory anomaly')
-        if sampling['issue'] or not sampling['samples']:
-            raise Incomplete('In-flight memory/thermal sampling unavailable; measurement cannot pass')
+        self.check_sampling(sampling)
         if not isinstance(text,str) or not text.strip(): raise Failure('Blank completion')
         if any(not number(usage.get(k)) for k in ('prompt_tokens','completion_tokens')):
             raise Incomplete('Actual inference usage counts missing')
@@ -827,6 +841,103 @@ class DeviceRun:
             if candidate>baseline*1.15+128*1024*1024: verdict='FAIL'
         return verdict,metrics
 
+def quick_registration():
+    return {'status':'INCOMPLETE','mode':'quick','direction':'prefill-batch',
+            'device_certified':False,'default_promoted':False,'arms':['BASELINE8','CANDIDATE16','BASELINE8'],
+            'samples_per_workload_per_arm':2,'regressions':['short_decode','memory','liveness'],
+            'note':'EXPLORATORY only; boundary memory required; in-flight sampling gaps disclosed; no Full PASS'}
+
+
+def quick_comparison(records, events):
+    metrics={'scope':'EXPLORATORY prefill-batch; short decode screening only, no sustained decode certification',
+             'default_promoted':False,'workloads':{}}
+    for work in ('medium','long'):
+        arms={a:[r for r in records if r.get('arm')==a and r.get('workload')==work] for a in ('A1','B','A2')}
+        if any(len(rows)!=2 or {r.get('rep') for r in rows}!={0,1} for rows in arms.values()):
+            return 'INCOMPLETE',{'reason':'All 12 paired Quick samples required',**metrics}
+        rows=sum(arms.values(),[])
+        if any(len({r.get(k) for r in rows})!=1 for k in ('prompt_tokens','completion_tokens','workload_sha256')):
+            return 'INCOMPLETE',{'reason':'Quick workload/counts differ across arms',**metrics}
+        item={'prompt_tokens':rows[0]['prompt_tokens'],'completion_tokens':rows[0]['completion_tokens']}
+        for field,metric in (('prefill_ms','prefill'),('ttft_ms','ttft')):
+            if any(not number(r.get(field)) for r in rows): return 'INCOMPLETE',{'reason':'Missing native timing',**metrics}
+            med={a:statistics.median(r[field] for r in values) for a,values in arms.items()}
+            item[metric+'_median_ms']=med
+            item[metric+'_ratio']=med['B']/statistics.median([med['A1'],med['A2']])
+            item[metric+'_baseline_drift']=abs(med['A2']/med['A1']-1)
+        metrics['workloads'][work]=item
+    decode={a:[e for e in events if e.get('case') in [a+'.quick_decode.'+str(r) for r in range(2)]] for a in ('A1','B','A2')}
+    rows=sum(decode.values(),[])
+    if (any(len(v)!=2 for v in decode.values()) or any(e.get('state')!='PASS' or not e.get('semantic_validated')
+        or e.get('finish_reason')!='stop' or not number(e.get('observation',{}).get('tokens_per_second'))
+        or e.get('observation',{}).get('completion_tokens',0)<64 for e in rows)
+        or any(len({e.get('observation',{}).get(k) for e in rows})!=1 for k in ('prompt_tokens','completion_tokens'))
+        or len({e.get('request_sha256') for e in rows})!=1):
+        return 'INCOMPLETE',{'reason':'Comparable short decode evidence missing',**metrics}
+    med={a:statistics.median(e['observation']['tokens_per_second'] for e in values) for a,values in decode.items()}
+    metrics['decode_median_tokens_per_second']=med
+    metrics['decode_ratio']=med['B']/statistics.median([med['A1'],med['A2']])
+    metrics['decode_check']='OBVIOUS_REGRESSION' if metrics['decode_ratio']<.90 else 'NO_OBVIOUS_REGRESSION'
+    metrics['decode_baseline_drift']=abs(med['A2']/med['A1']-1)
+    if metrics['decode_baseline_drift']>.10 or any(v[k]>.10 for v in metrics['workloads'].values() for k in ('prefill_baseline_drift','ttft_baseline_drift')):
+        return 'INCOMPLETE',{'reason':'Baseline drift exceeds 10%; repeat only as a new operator-started experiment',**metrics}
+    return 'QUICK_COMPLETE',metrics
+
+
+class QuickDeviceRun(DeviceRun):
+    """Only current Prefill hypothesis. Reuses native/restart/SAFE4/request safeguards."""
+    def check_sampling(self, sampling):
+        if sampling['issue']=='MEMORY_ANOMALY': raise Failure('Observed in-flight memory anomaly')
+        if sampling['issue'] or not sampling['samples']:
+            print('[LIMITED] Auxiliary in-flight telemetry unavailable; boundary checks remain required.',flush=True)
+
+    def performance(self,label):
+        self.journal.stage(label+'_quick_prefill')
+        self.chat(label+'.qualification',self.text(self.work['medium']),sentinel='B16_SENTINEL amber cedar violet maple',min_prompt=200,exact=True)
+        launch=validate_launch(self.get('/debug/build94/launch'),'CANDIDATE16' if label=='B' else 'BASELINE8')
+        if launch.get('baseline8_completed') is not True:
+            raise Incomplete('Server baseline latch missing despite actual qualifying inference')
+        if label=='B' and (launch.get('pending') is not False or launch.get('confirmed_candidate16') is not True):
+            raise Incomplete('Candidate pending latch did not clear after qualifying inference')
+        for work in ('medium','long'):
+            for rep in range(2):
+                _,obs=self.chat(label+'.quick_'+work+'.'+str(rep),self.text(self.work[work]),
+                    sentinel='B16_SENTINEL amber cedar violet maple',min_prompt=512 if work=='long' else 200,exact=True)
+                self.journal.state['measurements'].append({'arm':label,'workload':work,'rep':rep,
+                    'workload_sha256':digest(self.work[work].encode('utf-8')),**obs})
+                self.journal.save()
+        for rep in range(2):
+            text,obs=self.chat(label+'.quick_decode.'+str(rep),self.text(
+                'Print each integer from 0001 to 0040 on its own line, in order. Four digits per line. No explanation, no skipping, no ellipsis.'),
+                budget=256,sentinel='0040')
+            if text.strip().splitlines()!=['%04d'%n for n in range(1,41)]:
+                raise Failure('Quick decode sequence quality failed')
+            if obs['completion_tokens']<64: raise Incomplete('Quick decode sample too short for screening')
+        if self.get('/health').get('status')!='ok': raise Failure('API liveness failed')
+        current=self.current(16 if label=='B' else 8)
+        if current['process_id']!=self.evidence['process_id']: raise Incomplete('Process changed after Quick arm')
+        validate_launch(self.get('/debug/build94/launch'),'CANDIDATE16' if label=='B' else 'BASELINE8')
+        self.journal.finish(label+'.quick_liveness',alive=True)
+
+    def execute(self):
+        for label,arm in (('A1','BASELINE8'),('B','CANDIDATE16'),('A2','BASELINE8')):
+            self.restart(label,arm);self.performance(label)
+        final=self.current(8)
+        if final['process_id']!=self.evidence['process_id']: raise Incomplete('Final B8 process changed')
+        validate_launch(self.get('/debug/build94/launch'),'BASELINE8')
+        self.journal.stage('quick_comparison')
+        status,metrics=quick_comparison(self.journal.state['measurements'],self.journal.state['events'])
+        events=self.journal.state['events']
+        metrics['evidence_limitations']=['Short decode only; no SSE, Vision, sustained output or full 32K certification; sampled peaks are not universal peaks']
+        if any(e.get('memory_sampling',{}).get('issue') or (e.get('observation') and not e.get('memory_sampling',{}).get('samples')) for e in events):
+            metrics['evidence_limitations'].append('Auxiliary in-flight telemetry missing; required boundary memory/thermal checks completed')
+        footprints={a:max(e['memory_after']['phys_footprint_bytes'] for e in events if e.get('case','').startswith(a+'.') and e.get('memory_after')) for a in ('A1','B','A2')}
+        metrics['boundary_peak_footprint_bytes']=footprints
+        if footprints['B']>max(footprints['A1'],footprints['A2'])*1.15+128*1024*1024:
+            raise Failure('Quick candidate boundary memory footprint growth')
+        return status,metrics
+
+
 def latest_checkpoint(output):
     root=Path(output)
     if not root.exists(): return None
@@ -844,6 +955,8 @@ def latest_checkpoint(output):
 
 def run(argv=None):
     ap=argparse.ArgumentParser(description='Build111 B8/B16/B8 TestKit; candidate experiment only')
+    ap.add_argument('--mode',choices=('quick','full'),default='full')
+    ap.add_argument('--direction',choices=('prefill-batch',),default='prefill-batch')
     ap.add_argument('--dry-run',action='store_true')
     ap.add_argument('--base-url',default=os.environ.get('BONSAI_BASE_URL',''))
     ap.add_argument('--resume-latest',action='store_true',help='GUI automatically resumes latest safe checkpoint; uncertainty stops')
@@ -859,7 +972,11 @@ def run(argv=None):
             try: verify_tool_identity(Path(__file__).resolve().parent)
             except Incomplete as exc:
                 print(str(exc));return 3
-        print(json.dumps(dry_run(),indent=2)); return 0
+        print(json.dumps(quick_registration() if args.mode=='quick' else dry_run(),indent=2)); return 0
+    if args.mode=='quick':
+        if args.resume or args.previous_results: ap.error('Quick requires a fresh experiment; no checkpoint imports/resume')
+        args.resume_latest=False
+        args.output=str(Path(args.output)/'QUICK-prefill-batch')
     stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
     identity_path=Path(__file__).resolve().parent/'TestKitIdentity.json'
     folder=Path(args.output)/('B16-'+stamp)
@@ -888,6 +1005,7 @@ def run(argv=None):
                 print('[ARCHIVE] Original result/checkpoint retained. Verified no uncertain inference/arm operation. Starting a NEW experiment with this runner.',flush=True)
                 resume_folder=None
         journal=Journal(resume_folder if resume_folder else folder,identity,resume=bool(resume_folder))
+        if args.mode=='quick': journal.state['mode']='quick';journal.state['direction']=args.direction
         if prior:
             journal.state['prior_archive']={'preserved':True,'new_experiment':True,
                 'files_sha256':{p.name:digest(p.read_bytes()) for p in prior.iterdir() if p.is_file()}}
@@ -900,9 +1018,10 @@ def run(argv=None):
         os.environ.pop('BONSAI_API_KEY',None)
         try: base=discover(args.base_url)
         except Exception: raise Incomplete('API unavailable. Start Bonsai LAN API and a fresh experiment')
-        device=DeviceRun(journal,identity,base,key,args.timeout,args.restart_timeout,args.ready_timeout)
+        device=(QuickDeviceRun if args.mode=='quick' else DeviceRun)(journal,identity,base,key,args.timeout,args.restart_timeout,args.ready_timeout)
         verdict,metrics=device.execute()
-        reason={'PASS':'All registered regressions and measured B8/B16/B8 gates passed. Candidate EXPERIMENT_PASS; default remains B8.',
+        reason={'QUICK_COMPLETE':'EXPLORATORY comparison complete; inspect Prefill, TTFT, decode and evidence limits. No Full PASS or automatic promotion.',
+                'PASS':'All registered regressions and measured B8/B16/B8 gates passed. Candidate EXPERIMENT_PASS; default remains B8.',
                 'FAIL':'A measured performance, memory or regression gate failed; candidate cannot be promoted.',
                 'INCOMPLETE':'Measurements or A1/A2 comparability are incomplete; candidate cannot be certified.'}[verdict]
     except Failure as exc: verdict='FAIL'; reason=str(exc)
@@ -916,8 +1035,9 @@ def run(argv=None):
             if resume_folder or args.previous_results:
                 journal.state['resume_rejected']=True
                 journal.state['resume_blocked']=True
+        if args.mode=='quick': journal.state['mode']='quick';journal.state['direction']=args.direction
         path=export(journal,verdict,reason,metrics)
         print('\nFINAL: '+verdict+' | '+reason+'\nEvidence ZIP: '+str(path.resolve()),flush=True)
-    return 0 if verdict=='PASS' else 1 if verdict=='FAIL' else 3
+    return 0 if verdict in ('PASS','QUICK_COMPLETE') else 1 if verdict=='FAIL' else 3
 
 if __name__=='__main__': sys.exit(run())
