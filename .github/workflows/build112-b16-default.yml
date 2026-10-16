@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - chatgpt/build112-b16-default
+      - lab/m5-nax-pq2-01
   workflow_dispatch:
 
 concurrency:
@@ -27,6 +28,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: M5-NAX-PQ2-01 candidate contract
+        if: github.ref_name == 'lab/m5-nax-pq2-01'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/rc126_build113_patch_prism_m5_nax_pq2.py
+          python3 tools/rc126_build113_m5_nax_pq2_contract_tests.py
+          git diff --check
 
       - name: Targeted Build112 policy test
         shell: bash
@@ -63,6 +73,13 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/rc126_build88_patch_prism_mmap_recovery.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp" "$PRISM_DIR/src/llama-context.cpp"
           python3 "$GITHUB_WORKSPACE/tools/rc126_build89_patch_prism_compact_scheduler.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD89_COMPACT_ALLOC_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
+            python3 "$GITHUB_WORKSPACE/tools/rc126_build113_patch_prism_m5_nax_pq2.py" "$PRISM_DIR"
+            grep -q 'BONSAI_M5_NAX_PQ2_01' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
+            grep -q 'kernel_mul_mm_nax_pq2_0_f32' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
+            grep -q 'ggml_metal_library_get_pipeline_mul_mm_nax_pq2' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-device.cpp"
+            grep -q 'use_pq2_nax' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
+          fi
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -138,18 +155,26 @@ jobs:
         run: |
           set -euo pipefail
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
-          IPA_NAME="BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa"
+          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
+            IPA_NAME="BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa"
+          else
+            IPA_NAME="BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa"
+          fi
           rm -rf build/ipa
           mkdir -p build/ipa/Payload
           ditto "$APP" build/ipa/Payload/BonsaiLab.app
           cat > build/BUILD_INFO.txt <<INFO
-          Bonsai iPad Lab v1 RC1.26 Build112 B16 Default Candidate
+          Bonsai iPad Lab v1 RC1.26 Build112 Candidate
           Status: source/build candidate; M5 device validation pending.
           Target: M5 iPad Pro 12GB, 32768 context, n_seq_max=1, KV reuse disabled.
           Runtime: B16 default; startup failure fallback B8 -> SAFE4.
           B24/B32: not enabled by this build.
           API/Vision/Streaming: unchanged.
           Prism source: $PRISM_COMMIT; inherited patches 83 through 89.
+          Experimental branch: $GITHUB_REF_NAME
+          M5-NAX-PQ2-01 is active only on lab/m5-nax-pq2-01.
+          Candidate kernel: kernel_mul_mm_nax_pq2_0_f32.
+          Candidate path: GGML_TYPE_PQ2_0 x F32 large prefill.
           Commit: $GITHUB_SHA
           Workflow run: $GITHUB_RUN_ID
           INFO
@@ -160,8 +185,10 @@ jobs:
       - name: Upload Build112 IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BonsaiLab-iPad-v1-RC1.26-Build112-B16-Default
+          name: BonsaiLab-iPad-v1-RC1.26-Build112-Candidate
           path: |
+            build/BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa
+            build/BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa.sha256
             build/BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa
             build/BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa.sha256
             build/BUILD_INFO.txt
