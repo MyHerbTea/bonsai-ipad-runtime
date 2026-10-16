@@ -3374,9 +3374,6 @@ struct ProductionView: View {
                 apiRuntime.batch = governorDecision.profile.batch
                 apiRuntime.ubatch = governorDecision.profile.ubatch
                 M5RuntimeGovernor.persist(governorDecision, source: source)
-            } else {
-                apiRuntime.batch = min(apiRuntime.batch, 8)
-                apiRuntime.ubatch = min(apiRuntime.ubatch, 8)
             }
             apiRuntime.gpuLayers = 99
             apiRuntime.offloadKQV = true
