@@ -969,12 +969,6 @@ struct ProductionView: View {
     @State private var quality = VisionQuality.standard
     @State private var answerLength = AnswerLengthPreset.standard
     @AppStorage("BonsaiBuild97APIMaxOutputTokens") private var apiMaxOutputTokens = 2048
-    @AppStorage("BonsaiBuild100PreferGuardedB16")
-    private var preferGuardedB16NextLaunch = false
-    @AppStorage("BonsaiBuild104PreferCertifiedB24")
-    private var preferCertifiedB24NextLaunch = false
-    @AppStorage("BonsaiBuild104TextKVCheckpointEnabled")
-    private var textKVCheckpointEnabled104 = false
     @State private var question = "请描述这张图片的主要内容。"
     @State private var inferenceMode = VisionInferenceMode.accelerated
     @AppStorage("BonsaiRC1232VisionPrefixKVReuseEnabled")
@@ -1084,7 +1078,7 @@ struct ProductionView: View {
                                 .font(.title2.bold())
                             Text("本地 · 离线 · Vision")
                                 .foregroundStyle(.secondary)
-                            Text("1.0 · RC1.26 Build 89 Compact Scheduler Metadata")
+                            Text("1.0 · RC1.26 Build112 B16 Default")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1326,32 +1320,12 @@ struct ProductionView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Build 105 · 32K 启动保护") {
-                    Toggle(
-                        "手动开启 Batch 24/24（下次冷启动）",
-                        isOn: $preferCertifiedB24NextLaunch
-                    )
-                    Text("Build105 默认关闭 B24 自动提升。仅当你确认本机已有 B8/B16/B24 认证、32K 单序列正常启动后才可手动打开；崩溃后自动回退 SAFE4。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Toggle(
-                        "32K 双序列 KV 检查点（已隔离）",
-                        isOn: $textKVCheckpointEnabled104
-                    )
-                    .disabled(true)
-                    Text("Build104 在 32K 原生初始化时发生闪退，因此 Build105 强制使用已认证的单序列模式，禁止双序列 KV，即使此前存储的开关为开。该功能需独立真实设备认证后才能恢复。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                Section("Build 100 · 32K 推理加速实验") {
-                    Toggle(
-                        "下次完整启动优先使用认证过的 Batch 16/16",
-                        isOn: $preferGuardedB16NextLaunch
-                    )
-                    Text("仅对 32768 Context 生效。必须已有 B8 与 B16 完成记录；否则仍使用安全基线。修改仅在彻底退出并重开 App 后生效。候选启动失败或上次尝试未完成时会锁定回退至 4/4，需显式确认恢复。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Text("实验版 · 不是 Stable；模型、Vision 和 OpenAI API 其余行为保留 Build 97 基线。")
+                Section("32K Runtime") {
+                    LabeledContent("默认", value: "B16 / 16·16")
+                    LabeledContent("启动失败回退", value: "B8 / 8·8 → SAFE4 / 4·4")
+                    LabeledContent("Context", value: "32768 · 单序列")
+                    LabeledContent("KV Reuse", value: "关闭")
+                    Text("B16 是 32K 文本 API 的默认性能路径；若模型/Context 启动失败才按顺序回退。B24/B32 不参与当前生产路径。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -3660,7 +3634,7 @@ struct ProductionView: View {
 
         RC126APIStartupLifecycle.begin(build: "112")
         busy = true
-        status = "正在执行 RC1.26 Build 89 Compact Scheduler Metadata + API 冷启动保护…"
+        status = "正在启动 Build112 B16 默认 API Runtime…"
         detail = """
         Build 60 的 API/视觉路径保持不变。
         Build 82 保留已验证 16K 路径；32K/64K 改为统一 Metal 后端：Q4 KV、mmap、全层 Metal、KQV/Op offload 与小 batch，避免 partial-offload graph split。
@@ -4490,7 +4464,7 @@ struct ProductionView: View {
                 await MainActor.run {
                     busy = false
                     status =
-                        "OpenAI API 启动失败（Build 89 · Context \(selectedAPIContext)）"
+                        "OpenAI API 启动失败（Build112 · Context \(selectedAPIContext)）"
                     detail = error.localizedDescription
                         + "\nB16 启动失败将回退到 B8；再次失败回退 SAFE4。"
                         + "\n可复制完整原生崩溃追踪以定位最后失败阶段。"
