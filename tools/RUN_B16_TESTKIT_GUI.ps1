@@ -97,7 +97,9 @@ if($mode.SelectedIndex -eq 0){
   Remove-Item Env:BONSAI_API_KEY -ErrorAction SilentlyContinue
   exit 2
  }
- $resumeArgs=if($fresh.Checked){@()}else{@('--resume-latest')}
+ # Assign arrays directly: PowerShell's `if` expression unwraps a 1-item array into a string.
+ $resumeArgs=@('--resume-latest')
+ if($fresh.Checked){$resumeArgs=@()}
  Write-Host $(if($fresh.Checked){'[QUICK] Fresh experiment explicitly selected.'}else{'[QUICK] Resume most recent safe restart checkpoint when present; no replay.'})
 }
 $form.Dispose()
