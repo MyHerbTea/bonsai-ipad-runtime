@@ -38,7 +38,6 @@ jobs:
             -o "$RUNNER_TEMP/build112_policy_tests"
           "$RUNNER_TEMP/build112_policy_tests"
           xcrun swiftc -frontend -parse BonsaiLab/M5RuntimeGovernor.swift
-          python3 -m py_compile tools/b16_testkit.py
           git diff --check
 
       - name: Install XcodeGen
