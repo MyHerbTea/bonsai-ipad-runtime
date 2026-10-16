@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - lab/m5-nax-pq2-01
       - codex/32k-prefill-b16
       - codex/build111-identity-fix
       - lab-v1-rc1-23-1-openai-multimodal-api
