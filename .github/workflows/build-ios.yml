@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - lab/m5-nax-pq2-01
       - codex/32k-prefill-b16
       - codex/build111-identity-fix
       - lab-v1-rc1-23-1-openai-multimodal-api
@@ -592,14 +591,6 @@ jobs:
           python3 tools/rc126_build89_compact_scheduler_contract_tests.py
           python3 -m py_compile tools/rc126_build89_patch_prism_compact_scheduler.py
 
-      - name: M5-NAX-PQ2-01 candidate contracts
-        if: github.ref_name == 'lab/m5-nax-pq2-01'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile tools/rc126_build113_patch_prism_m5_nax_pq2.py
-          python3 tools/rc126_build113_m5_nax_pq2_contract_tests.py
-
       - name: RC1.26 Build 91 observer-only trace contract
         shell: bash
         run: |
@@ -667,9 +658,6 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/rc126_build87_patch_prism_sched_context.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           python3 "$GITHUB_WORKSPACE/tools/rc126_build88_patch_prism_mmap_recovery.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp" "$PRISM_DIR/src/llama-context.cpp"
           python3 "$GITHUB_WORKSPACE/tools/rc126_build89_patch_prism_compact_scheduler.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
-          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
-            python3 "$GITHUB_WORKSPACE/tools/rc126_build113_patch_prism_m5_nax_pq2.py" "$PRISM_DIR"
-          fi
           grep -q 'BUILD89_COMPACT_ALLOC_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -685,12 +673,6 @@ jobs:
           grep -q 'BUILD84_CTX_MEMORY_BEGIN' "$PRISM_DIR/src/llama-context.cpp"
           grep -q 'BONSAI_BUILD84_TRACE_PATH' "$PRISM_DIR/src/bonsai-build84-trace.h"
           grep -q 'BUILD83_METAL_KV_LAYER_SHARD' "$PRISM_DIR/src/llama-kv-cache.cpp"
-          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
-            grep -q 'BONSAI_M5_NAX_PQ2_01' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
-            grep -q 'kernel_mul_mm_nax_pq2_0_f32' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
-            grep -q 'ggml_metal_library_get_pipeline_mul_mm_nax_pq2' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-device.cpp"
-            grep -q 'use_pq2_nax' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
-          fi
           git -C "$PRISM_DIR" diff --check
           cmake --version
           (
@@ -765,11 +747,7 @@ jobs:
         run: |
           set -euo pipefail
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
-          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
-            IPA_NAME="BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa"
-          else
-            IPA_NAME="BonsaiLab-v1-RC1.26-build111-b16-prefill-unsigned.ipa"
-          fi
+          IPA_NAME="BonsaiLab-v1-RC1.26-build111-b16-prefill-unsigned.ipa"
           rm -rf build/ipa
           mkdir -p build/ipa/Payload
           ditto "$APP" build/ipa/Payload/BonsaiLab.app
@@ -792,7 +770,6 @@ jobs:
           (cd build && shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256")
 
       - name: Package portable Build111 B16 Prefill TestKit
-        if: github.ref_name != 'lab/m5-nax-pq2-01'
         shell: bash
         run: |
           set -euo pipefail
