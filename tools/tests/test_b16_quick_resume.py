@@ -132,9 +132,16 @@ class QuickResumeTests(unittest.TestCase):
             # indefinitely mask the real safe scheduled-restart checkpoint.
             poison = kit.Journal(root / "B16-rejected", original.state["identity"])
             poison.state.update(status="INCOMPLETE", resume_blocked=True,
-                                resume_rejected=True)
+                                resume_rejected=True, mode="quick",
+                                direction="prefill-batch")
             poison.save()
-            self.assertEqual(kit.latest_checkpoint(root), original.folder)
+            self.assertEqual(kit.latest_checkpoint(root, quick=True), original.folder)
+            # Existing Full behavior must not skip a refusal envelope.
+            self.assertEqual(kit.latest_checkpoint(root), poison.folder)
+            # An envelope containing any uncertain request can never be skipped.
+            poison.state["inflight"]="B.quick_medium.0"
+            poison.save()
+            self.assertEqual(kit.latest_checkpoint(root, quick=True), poison.folder)
 
     def test_completed_quick_is_terminal_for_latest_checkpoint(self):
         with tempfile.TemporaryDirectory() as temp:
