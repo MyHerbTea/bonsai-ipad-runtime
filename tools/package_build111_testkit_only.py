@@ -44,10 +44,14 @@ def repackage(source, checkout, head_sha):
         raise ValueError("Tool commit must be a full SHA")
     with zipfile.ZipFile(source) as wrapper:
         names = verified_names(wrapper)
-        contents = [n for n in names if n.lower().endswith(".zip") and not n.endswith("/")]
-        if len(contents) != 1:
-            raise ValueError("Expected one original Build111 CI TestKit ZIP")
-        inner = wrapper.read(contents[0])
+        if PREFIX + "TestKitIdentity.json" in names:
+            # gh run download already unwraps the GitHub Actions artifact.
+            inner = source.read_bytes()
+        else:
+            contents = [n for n in names if n.lower().endswith(".zip") and not n.endswith("/")]
+            if len(contents) != 1:
+                raise ValueError("Expected original Build111 CI TestKit ZIP or single-ZIP wrapper")
+            inner = wrapper.read(contents[0])
     with zipfile.ZipFile(io.BytesIO(inner)) as original:
         names = verified_names(original)
         if not any(n == PREFIX + "TestKitIdentity.json" for n in names):
