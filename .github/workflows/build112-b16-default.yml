@@ -182,13 +182,25 @@ jobs:
           (cd build && shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256")
           cp build/BUILD_INFO.txt build/"$IPA_NAME".BUILD_INFO.txt
 
-      - name: Upload Build112 IPA artifact
+      - name: Upload Build112 M5-NAX-PQ2-01 artifact
+        if: github.ref_name == 'lab/m5-nax-pq2-01'
         uses: actions/upload-artifact@v4
         with:
-          name: BonsaiLab-iPad-v1-RC1.26-Build112-Candidate
+          name: BonsaiLab-iPad-v1-RC1.26-Build112-M5-NAX-PQ2-01
           path: |
             build/BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa
             build/BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa.sha256
+            build/BUILD_INFO.txt
+            build/build.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Build112 B16 Default artifact
+        if: github.ref_name == 'chatgpt/build112-b16-default'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BonsaiLab-iPad-v1-RC1.26-Build112-B16-Default
+          path: |
             build/BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa
             build/BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa.sha256
             build/BUILD_INFO.txt
