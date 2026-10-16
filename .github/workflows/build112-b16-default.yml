@@ -1,0 +1,171 @@
+name: Bonsai Build112 B16 Default Candidate
+
+on:
+  push:
+    branches:
+      - chatgpt/build112-b16-default
+  workflow_dispatch:
+
+concurrency:
+  group: bonsai-build112-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUILD_NUMBER: "112"
+  PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Targeted Build112 policy test
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun swiftc -swift-version 5 \
+            BonsaiLab/M5RuntimeGovernor.swift \
+            tools/rc126_build106_policy_tests.swift \
+            -o "$RUNNER_TEMP/build112_policy_tests"
+          "$RUNNER_TEMP/build112_policy_tests"
+          xcrun swiftc -frontend -parse BonsaiLab/M5RuntimeGovernor.swift
+          python3 -m py_compile tools/b16_testkit.py
+          git diff --check
+
+      - name: Install XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen --version
+
+      - name: Build patched Prism XCFramework
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRISM_DIR="/tmp/prism-build112"
+          rm -rf "$PRISM_DIR" Vendor/llama.xcframework
+          git clone --filter=blob:none https://github.com/PrismML-Eng/llama.cpp.git "$PRISM_DIR"
+          git -C "$PRISM_DIR" checkout "$PRISM_COMMIT"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build83_patch_prism_kv_sharding.py" "$PRISM_DIR/src/llama-kv-cache.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build84_patch_prism_native_trace.py" "$PRISM_DIR/src/llama-kv-cache.cpp" "$PRISM_DIR/src/llama-context.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build85_patch_prism_scheduler_trace.py" "$PRISM_DIR/src/llama-context.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build86_patch_prism_crash_forensics.py" "$PRISM_DIR/src/llama-context.cpp" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build87_patch_prism_sched_context.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build88_patch_prism_mmap_recovery.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp" "$PRISM_DIR/src/llama-context.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build89_patch_prism_compact_scheduler.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD89_COMPACT_ALLOC_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD86_FUSED_PROBE_BEGIN' "$PRISM_DIR/src/llama-context.cpp"
+          grep -q 'BUILD85_SCHED_ENTER' "$PRISM_DIR/src/llama-context.cpp"
+          grep -q 'BUILD84_KV_ALLOC_BEGIN' "$PRISM_DIR/src/llama-kv-cache.cpp"
+          grep -q 'BUILD83_METAL_KV_LAYER_SHARD' "$PRISM_DIR/src/llama-kv-cache.cpp"
+          git -C "$PRISM_DIR" diff --check
+          (
+            cd "$PRISM_DIR"
+            bash ./build-xcframework.sh ios-device
+          )
+          test -f "$PRISM_DIR/build-apple/llama.xcframework/ios-arm64/llama.framework/llama"
+          mkdir -p Vendor
+          ditto "$PRISM_DIR/build-apple/llama.xcframework" Vendor/llama.xcframework
+          test -f Vendor/llama.xcframework/ios-arm64/llama.framework/llama
+
+      - name: Embed exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > BonsaiLab/BonsaiCertificationBuildIdentity.swift <<EOF
+          enum BonsaiCertificationBuildIdentity {
+              static let sourceGitSHA = "$GITHUB_SHA"
+              static let workflowRunID = "$GITHUB_RUN_ID"
+          }
+          EOF
+
+      - name: Generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          test -d BonsaiLab.xcodeproj
+
+      - name: Release Xcode build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild \
+            -project BonsaiLab.xcodeproj \
+            -scheme BonsaiLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build | tee build.log
+
+      - name: Verify Build112 IPA inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
+          test -d "$APP"
+          test -f "$APP/BonsaiLab"
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Info.plist")" = "1.0.0"
+          test "$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")" = "$BUILD_NUMBER"
+          FRAMEWORK="$APP/Frameworks/llama.framework/llama"
+          test -f "$FRAMEWORK"
+          nm -gU "$FRAMEWORK" > build/llama-symbols.txt
+          grep -q '_mtmd_init_from_file' build/llama-symbols.txt
+          grep -q '_mtmd_helper_eval_chunks' build/llama-symbols.txt
+          grep -q '_llama_memory_seq_rm' build/llama-symbols.txt
+          grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
+          IPA_NAME="BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa"
+          rm -rf build/ipa
+          mkdir -p build/ipa/Payload
+          ditto "$APP" build/ipa/Payload/BonsaiLab.app
+          cat > build/BUILD_INFO.txt <<INFO
+          Bonsai iPad Lab v1 RC1.26 Build112 B16 Default Candidate
+          Status: source/build candidate; M5 device validation pending.
+          Target: M5 iPad Pro 12GB, 32768 context, n_seq_max=1, KV reuse disabled.
+          Runtime: B16 default; startup failure fallback B8 -> SAFE4.
+          B24/B32: not enabled by this build.
+          API/Vision/Streaming: unchanged.
+          Prism source: $PRISM_COMMIT; inherited patches 83 through 89.
+          Commit: $GITHUB_SHA
+          Workflow run: $GITHUB_RUN_ID
+          INFO
+          (cd build/ipa && zip -qry "../$IPA_NAME" Payload)
+          (cd build && shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256")
+          cp build/BUILD_INFO.txt build/"$IPA_NAME".BUILD_INFO.txt
+
+      - name: Upload Build112 IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BonsaiLab-iPad-v1-RC1.26-Build112-B16-Default
+          path: |
+            build/BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa
+            build/BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa.sha256
+            build/BUILD_INFO.txt
+            build/build.log
+          if-no-files-found: error
+          retention-days: 14
