@@ -331,7 +331,24 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
         nb01 % ggml_type_size(GGML_TYPE_PQ2_0) == 0;
 
     if (use_pq2_nax) {
+        // Emit only the first eligible dispatch per process, and only while the
+        // app's durable 32K native trace is enabled. Avoid perturbing prefill.
+        static std::atomic_flag bonsai_m5_nax_pq2_trace_once = ATOMIC_FLAG_INIT;
+        const bool trace_this_dispatch =
+            std::getenv("BONSAI_BUILD84_TRACE_PATH") != nullptr &&
+            !bonsai_m5_nax_pq2_trace_once.test_and_set(std::memory_order_relaxed);
+        if (trace_this_dispatch) {
+            bonsai_build84_trace(
+                "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED K=%d M=%d N=%d",
+                ne00, ne11, ne01);
+        }
+
         const auto pipeline = ggml_metal_library_get_pipeline_mul_mm_nax_pq2(lib);
+        if (trace_this_dispatch) {
+            bonsai_build84_trace(
+                "BUILD113_M5_NAX_PQ2_PIPELINE_READY ok=%d nr0=%d nr1=%d nsg=%d",
+                pipeline.pipeline != nullptr, pipeline.nr0, pipeline.nr1, pipeline.nsg);
+        }
 
         ggml_metal_kargs_mul_mm args = {
             /*.ne00 =*/ ne00,
@@ -364,10 +381,24 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
             ne12*ne13,
             32, pipeline.nsg, 1);
 
+        if (trace_this_dispatch) {
+            bonsai_build84_trace(
+                "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED tg0=%d tg1=%d tg2=%d",
+                (ne11 + pipeline.nr1 - 1)/pipeline.nr1,
+                (ne01 + pipeline.nr0 - 1)/pipeline.nr0,
+                ne12*ne13);
+        }
+
         return 1;
     }
 
 """
+    replace_once(
+        ops_cpp,
+        '#include <cstdlib>\n#include "ggml-metal-ops.h"\n',
+        '#include <cstdlib>\n#include <atomic>\n#include "ggml-metal-ops.h"\n#include "../../../src/bonsai-build84-trace.h"\n',
+    )
+
     replace_once(
         ops_cpp,
         "    if (ggml_metal_op_mul_mat_q1_0_pc_supported(op)) {\n",
@@ -383,7 +414,14 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
         impl_h: ["BONSAI_M5_NAX_PQ2_BM", "BONSAI_M5_NAX_PQ2_BN", "BONSAI_M5_NAX_PQ2_NSG"],
         device_h: ["ggml_metal_library_get_pipeline_mul_mm_nax_pq2"],
         device_cpp: ["kernel_mul_mm_nax_pq2_0_f32", "BONSAI_M5_NAX_PQ2_BN"],
-        ops_cpp: ["use_pq2_nax", "GGML_METAL_PQ2_NAX_DISABLE"],
+        ops_cpp: [
+            "use_pq2_nax",
+            "GGML_METAL_PQ2_NAX_DISABLE",
+            'bonsai-build84-trace.h',
+            "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED",
+            "BUILD113_M5_NAX_PQ2_PIPELINE_READY",
+            "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED",
+        ],
         mm_metal: [
             "kernel_mul_mm_nax_pq2_0_f32",
             "bonsai_m5_nax_pq2_decode4",

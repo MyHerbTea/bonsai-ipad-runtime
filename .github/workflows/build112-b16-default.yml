@@ -150,6 +150,14 @@ jobs:
           grep -q '_llama_memory_seq_rm' build/llama-symbols.txt
           grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
 
+      - name: Verify M5-NAX-PQ2 final framework binary
+        if: github.ref_name == 'lab/m5-nax-pq2-01'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
+          bash tools/rc126_build113_verify_m5_nax_pq2_binary.sh "$APP/Frameworks/llama.framework/llama" build
+
       - name: Package unsigned IPA
         shell: bash
         run: |
@@ -175,6 +183,8 @@ jobs:
           M5-NAX-PQ2-01 is active only on lab/m5-nax-pq2-01.
           Candidate kernel: kernel_mul_mm_nax_pq2_0_f32.
           Candidate path: GGML_TYPE_PQ2_0 x F32 large prefill.
+          Final binary: static kernel-source and host-dispatch checks recorded in M5_NAX_PQ2_BINARY_VERIFICATION.txt.
+          Runtime Metal compilation, device dispatch, numerical correctness, and performance remain unverified pending M5 device evidence.
           Commit: $GITHUB_SHA
           Workflow run: $GITHUB_RUN_ID
           INFO
@@ -191,6 +201,7 @@ jobs:
             build/BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa
             build/BonsaiLab-v1-RC1.26-build112-m5-nax-pq2-01-unsigned.ipa.sha256
             build/BUILD_INFO.txt
+            build/M5_NAX_PQ2_BINARY_VERIFICATION.txt
             build/build.log
           if-no-files-found: error
           retention-days: 14
