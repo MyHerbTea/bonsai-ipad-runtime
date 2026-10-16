@@ -999,8 +999,11 @@ def latest_checkpoint(output):
         if not path.exists(): continue
         try: saved=json.loads(path.read_text(encoding='utf-8'))
         except (OSError,ValueError): return folder
+        if saved.get('resume_rejected'):
+            # Rejected-resume diagnostic envelopes must never mask the original
+            # checkpoint. Inspect the next real experiment instead.
+            continue
         if saved.get('resume_blocked'): return folder
-        if saved.get('resume_rejected'): continue
         if saved.get('status') in ('PASS','FAIL','QUICK_COMPLETE'): return None
         return folder
     return None
@@ -1049,6 +1052,7 @@ def run(argv=None):
             resume_folder=None
             print('[ARCHIVE] Prior report/checkpoint preserved; verified empty pre-arm failure. Starting a NEW experiment, no replay.',flush=True)
         if resume_folder:
+            print('[CHECKPOINT] Examining '+resume_folder.name+'; no inference or arm POST while validating.',flush=True)
             try: saved=json.loads((resume_folder/'checkpoint.json').read_text(encoding='utf-8'))
             except (OSError,ValueError): raise Incomplete('CHECKPOINT_UNSAFE: unreadable prior checkpoint')
             if args.mode=='quick':
@@ -1085,6 +1089,14 @@ def run(argv=None):
     except Exception:
         verdict='INCOMPLETE'; reason='Unexpected runner failure; in-flight uncertainty preserved. No raw exception diagnostics are exported'
     finally:
+        if journal is None and resume_folder is not None and args.mode=='quick':
+            # A refused Quick checkpoint remains authoritative and unchanged.
+            # Never manufacture a new resume_blocked run that masks its origin.
+            print('[QUICK RESUME REFUSED] '+reason,flush=True)
+            print('[QUICK RESUME REFUSED] Original RESULTS/checkpoint preserved; no new result ZIP or HTTP request.',flush=True)
+            print('[ACTION] If a truly new experiment is intended, inspect current iPad batch/next-launch/SAFE4 state first, then select the GUI checkbox "Start a new experiment".',flush=True)
+            print('[ACTION] Do not edit/delete checkpoints, combine runs or replay an uncertain arm request.',flush=True)
+            return 3
         if journal is None:
             journal=Journal(folder,identity)
             if resume_folder or args.previous_results:
