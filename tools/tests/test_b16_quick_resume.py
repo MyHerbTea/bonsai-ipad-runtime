@@ -45,6 +45,18 @@ class QuickResumeTests(unittest.TestCase):
                 self.assertEqual(restored.state["restart"], old.state["restart"])
                 self.assertIsNone(restored.state["inflight"])
 
+    def test_quick_execute_skips_completed_stages_instead_of_replaying(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temp:
+            journal = self.journal(Path(temp), "A2")
+            device = kit.QuickDeviceRun(journal, journal.state["identity"], "http://test", "key")
+            with patch.object(device, "restart", side_effect=kit.Incomplete("stop at A2")) as restart, \
+                 patch.object(device, "performance") as performance:
+                with self.assertRaisesRegex(kit.Incomplete, "stop at A2"):
+                    device.execute()
+            restart.assert_called_once_with("A2", "BASELINE8")
+            performance.assert_not_called()
+
     def test_unsafe_quick_states_stop_before_loading(self):
         with tempfile.TemporaryDirectory() as temp:
             journal = self.journal(Path(temp))
