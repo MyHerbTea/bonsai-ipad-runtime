@@ -271,6 +271,12 @@ def registered_cases():
         names += [label+'.'+suffix for suffix in suffixes]
     return names
 
+def quick_cases():
+    return [label+'.'+suffix for label in ('A1','B','A2') for suffix in
+            (['arm_next_launch','restart','qualification','quick_liveness']+
+             ['quick_'+work+'.'+str(rep) for work in ('medium','long') for rep in range(2)]+
+             ['quick_decode.'+str(rep) for rep in range(2)])]
+
 def workload_fingerprint():
     return digest({'runner_sha256':digest(Path(__file__).read_bytes()),'workloads':workloads(),
         'fixtures':[digest(x) for x in public_images()],'cases':registered_cases()})
@@ -307,7 +313,7 @@ class Journal:
                 raise Incomplete('Completed or failed experiment cannot be resumed')
             cases=[]
             for event in saved.get('events',[]):
-                if event.get('state')!='PASS' or event.get('case') not in registered_cases() or event['case'] in cases:
+                if event.get('state')!='PASS' or event.get('case') not in (quick_cases() if saved.get('mode')=='quick' else registered_cases()) or event['case'] in cases:
                     raise Incomplete('Checkpoint contains unknown, duplicate, or incomplete cases')
                 cases.append(event['case'])
             self.state=saved
@@ -928,6 +934,9 @@ class QuickDeviceRun(DeviceRun):
 
     def execute(self):
         for label,arm in (('A1','BASELINE8'),('B','CANDIDATE16'),('A2','BASELINE8')):
+            if self.journal.completed(label+'.quick_liveness'):
+                print('[RESUME] '+label+' Quick stage complete; preserving measured cases.',flush=True)
+                continue
             self.restart(label,arm);self.performance(label)
         final=self.current(8)
         if final['process_id']!=self.evidence['process_id']: raise Incomplete('Final B8 process changed')
@@ -945,6 +954,42 @@ class QuickDeviceRun(DeviceRun):
         return status,metrics
 
 
+def quick_resume_boundary(saved):
+    """Resume only scheduled restarts after complete earlier Quick stages."""
+    if (saved.get('mode')!='quick' or saved.get('direction')!='prefill-batch' or
+        saved.get('status')!='INCOMPLETE' or saved.get('inflight') is not None):
+        raise Incomplete('CHECKPOINT_UNSAFE: Quick mode, status or in-flight uncertainty changed')
+    scheduled=saved.get('restart')
+    arms={'A1':'BASELINE8','B':'CANDIDATE16','A2':'BASELINE8'}
+    if (not isinstance(scheduled,dict) or scheduled.get('label') not in arms or
+        scheduled.get('arm')!=arms.get(scheduled.get('label')) or
+        scheduled.get('phase')!='scheduled' or saved.get('waiting_restart')!=scheduled.get('label')):
+        raise Incomplete('CHECKPOINT_UNSAFE: Quick restart schedule differs from expected stage')
+    label=scheduled['label']
+    events=saved.get('events')
+    measurements=saved.get('measurements')
+    if not isinstance(events,list) or not isinstance(measurements,list):
+        raise Incomplete('CHECKPOINT_UNSAFE: malformed Quick measurement records')
+    completed={event['case'] for event in events if isinstance(event,dict) and event.get('state')=='PASS' and isinstance(event.get('case'),str)}
+    stages=('A1','B','A2')
+    position=stages.index(label)
+    for prior in stages[:position]:
+        required={prior+'.'+case for case in ('arm_next_launch','restart','qualification','quick_liveness')}
+        required|={prior+'.quick_'+work+'.'+str(rep) for work in ('medium','long') for rep in range(2)}
+        required|={prior+'.quick_decode.'+str(rep) for rep in range(2)}
+        if {c for c in completed if c.startswith(prior+'.')}!=required:
+            raise Incomplete('CHECKPOINT_UNSAFE: preceding Quick stage incomplete; never replay inference')
+        if len([m for m in measurements if isinstance(m,dict) and m.get('arm')==prior])!=4:
+            raise Incomplete('CHECKPOINT_UNSAFE: preceding Quick measurements incomplete')
+    if {c for c in completed if c.startswith(label+'.')}!={label+'.arm_next_launch'}:
+        raise Incomplete('CHECKPOINT_UNSAFE: scheduled Quick stage contains completed inference')
+    if any(c.startswith(later+'.') for later in stages[position+1:] for c in completed):
+        raise Incomplete('CHECKPOINT_UNSAFE: future Quick stage already has recorded cases')
+    if any(not isinstance(m,dict) or m.get('arm') not in stages[:position] for m in measurements):
+        raise Incomplete('CHECKPOINT_UNSAFE: unexpected Quick measurements after restart boundary')
+    print('[RESUME] Verified Quick '+label+' scheduled restart; no earlier inference/arm POST replay.',flush=True)
+
+
 def latest_checkpoint(output):
     root=Path(output)
     if not root.exists(): return None
@@ -956,7 +1001,7 @@ def latest_checkpoint(output):
         except (OSError,ValueError): return folder
         if saved.get('resume_blocked'): return folder
         if saved.get('resume_rejected'): continue
-        if saved.get('status') in ('PASS','FAIL'): return None
+        if saved.get('status') in ('PASS','FAIL','QUICK_COMPLETE'): return None
         return folder
     return None
 
@@ -981,8 +1026,7 @@ def run(argv=None):
                 print(str(exc));return 3
         print(json.dumps(quick_registration() if args.mode=='quick' else dry_run(),indent=2)); return 0
     if args.mode=='quick':
-        if args.resume or args.previous_results: ap.error('Quick requires a fresh experiment; no checkpoint imports/resume')
-        args.resume_latest=False
+        if args.previous_results: ap.error('Quick cannot import external checkpoints; retain original RESULTS for safe restart resume')
         args.output=str(Path(args.output)/'QUICK-prefill-batch')
     stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
     identity_path=Path(__file__).resolve().parent/'TestKitIdentity.json'
@@ -1007,7 +1051,11 @@ def run(argv=None):
         if resume_folder:
             try: saved=json.loads((resume_folder/'checkpoint.json').read_text(encoding='utf-8'))
             except (OSError,ValueError): raise Incomplete('CHECKPOINT_UNSAFE: unreadable prior checkpoint')
-            if args.previous_results or saved.get('workload_fingerprint')!=workload_fingerprint() or (saved.get('stage')=='A1_restart' and saved.get('status')=='INCOMPLETE' and not saved.get('events')):
+            if args.mode=='quick':
+                quick_resume_boundary(saved)
+            elif saved.get('mode')=='quick':
+                raise Incomplete('CHECKPOINT_UNSAFE: Quick checkpoint cannot resume in Full mode')
+            if args.mode!='quick' and (args.previous_results or saved.get('workload_fingerprint')!=workload_fingerprint() or (saved.get('stage')=='A1_restart' and saved.get('status')=='INCOMPLETE' and not saved.get('events'))):
                 prior=archive_readonly_failure(resume_folder,Path(args.output)/'ARCHIVED_PREVIOUS',identity)
                 print('[ARCHIVE] Original result/checkpoint retained. Verified no uncertain inference/arm operation. Starting a NEW experiment with this runner.',flush=True)
                 resume_folder=None
