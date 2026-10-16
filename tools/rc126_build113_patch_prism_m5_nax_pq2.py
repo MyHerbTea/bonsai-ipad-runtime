@@ -326,7 +326,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
         ne12 == 1 && ne13 == 1 &&
         op->nb[0] == sizeof(float) &&
         op->nb[1] == op->ne[0]*sizeof(float) &&
-        nb01 % sizeof(block_pq2_0) == 0;
+        nb01 % ggml_type_size(GGML_TYPE_PQ2_0) == 0;
 
     if (use_pq2_nax) {
         const auto pipeline = ggml_metal_library_get_pipeline_mul_mm_nax_pq2(lib);
