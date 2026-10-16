@@ -3364,46 +3364,19 @@ struct ProductionView: View {
             apiRuntime.offloadKQV = true
             apiRuntime.opOffload = true
         case 32_768...:
-            // Build 81 proved that shrinking to 24 GPU layers still dies
-            // at llama_init_from_model(). On Apple unified memory the
-            // 8K/99-layer and 16K/56-layer Metal footprints were nearly
-            // identical, so partial offload is not buying discrete-GPU-like
-            // memory savings. Prefer one Metal backend and avoid CPU/Metal
-            // scheduler splits for the 32K experiment.
-            // Build93: only 32768 enters the guarded 8/8 candidate. A
-            // prior incomplete candidate or startup error selects 4/4.
-            // Other 32K+ contexts retain their Build92 shape.
-            // Build105 recovery is a pure Foundation policy, covered by
-            // executable Swift tests. Never enter the native context before
-            // quarantining Build104's unsafe persistent settings.
-            Build105StartupRecovery.apply()
-            Build94BatchExperiment.bindCertificationIdentity(
-                BonsaiCertificationBuildIdentity.sourceGitSHA
-            )
-            let arm = Build94BatchExperiment.select(context: context)
-            let batchCap: Int
-            switch arm {
-            case .candidate16: batchCap = 16
-            case .candidate24: batchCap = 24
-            case .candidate32: batchCap = 32
-            case .baseline8: batchCap = 8
-            default: batchCap = 4
-            }
+            // Build112: the 32K text path has one small policy:
+            // B16 is the default; startup failure falls back to B8, then SAFE4.
+            // Historical Build93/94 certification/checkpoint state is ignored.
             if context == 32_768 {
-                // Build102: selected SAFE4/B8/B16/B24/B32 is the ACTUAL
-                // llama context batch, even when earlier Phase2
-                // latches contain a different historical experiment arm.
-                // Never change allocated context parameters mid-request.
-                // Build106: governed at context creation, never per request.
                 let governorDecision = M5RuntimeGovernor.decide(
-                    arm: arm ?? .safe4, context: context
+                    context: context
                 )
                 apiRuntime.batch = governorDecision.profile.batch
                 apiRuntime.ubatch = governorDecision.profile.ubatch
                 M5RuntimeGovernor.persist(governorDecision, source: source)
             } else {
-                apiRuntime.batch = min(apiRuntime.batch, batchCap)
-                apiRuntime.ubatch = min(apiRuntime.ubatch, batchCap)
+                apiRuntime.batch = min(apiRuntime.batch, 8)
+                apiRuntime.ubatch = min(apiRuntime.ubatch, 8)
             }
             apiRuntime.gpuLayers = 99
             apiRuntime.offloadKQV = true
@@ -3838,7 +3811,6 @@ struct ProductionView: View {
                         )
                     }
 
-                    let b16QualificationContext = B16RuntimeEvidence.contextIDForQualification()
                     let requestResourceSnapshotStart =
                         await sharedEngine
                             .apiAdmissionSnapshot()
@@ -4432,15 +4404,9 @@ struct ProductionView: View {
 
                     let textGenerationEnd =
                         RC1232PerformanceDiagnostics.now()
-                    let qualificationArm = Build94BatchExperiment.snapshot()["active_arm"] as? String
-                    let qualificationBatch = ["BASELINE8": 8, "CANDIDATE16": 16, "CANDIDATE24": 24, "CANDIDATE32": 32][qualificationArm ?? ""]
-                    if let qualificationBatch, B16RuntimeEvidence.qualifiesTextCompletion(
-                        contextID: b16QualificationContext, batch: qualificationBatch
-                    ) {
-                        Build94BatchExperiment.noteTextSuccess(
-                            promptTokens: metrics.promptTokens
-                        )
-                    }
+                    M5RuntimeGovernor.noteTextSuccess(
+                        promptTokens: metrics.promptTokens
+                    )
 
                     let resourceSnapshot =
                         await sharedEngine
@@ -4499,7 +4465,7 @@ struct ProductionView: View {
                 await MainActor.run {
                     busy = false
                     status =
-                        "RC1.26 Build 102 Prefill 16/24/32 独立实验 API Runtime 已就绪"
+                        "Build112 B16 默认 API Runtime 已就绪"
                     let profileText =
                         selectedAPIRuntimeProfile
                             .uppercased()
@@ -4515,7 +4481,7 @@ struct ProductionView: View {
                         + String(selectedAPIContext)
                 }
             } catch {
-                Build94BatchExperiment.noteStartupFailure()
+                M5RuntimeGovernor.noteStartupFailure()
                 RC126APIStartupLifecycle.fail(error)
                 apiServer.stop()
                 await sharedEngine.unloadAll()
@@ -4525,7 +4491,7 @@ struct ProductionView: View {
                     status =
                         "OpenAI API 启动失败（Build 89 · Context \(selectedAPIContext)）"
                     detail = error.localizedDescription
-                        + "\n32K 初始化未完成时，建议选择已验证的 16384 Context。"
+                        + "\nB16 启动失败将回退到 B8；再次失败回退 SAFE4。"
                         + "\n可复制完整原生崩溃追踪以定位最后失败阶段。"
                 }
             }
