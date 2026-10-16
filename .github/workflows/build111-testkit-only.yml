@@ -1,0 +1,62 @@
+name: Build111 TestKit-only checks
+
+on:
+  pull_request:
+    branches:
+      - codex/build111-quick-validated
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gui-argv-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate actual GUI argument splatting on Windows PowerShell 5.1
+        shell: powershell
+        run: ./tools/tests/test_b16_gui_args.ps1
+
+  testkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: TestKit regression tests (no IPA build)
+        run: python -m unittest discover -s tools/tests -p 'test_b16_*.py' -v
+      - name: Download original Build111 CI artifact (verified identity)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/source"
+          gh run download 38770477174 --repo "$GITHUB_REPOSITORY" \
+            --name BonsaiLab-iPad-v1-RC1.26-Build111-B16-Prefill-TestKit \
+            --dir "$RUNNER_TEMP/source"
+          test -f "$RUNNER_TEMP/source/BonsaiLab-v1-RC1.26-Build111-B16-Prefill-TestKit.zip"
+      - name: Build portable Windows TestKit-only ZIP (never build IPA)
+        env:
+          TOOL_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python tools/package_build111_testkit_only.py \
+            --original "$RUNNER_TEMP/source/BonsaiLab-v1-RC1.26-Build111-B16-Prefill-TestKit.zip" \
+            --checkout . --commit "$TOOL_SHA" \
+            --output "$RUNNER_TEMP/BONSAI_BUILD111_QUICK_RESTART_TESTKIT_ONLY.zip"
+          mkdir -p "$RUNNER_TEMP/kit"
+          python -c "import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
+            "$RUNNER_TEMP/BONSAI_BUILD111_QUICK_RESTART_TESTKIT_ONLY.zip" "$RUNNER_TEMP/kit"
+          python "$RUNNER_TEMP/kit/b16_testkit.py" --mode quick --dry-run
+      - name: Upload verified tool-only ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bonsai-Build111-Quick-Restart-TestKit-only
+          path: |
+            ${{ runner.temp }}/BONSAI_BUILD111_QUICK_RESTART_TESTKIT_ONLY.zip
+            ${{ runner.temp }}/BONSAI_BUILD111_QUICK_RESTART_TESTKIT_ONLY.zip.sha256
+          if-no-files-found: error
+          retention-days: 14

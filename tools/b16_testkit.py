@@ -271,6 +271,12 @@ def registered_cases():
         names += [label+'.'+suffix for suffix in suffixes]
     return names
 
+def quick_cases():
+    return [label+'.'+suffix for label in ('A1','B','A2') for suffix in
+            (['arm_next_launch','restart','qualification','quick_liveness']+
+             ['quick_'+work+'.'+str(rep) for work in ('medium','long') for rep in range(2)]+
+             ['quick_decode.'+str(rep) for rep in range(2)])]
+
 def workload_fingerprint():
     return digest({'runner_sha256':digest(Path(__file__).read_bytes()),'workloads':workloads(),
         'fixtures':[digest(x) for x in public_images()],'cases':registered_cases()})
@@ -307,7 +313,7 @@ class Journal:
                 raise Incomplete('Completed or failed experiment cannot be resumed')
             cases=[]
             for event in saved.get('events',[]):
-                if event.get('state')!='PASS' or event.get('case') not in registered_cases() or event['case'] in cases:
+                if event.get('state')!='PASS' or event.get('case') not in (quick_cases() if saved.get('mode')=='quick' else registered_cases()) or event['case'] in cases:
                     raise Incomplete('Checkpoint contains unknown, duplicate, or incomplete cases')
                 cases.append(event['case'])
             self.state=saved
@@ -567,7 +573,7 @@ class DeviceRun:
             'VISION_HASH_PENDING':'Waiting for Vision identity hashing; keep the iPad app open.',
             'NATIVE_CONTEXT_MISSING':'Native context proof not present yet; waiting for API startup.',
             'ASSET_MISSING':'Required Vision identity is unavailable; API cannot distinguish unselected, unreadable or missing asset.',
-            'RESTART_REQUIRED':'Same iPad process; fully close the app, reopen and start API.',
+            'RESTART_REQUIRED':'Old iPad process still active: stopping API or returning Home is not a full app restart. Swipe Bonsai away in the iPad app switcher, reopen, then start API.',
             'MODEL_HASH_FAILED':'Model identity failed; retain the safe phase/error evidence. No inference or arm was sent.',
             'VISION_HASH_FAILED':'Vision identity failed; retain the safe phase/error evidence. No inference or arm was sent.',
             'READY':'Assets and native context are ready.'}
@@ -587,7 +593,10 @@ class DeviceRun:
                     validate_evidence(obj,self.identity,observed if same_process else batch if batch is not None else observed)
                     validate_assets(obj)
                     if observed not in (8,16): raise Incomplete('Native context is not B8/B16')
-                    if previous and obj.get('process_id')==previous.get('process_id'): state='RESTART_REQUIRED'
+                    if previous and obj.get('process_id')==previous.get('process_id'):
+                        state='RESTART_REQUIRED'
+                        flags['observed_batch']=observed
+                        flags['required_batch']=batch
                     elif previous: validate_evidence(obj,self.identity,batch,previous)
             except ReadinessError as exc: state=(last or 'NO_RESPONSE') if exc.code=='READY_TIMEOUT' else exc.code
             except Incomplete as exc:
@@ -654,8 +663,12 @@ class DeviceRun:
                 self.journal.state['restart']={'label':label,'arm':arm,'phase':'scheduled','previous':safe_evidence(old)}
                 self.journal.state['waiting_restart']=label
                 self.journal.finish(label+'.arm_next_launch',requested_arm=arm)
-            print('\n['+label+'] Fully close Bonsai from the iPad app switcher, reopen it, and start API. The key is retained.',flush=True)
-            input('Press Enter after full iPad process restart (Ctrl+C ends INCOMPLETE): ')
+            previous_batch=(old.get('native_context') or {}).get('batch')
+            print(f'\n[RESTART HANDOFF] {label}: B{previous_batch} -> required B{batch}; old process={old.get("process_id", "unknown")}',flush=True)
+            print('On iPad: OPEN APP SWITCHER, swipe away Bonsai completely, reopen it and start LAN API.',flush=True)
+            print('Returning Home or stopping/restarting API does NOT restart the iPad app process.',flush=True)
+            print('Keep the same RESULTS directory for safe resume; do not start a new experiment.',flush=True)
+            input(f'Press Enter only after a NEW iPad process is running B{batch} (Ctrl+C preserves INCOMPLETE): ')
             new=self.wait_ready(batch,previous=old,timeout=self.restart_timeout)
             validate_launch(self.get('/debug/build94/launch'),arm)
             self.journal.state['restart']=None;self.journal.state['waiting_restart']=None
@@ -921,6 +934,9 @@ class QuickDeviceRun(DeviceRun):
 
     def execute(self):
         for label,arm in (('A1','BASELINE8'),('B','CANDIDATE16'),('A2','BASELINE8')):
+            if self.journal.completed(label+'.quick_liveness'):
+                print('[RESUME] '+label+' Quick stage complete; preserving measured cases.',flush=True)
+                continue
             self.restart(label,arm);self.performance(label)
         final=self.current(8)
         if final['process_id']!=self.evidence['process_id']: raise Incomplete('Final B8 process changed')
@@ -938,7 +954,43 @@ class QuickDeviceRun(DeviceRun):
         return status,metrics
 
 
-def latest_checkpoint(output):
+def quick_resume_boundary(saved):
+    """Resume only scheduled restarts after complete earlier Quick stages."""
+    if (saved.get('mode')!='quick' or saved.get('direction')!='prefill-batch' or
+        saved.get('status')!='INCOMPLETE' or saved.get('inflight') is not None):
+        raise Incomplete('CHECKPOINT_UNSAFE: Quick mode, status or in-flight uncertainty changed')
+    scheduled=saved.get('restart')
+    arms={'A1':'BASELINE8','B':'CANDIDATE16','A2':'BASELINE8'}
+    if (not isinstance(scheduled,dict) or scheduled.get('label') not in arms or
+        scheduled.get('arm')!=arms.get(scheduled.get('label')) or
+        scheduled.get('phase')!='scheduled' or saved.get('waiting_restart')!=scheduled.get('label')):
+        raise Incomplete('CHECKPOINT_UNSAFE: Quick restart schedule differs from expected stage')
+    label=scheduled['label']
+    events=saved.get('events')
+    measurements=saved.get('measurements')
+    if not isinstance(events,list) or not isinstance(measurements,list):
+        raise Incomplete('CHECKPOINT_UNSAFE: malformed Quick measurement records')
+    completed={event['case'] for event in events if isinstance(event,dict) and event.get('state')=='PASS' and isinstance(event.get('case'),str)}
+    stages=('A1','B','A2')
+    position=stages.index(label)
+    for prior in stages[:position]:
+        required={prior+'.'+case for case in ('arm_next_launch','restart','qualification','quick_liveness')}
+        required|={prior+'.quick_'+work+'.'+str(rep) for work in ('medium','long') for rep in range(2)}
+        required|={prior+'.quick_decode.'+str(rep) for rep in range(2)}
+        if {c for c in completed if c.startswith(prior+'.')}!=required:
+            raise Incomplete('CHECKPOINT_UNSAFE: preceding Quick stage incomplete; never replay inference')
+        if len([m for m in measurements if isinstance(m,dict) and m.get('arm')==prior])!=4:
+            raise Incomplete('CHECKPOINT_UNSAFE: preceding Quick measurements incomplete')
+    if {c for c in completed if c.startswith(label+'.')}!={label+'.arm_next_launch'}:
+        raise Incomplete('CHECKPOINT_UNSAFE: scheduled Quick stage contains completed inference')
+    if any(c.startswith(later+'.') for later in stages[position+1:] for c in completed):
+        raise Incomplete('CHECKPOINT_UNSAFE: future Quick stage already has recorded cases')
+    if any(not isinstance(m,dict) or m.get('arm') not in stages[:position] for m in measurements):
+        raise Incomplete('CHECKPOINT_UNSAFE: unexpected Quick measurements after restart boundary')
+    print('[RESUME] Verified Quick '+label+' scheduled restart; no earlier inference/arm POST replay.',flush=True)
+
+
+def latest_checkpoint(output, *, quick=False):
     root=Path(output)
     if not root.exists(): return None
     candidates=sorted((p for p in root.glob('B16-*') if p.is_dir()),key=lambda p:p.stat().st_mtime,reverse=True)
@@ -947,9 +999,18 @@ def latest_checkpoint(output):
         if not path.exists(): continue
         try: saved=json.loads(path.read_text(encoding='utf-8'))
         except (OSError,ValueError): return folder
+        if quick and saved.get('resume_rejected') is True:
+            # Old Quick runners generated an EMPTY blocked diagnostic after a
+            # refused resume. Skip only that precise no-operation envelope.
+            # Never skip uncertainty, recorded inference, an arm or Full runs.
+            if (saved.get('resume_blocked') is True and saved.get('mode')=='quick'
+                and saved.get('status')=='INCOMPLETE' and saved.get('inflight') is None
+                and not saved.get('events') and not saved.get('measurements')
+                and not saved.get('restart') and not saved.get('arm_evidence')):
+                continue
+            return folder
         if saved.get('resume_blocked'): return folder
-        if saved.get('resume_rejected'): continue
-        if saved.get('status') in ('PASS','FAIL'): return None
+        if saved.get('status') in ('PASS','FAIL','QUICK_COMPLETE'): return None
         return folder
     return None
 
@@ -974,8 +1035,7 @@ def run(argv=None):
                 print(str(exc));return 3
         print(json.dumps(quick_registration() if args.mode=='quick' else dry_run(),indent=2)); return 0
     if args.mode=='quick':
-        if args.resume or args.previous_results: ap.error('Quick requires a fresh experiment; no checkpoint imports/resume')
-        args.resume_latest=False
+        if args.previous_results: ap.error('Quick cannot import external checkpoints; retain original RESULTS for safe restart resume')
         args.output=str(Path(args.output)/'QUICK-prefill-batch')
     stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
     identity_path=Path(__file__).resolve().parent/'TestKitIdentity.json'
@@ -987,7 +1047,7 @@ def run(argv=None):
         try: identity=validate_identity(json.loads(identity_path.read_text(encoding='utf-8-sig')))
         except (OSError,ValueError): raise Incomplete('Generated TestKitIdentity.json missing or malformed; use the complete CI TestKit ZIP')
         if identity['source_git_sha']!=tool['installed_ipa_source_sha']: raise ReadinessError('VERSION_MISMATCH')
-        resume_folder=Path(args.resume) if args.resume else latest_checkpoint(args.output) if args.resume_latest else None
+        resume_folder=Path(args.resume) if args.resume else latest_checkpoint(args.output,quick=(args.mode=='quick')) if args.resume_latest else None
         prior=None
         if args.previous_results:
             if args.resume: raise Incomplete('Select either current resume or previous RESULTS, not both')
@@ -998,9 +1058,14 @@ def run(argv=None):
             resume_folder=None
             print('[ARCHIVE] Prior report/checkpoint preserved; verified empty pre-arm failure. Starting a NEW experiment, no replay.',flush=True)
         if resume_folder:
+            print('[CHECKPOINT] Examining '+resume_folder.name+'; no inference or arm POST while validating.',flush=True)
             try: saved=json.loads((resume_folder/'checkpoint.json').read_text(encoding='utf-8'))
             except (OSError,ValueError): raise Incomplete('CHECKPOINT_UNSAFE: unreadable prior checkpoint')
-            if args.previous_results or saved.get('workload_fingerprint')!=workload_fingerprint() or (saved.get('stage')=='A1_restart' and saved.get('status')=='INCOMPLETE' and not saved.get('events')):
+            if args.mode=='quick':
+                quick_resume_boundary(saved)
+            elif saved.get('mode')=='quick':
+                raise Incomplete('CHECKPOINT_UNSAFE: Quick checkpoint cannot resume in Full mode')
+            if args.mode!='quick' and (args.previous_results or saved.get('workload_fingerprint')!=workload_fingerprint() or (saved.get('stage')=='A1_restart' and saved.get('status')=='INCOMPLETE' and not saved.get('events'))):
                 prior=archive_readonly_failure(resume_folder,Path(args.output)/'ARCHIVED_PREVIOUS',identity)
                 print('[ARCHIVE] Original result/checkpoint retained. Verified no uncertain inference/arm operation. Starting a NEW experiment with this runner.',flush=True)
                 resume_folder=None
@@ -1030,6 +1095,14 @@ def run(argv=None):
     except Exception:
         verdict='INCOMPLETE'; reason='Unexpected runner failure; in-flight uncertainty preserved. No raw exception diagnostics are exported'
     finally:
+        if journal is None and resume_folder is not None and args.mode=='quick':
+            # A refused Quick checkpoint remains authoritative and unchanged.
+            # Never manufacture a new resume_blocked run that masks its origin.
+            print('[QUICK RESUME REFUSED] '+reason,flush=True)
+            print('[QUICK RESUME REFUSED] Original RESULTS/checkpoint preserved; no new result ZIP or HTTP request.',flush=True)
+            print('[ACTION] If a truly new experiment is intended, inspect current iPad batch/next-launch/SAFE4 state first, then select the GUI checkbox "Start a new experiment".',flush=True)
+            print('[ACTION] Do not edit/delete checkpoints, combine runs or replay an uncertain arm request.',flush=True)
+            return 3
         if journal is None:
             journal=Journal(folder,identity)
             if resume_folder or args.previous_results:

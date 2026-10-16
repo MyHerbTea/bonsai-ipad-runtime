@@ -90,7 +90,18 @@ $resumeArgs=@('--resume-latest')
 if($fresh.Checked){$resumeArgs=@()}
 if($previous.Text.Trim()){$resumeArgs=@('--previous-results',$previous.Text.Trim())}
 $modeArgs=@('--mode','full')
-if($mode.SelectedIndex -eq 0){$modeArgs=@('--mode','quick','--direction','prefill-batch');$resumeArgs=@()}
+if($mode.SelectedIndex -eq 0){
+ $modeArgs=@('--mode','quick','--direction','prefill-batch')
+ if($previous.Text.Trim()){
+  Write-Host '[ERROR] Quick cannot import old result ZIPs; keep the original RESULTS folder for safe checkpoint resume.'
+  Remove-Item Env:BONSAI_API_KEY -ErrorAction SilentlyContinue
+  exit 2
+ }
+ # Assign arrays directly: PowerShell's `if` expression unwraps a 1-item array into a string.
+ $resumeArgs=@('--resume-latest')
+ if($fresh.Checked){$resumeArgs=@()}
+ Write-Host $(if($fresh.Checked){'[QUICK] Fresh experiment explicitly selected.'}else{'[QUICK] Resume most recent safe restart checkpoint when present; no replay.'})
+}
 $form.Dispose()
 $exe=$null;$py=@()
 if(Test-Path -LiteralPath (Join-Path $root 'python\python.exe')){$exe=Join-Path $root 'python\python.exe';$py=@('-u')} elseif(Test-Path -LiteralPath (Join-Path $root 'runtime\python.exe')){$exe=Join-Path $root 'runtime\python.exe';$py=@('-u')} elseif(Get-Command 'py.exe' -ErrorAction SilentlyContinue){$exe='py.exe';$py=@('-3','-u')}
