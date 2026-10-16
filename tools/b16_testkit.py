@@ -990,7 +990,7 @@ def quick_resume_boundary(saved):
     print('[RESUME] Verified Quick '+label+' scheduled restart; no earlier inference/arm POST replay.',flush=True)
 
 
-def latest_checkpoint(output):
+def latest_checkpoint(output, *, quick=False):
     root=Path(output)
     if not root.exists(): return None
     candidates=sorted((p for p in root.glob('B16-*') if p.is_dir()),key=lambda p:p.stat().st_mtime,reverse=True)
@@ -999,10 +999,16 @@ def latest_checkpoint(output):
         if not path.exists(): continue
         try: saved=json.loads(path.read_text(encoding='utf-8'))
         except (OSError,ValueError): return folder
-        if saved.get('resume_rejected'):
-            # Rejected-resume diagnostic envelopes must never mask the original
-            # checkpoint. Inspect the next real experiment instead.
-            continue
+        if quick and saved.get('resume_rejected') is True:
+            # Old Quick runners generated an EMPTY blocked diagnostic after a
+            # refused resume. Skip only that precise no-operation envelope.
+            # Never skip uncertainty, recorded inference, an arm or Full runs.
+            if (saved.get('resume_blocked') is True and saved.get('mode')=='quick'
+                and saved.get('status')=='INCOMPLETE' and saved.get('inflight') is None
+                and not saved.get('events') and not saved.get('measurements')
+                and not saved.get('restart') and not saved.get('arm_evidence')):
+                continue
+            return folder
         if saved.get('resume_blocked'): return folder
         if saved.get('status') in ('PASS','FAIL','QUICK_COMPLETE'): return None
         return folder
@@ -1041,7 +1047,7 @@ def run(argv=None):
         try: identity=validate_identity(json.loads(identity_path.read_text(encoding='utf-8-sig')))
         except (OSError,ValueError): raise Incomplete('Generated TestKitIdentity.json missing or malformed; use the complete CI TestKit ZIP')
         if identity['source_git_sha']!=tool['installed_ipa_source_sha']: raise ReadinessError('VERSION_MISMATCH')
-        resume_folder=Path(args.resume) if args.resume else latest_checkpoint(args.output) if args.resume_latest else None
+        resume_folder=Path(args.resume) if args.resume else latest_checkpoint(args.output,quick=(args.mode=='quick')) if args.resume_latest else None
         prior=None
         if args.previous_results:
             if args.resume: raise Incomplete('Select either current resume or previous RESULTS, not both')
