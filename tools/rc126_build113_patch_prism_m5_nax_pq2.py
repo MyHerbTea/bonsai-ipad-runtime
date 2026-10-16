@@ -314,6 +314,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
     const bool use_pq2_nax =
         !pq2_nax_disabled &&
         props_dev->has_tensor &&
+        props_dev->has_simdgroup_mm &&
         props_dev->device_id >= GGML_METAL_DEVICE_M5 &&
         op->src[0]->type == GGML_TYPE_PQ2_0 &&
         op->src[1]->type == GGML_TYPE_F32 &&
@@ -324,6 +325,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
         ne01 >= 128 &&
         ne02 == 1 && ne03 == 1 &&
         ne12 == 1 && ne13 == 1 &&
+        nb10 == sizeof(float) &&
         op->nb[0] == sizeof(float) &&
         op->nb[1] == op->ne[0]*sizeof(float) &&
         nb01 % ggml_type_size(GGML_TYPE_PQ2_0) == 0;
@@ -353,6 +355,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
         ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[0]), 1);
         ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[1]), 2);
         ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op),         3);
+        ggml_metal_encoder_set_threadgroup_memory_size(enc, pipeline.smem, 0);
 
         ggml_metal_encoder_dispatch_threadgroups(
             enc,
