@@ -33,6 +33,7 @@ require(
     "bonsai-build84-trace.h",
     "bonsai_m5_nax_pq2_trace",
     "BONSAI_M5_NAX_PQ2_TRACE_PATH",
+    'std::getenv("BONSAI_M5_NAX_PQ2_TRACE_PATH") != nullptr',
 )
 
 require(

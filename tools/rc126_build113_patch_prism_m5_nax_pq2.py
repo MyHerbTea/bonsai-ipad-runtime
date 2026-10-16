@@ -332,10 +332,10 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
 
     if (use_pq2_nax) {
         // Emit only the first eligible dispatch per process, and only while the
-        // app's durable 32K native trace is enabled. Avoid perturbing prefill.
+        // dedicated NAX trace target is enabled. Avoid perturbing prefill.
         static std::atomic_flag bonsai_m5_nax_pq2_trace_once = ATOMIC_FLAG_INIT;
         const bool trace_this_dispatch =
-            std::getenv("BONSAI_BUILD84_TRACE_PATH") != nullptr &&
+            std::getenv("BONSAI_M5_NAX_PQ2_TRACE_PATH") != nullptr &&
             !bonsai_m5_nax_pq2_trace_once.test_and_set(std::memory_order_relaxed);
         if (trace_this_dispatch) {
             bonsai_m5_nax_pq2_trace(
