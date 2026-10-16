@@ -41,7 +41,6 @@ enum M5RuntimeGovernor {
     static let fallbackKey = "BonsaiBuild112FallbackProfile"
 
     static func decide(
-        arm: Build94BatchExperiment.Arm? = nil,
         context: Int,
         defaults: UserDefaults = .standard
     ) -> M5RuntimeDecision {
