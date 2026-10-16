@@ -59,6 +59,19 @@ class ReadinessTests(LoopbackFixture, unittest.TestCase):
         self.assertEqual(self.state['calls'],0);self.assertEqual(len(self.state['arms']),1)
         self.assertNotIn('PRIVATE_MODEL_PATH',json.dumps(self.journal.state))
 
+    def test_restart_handoff_displays_phase_expected_batch_and_previous_process(self):
+        import contextlib, io
+        previous_id=self.state['evidence']['process_id']
+        output=io.StringIO()
+        with patch('builtins.input',self.restart_ipad),patch.object(kit.time,'sleep'),contextlib.redirect_stdout(output):
+            self.device.restart('A1','BASELINE8')
+        message=output.getvalue()
+        self.assertIn('[RESTART HANDOFF] A1: B8 -> required B8',message)
+        self.assertIn('old process='+previous_id,message)
+        self.assertIn('swipe away Bonsai completely',message)
+        self.assertIn('do not start a new experiment',message)
+        self.assertEqual(len(self.state['arms']),1)
+
     def test_read_only_timeout_retains_safe_diagnostics_and_no_post(self):
         self.state['evidence']=self.pending('model')
         with self.assertRaisesRegex(kit.Incomplete,'READY_TIMEOUT'):
