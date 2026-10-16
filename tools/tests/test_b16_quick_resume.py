@@ -87,6 +87,55 @@ class QuickResumeTests(unittest.TestCase):
         self.assertNotIn("B.strict_sse", names)
         self.assertIn("B.strict_sse", kit.registered_cases())
 
+    def test_refused_auto_resume_does_not_create_a_poisoned_checkpoint(self):
+        import contextlib
+        import io
+        import os
+        import json
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp:
+            root = Path(temp)
+            output = root / "RESULTS" / "QUICK-prefill-batch"
+            old = self.journal(output, "B")
+            old.state["restart"] = None  # A prior pre-arm/error checkpoint is not resumable.
+            old.save()
+            kit.export(old, "INCOMPLETE", "Pre-arm failure; no next-launch request")
+            original = old.path.read_bytes()
+            identity = old.state["identity"]
+            original_read = Path.read_text
+
+            def read(path, *args, **kwargs):
+                if path.name == "TestKitIdentity.json":
+                    return json.dumps(identity)
+                return original_read(path, *args, **kwargs)
+
+            with patch.object(kit, "verify_tool_identity",
+                              return_value={"tool_source_git_sha": "b"*40,
+                                            "installed_ipa_source_sha": identity["source_git_sha"]}), \
+                 patch.object(Path, "read_text", read), \
+                 patch.dict(os.environ, {"BONSAI_API_KEY": "DO_NOT_PRINT"}), \
+                 contextlib.redirect_stdout(io.StringIO()) as output_text:
+                exit_code = kit.run(["--mode", "quick", "--resume-latest",
+                                     "--output", str(root / "RESULTS")])
+            self.assertEqual(exit_code, 3)
+            self.assertEqual(old.path.read_bytes(), original)
+            self.assertEqual(list(output.glob("B16-*/checkpoint.json")), [old.path])
+            self.assertIn("[QUICK RESUME REFUSED]", output_text.getvalue())
+            self.assertIn("no new result ZIP", output_text.getvalue())
+            self.assertNotIn("DO_NOT_PRINT", output_text.getvalue())
+
+    def test_prior_rejection_envelope_does_not_hide_real_checkpoint(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp:
+            root = Path(temp)
+            original = self.journal(root, "A2")
+            # Later diagnostic envelope from the old launcher must not
+            # indefinitely mask the real safe scheduled-restart checkpoint.
+            poison = kit.Journal(root / "B16-rejected", original.state["identity"])
+            poison.state.update(status="INCOMPLETE", resume_blocked=True,
+                                resume_rejected=True)
+            poison.save()
+            self.assertEqual(kit.latest_checkpoint(root), original.folder)
+
     def test_completed_quick_is_terminal_for_latest_checkpoint(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
