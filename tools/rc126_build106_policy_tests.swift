@@ -8,7 +8,6 @@ struct Build112M5GovernorPolicyTests {
 
         func decide(_ expected: M5RuntimeProfile) {
             let decision = M5RuntimeGovernor.decide(
-                arm: .baseline8,
                 context: 32_768,
                 defaults: defaults
             )
@@ -20,7 +19,6 @@ struct Build112M5GovernorPolicyTests {
         decide(.performance16)
         precondition(
             M5RuntimeGovernor.decide(
-                arm: .safe4,
                 context: 32_768,
                 defaults: defaults
             ).profile == .performance16
