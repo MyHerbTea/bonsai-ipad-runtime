@@ -1,9 +1,6 @@
 name: Build111 TestKit-only checks
 
 on:
-  push:
-    branches:
-      - codex/build111-restart-handoff-ui
   pull_request:
     branches:
       - codex/build111-quick-validated
