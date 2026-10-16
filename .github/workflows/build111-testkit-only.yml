@@ -6,7 +6,7 @@ on:
       - codex/build111-restart-handoff-ui
   pull_request:
     branches:
-      - codex/build111-identity-fix
+      - codex/build111-quick-validated
   workflow_dispatch:
 
 permissions:
