@@ -4429,7 +4429,13 @@ applyBuild82LongContextPolicy(
                         + String(selectedAPIContext)
                 }
             } catch {
-                if selectedAPIContext == 32_768 {
+                let lastStage =
+                    UserDefaults.standard.string(
+                        forKey: "BonsaiLabLastStage"
+                    ) ?? ""
+                if selectedAPIContext == 32_768,
+                   lastStage.hasPrefix("MODEL_"),
+                   lastStage != "MODEL_09_READY" {
                     M5RuntimeGovernor.noteStartupFailure()
                 }
                 RC126APIStartupLifecycle.fail(error)
