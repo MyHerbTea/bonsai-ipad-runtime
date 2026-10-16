@@ -3341,14 +3341,12 @@ struct ProductionView: View {
             // Build112: the 32K text path has one small policy:
             // B16 is the default; startup failure falls back to B8, then SAFE4.
             // Historical Build93/94 certification/checkpoint state is ignored.
-            if context == 32_768 {
-                let governorDecision = M5RuntimeGovernor.decide(
-                    context: context
-                )
-                apiRuntime.batch = governorDecision.profile.batch
-                apiRuntime.ubatch = governorDecision.profile.ubatch
-                M5RuntimeGovernor.persist(governorDecision, source: source)
-            }
+            let governorDecision = M5RuntimeGovernor.decide(
+                context: context
+            )
+            apiRuntime.batch = governorDecision.profile.batch
+            apiRuntime.ubatch = governorDecision.profile.ubatch
+            M5RuntimeGovernor.persist(governorDecision, source: source)
             apiRuntime.gpuLayers = 99
             apiRuntime.offloadKQV = true
             apiRuntime.opOffload = true
