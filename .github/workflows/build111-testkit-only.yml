@@ -11,6 +11,15 @@ permissions:
   actions: read
 
 jobs:
+  gui-argv-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate actual GUI argument splatting on Windows PowerShell 5.1
+        shell: powershell
+        run: ./tools/tests/test_b16_gui_args.ps1
+
   testkit:
     runs-on: ubuntu-latest
     timeout-minutes: 15
