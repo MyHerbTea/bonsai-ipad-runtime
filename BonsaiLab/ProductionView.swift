@@ -3463,19 +3463,7 @@ struct ProductionView: View {
 
         apiRuntime.kvUnified = true
         apiRuntime.loadMode = .mmap
-        Phase2CMetalTensorLaunchLatch.apply(
-            to: &apiRuntime
-        )
-        Phase2DPrefillBatchLaunchLatch.apply(
-            to: &apiRuntime
-        )
-        Phase2EPrefillBatchLaunchLatch.apply(
-            to: &apiRuntime
-        )
-        Phase2FPrefillBatchLaunchLatch.apply(
-            to: &apiRuntime
-        )
-        applyBuild82LongContextPolicy(
+applyBuild82LongContextPolicy(
             to: &apiRuntime,
             context: selectedAPIContext,
             source: "context_switch"
@@ -3674,20 +3662,7 @@ struct ProductionView: View {
 
                 apiRuntime.kvUnified = true
                 apiRuntime.loadMode = .mmap
-                Phase2CMetalTensorLaunchLatch.apply(
-                    to: &apiRuntime
-                )
-                Phase2DPrefillBatchLaunchLatch.apply(
-                    to: &apiRuntime
-                )
-                Phase2EPrefillBatchLaunchLatch.apply(
-                    to: &apiRuntime
-                )
-                Phase2FPrefillBatchLaunchLatch.apply(
-                    to: &apiRuntime
-                )
-
-                applyBuild82LongContextPolicy(
+applyBuild82LongContextPolicy(
                     to: &apiRuntime,
                     context: selectedAPIContext,
                     source: "fresh_start"
