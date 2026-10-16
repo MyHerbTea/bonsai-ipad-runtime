@@ -4401,9 +4401,11 @@ struct ProductionView: View {
 
                     let textGenerationEnd =
                         RC1232PerformanceDiagnostics.now()
-                    M5RuntimeGovernor.noteTextSuccess(
-                        promptTokens: metrics.promptTokens
-                    )
+                    if selectedAPIContext == 32_768 {
+                        M5RuntimeGovernor.noteTextSuccess(
+                            promptTokens: metrics.promptTokens
+                        )
+                    }
 
                     let resourceSnapshot =
                         await sharedEngine
@@ -4478,7 +4480,9 @@ struct ProductionView: View {
                         + String(selectedAPIContext)
                 }
             } catch {
-                M5RuntimeGovernor.noteStartupFailure()
+                if selectedAPIContext == 32_768 {
+                    M5RuntimeGovernor.noteStartupFailure()
+                }
                 RC126APIStartupLifecycle.fail(error)
                 apiServer.stop()
                 await sharedEngine.unloadAll()
