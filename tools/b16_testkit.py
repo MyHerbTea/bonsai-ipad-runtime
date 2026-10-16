@@ -556,7 +556,7 @@ class DeviceRun:
             'VISION_HASH_PENDING':'Waiting for Vision identity hashing; keep the iPad app open.',
             'NATIVE_CONTEXT_MISSING':'Native context proof not present yet; waiting for API startup.',
             'ASSET_MISSING':'Required Vision identity is unavailable; API cannot distinguish unselected, unreadable or missing asset.',
-            'RESTART_REQUIRED':'Same iPad process; fully close the app, reopen and start API.',
+            'RESTART_REQUIRED':'Old iPad process still active: stopping API or returning Home is not a full app restart. Swipe Bonsai away in the iPad app switcher, reopen, then start API.',
             'MODEL_HASH_FAILED':'Model identity failed; retain the safe phase/error evidence. No inference or arm was sent.',
             'VISION_HASH_FAILED':'Vision identity failed; retain the safe phase/error evidence. No inference or arm was sent.',
             'READY':'Assets and native context are ready.'}
@@ -576,7 +576,10 @@ class DeviceRun:
                     validate_evidence(obj,self.identity,observed if same_process else batch if batch is not None else observed)
                     validate_assets(obj)
                     if observed not in (8,16): raise Incomplete('Native context is not B8/B16')
-                    if previous and obj.get('process_id')==previous.get('process_id'): state='RESTART_REQUIRED'
+                    if previous and obj.get('process_id')==previous.get('process_id'):
+                        state='RESTART_REQUIRED'
+                        flags['observed_batch']=observed
+                        flags['required_batch']=batch
                     elif previous: validate_evidence(obj,self.identity,batch,previous)
             except ReadinessError as exc: state=(last or 'NO_RESPONSE') if exc.code=='READY_TIMEOUT' else exc.code
             except Incomplete as exc:
@@ -638,8 +641,12 @@ class DeviceRun:
                 self.journal.state['restart']={'label':label,'arm':arm,'phase':'scheduled','previous':safe_evidence(old)}
                 self.journal.state['waiting_restart']=label
                 self.journal.finish(label+'.arm_next_launch',requested_arm=arm)
-            print('\n['+label+'] Fully close Bonsai from the iPad app switcher, reopen it, and start API. The key is retained.',flush=True)
-            input('Press Enter after full iPad process restart (Ctrl+C ends INCOMPLETE): ')
+            previous_batch=(old.get('native_context') or {}).get('batch')
+            print(f'\n[RESTART HANDOFF] {label}: B{previous_batch} -> required B{batch}; old process={old.get("process_id", "unknown")}',flush=True)
+            print('On iPad: OPEN APP SWITCHER, swipe away Bonsai completely, reopen it and start LAN API.',flush=True)
+            print('Returning Home or stopping/restarting API does NOT restart the iPad app process.',flush=True)
+            print('Keep the same RESULTS directory for safe resume; do not start a new experiment.',flush=True)
+            input(f'Press Enter only after a NEW iPad process is running B{batch} (Ctrl+C preserves INCOMPLETE): ')
             new=self.wait_ready(batch,previous=old,timeout=self.restart_timeout)
             validate_launch(self.get('/debug/build94/launch'),arm)
             self.journal.state['restart']=None;self.journal.state['waiting_restart']=None
