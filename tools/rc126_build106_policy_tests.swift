@@ -15,6 +15,12 @@ struct Build112M5GovernorPolicyTests {
             precondition(decision.profile.batch == decision.profile.ubatch)
         }
 
+        // Historical Build106/94 state must not block the new B16 default.
+        defaults.set("SAFE4", forKey: "BonsaiBuild106ActiveGovernorProfile")
+        defaults.set("true", forKey: "BonsaiBuild94StickyFallback")
+        decide(.performance16)
+        defaults.removeObject(forKey: "BonsaiBuild94StickyFallback")
+
         // Build112 ignores historical Build94 arm selection: B16 is default.
         decide(.performance16)
         precondition(
