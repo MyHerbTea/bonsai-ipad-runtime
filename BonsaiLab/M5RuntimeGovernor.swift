@@ -104,6 +104,7 @@ enum M5RuntimeGovernor {
         }
 
         defaults.set(next.rawValue, forKey: fallbackKey)
+        defaults.set(next.rawValue, forKey: profileKey)
         defaults.set(
             "build112_\(active.rawValue.lowercased())_startup_failed",
             forKey: reasonKey
