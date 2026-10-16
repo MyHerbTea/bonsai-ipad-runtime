@@ -182,7 +182,7 @@ jobs:
           Experimental branch: $GITHUB_REF_NAME
           M5-NAX-PQ2-01 is active only on lab/m5-nax-pq2-01.
           Candidate kernel: kernel_mul_mm_nax_pq2_0_f32.
-          Candidate path: GGML_TYPE_PQ2_0 x F32 large prefill.
+          Candidate path: GGML_TYPE_PQ2_0 x F32 full B16 prefill chunks (16 x 128 output tile).
           Final binary: static kernel-source and host-dispatch checks recorded in M5_NAX_PQ2_BINARY_VERIFICATION.txt.
           Runtime Metal compilation, device dispatch, numerical correctness, and performance remain unverified pending M5 device evidence.
           Commit: $GITHUB_SHA

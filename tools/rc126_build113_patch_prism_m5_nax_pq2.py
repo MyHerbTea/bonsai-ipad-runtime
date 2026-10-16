@@ -18,10 +18,10 @@ KERNEL = r"""
 // PQ2_0 -> half fragments -> cooperative TensorOps input.
 // No threadgroup staging for the quantized weight tile.
 //
-// Tile: 64 x 128 output, 2 x 4 simdgroups, 32 x 32 per simdgroup.
+// Tile: 16 x 128 output, 1 x 4 simdgroups, 16 x 32 per simdgroup.
 // K is consumed as 16-wide TensorOps fragments, with a 128-wide
 // synchronization/cache working set. Host routing limits this candidate
-// to K % 128 == 0 large-prefill shapes.
+// to full B16 prefill chunks with K % 128 == 0.
 
 static inline short2 bonsai_m5_nax_pq2_coord(ushort lane) {
     const short qid = lane >> 2;
@@ -82,7 +82,7 @@ static inline void bonsai_m5_nax_pq2_mma(
     }
 }
 
-[[kernel, max_total_threads_per_threadgroup(256)]]
+[[kernel, max_total_threads_per_threadgroup(128)]]
 void kernel_mul_mm_nax_pq2_0_f32(
         constant ggml_metal_kargs_mul_mm & args,
         device const char * src0,
@@ -91,9 +91,9 @@ void kernel_mul_mm_nax_pq2_0_f32(
         uint3 tgpig [[threadgroup_position_in_grid]],
         ushort tiisg [[thread_index_in_simdgroup]],
         ushort sgitg [[simdgroup_index_in_threadgroup]]) {
-    constexpr short BM = 64;
+    constexpr short BM = 16;
     constexpr short BN = 128;
-    constexpr short WM = 2;
+    constexpr short WM = 1;
     constexpr short WN = 4;
     constexpr short SM = BM/WM;
     constexpr short SN = BN/WN;
@@ -269,9 +269,9 @@ def main() -> None:
         "#define N_MM_SIMD_GROUP_Y 2\n",
         "#define N_MM_SIMD_GROUP_Y 2\n"
         "// BONSAI_M5_NAX_PQ2_01 experimental register-resident PQ2 matmul.\n"
-        "#define BONSAI_M5_NAX_PQ2_BM 64\n"
+        "#define BONSAI_M5_NAX_PQ2_BM 16\n"
         "#define BONSAI_M5_NAX_PQ2_BN 128\n"
-        "#define BONSAI_M5_NAX_PQ2_NSG 8\n",
+        "#define BONSAI_M5_NAX_PQ2_NSG 4\n",
     )
 
     replace_once(
@@ -321,7 +321,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
         !ggml_is_transposed(op->src[0]) &&
         !ggml_is_transposed(op->src[1]) &&
         ne00 % 128 == 0 &&
-        ne11 >= 64 &&
+        ne11 >= 16 && ne11 % 16 == 0 &&
         ne01 >= 128 &&
         ne02 == 1 && ne03 == 1 &&
         ne12 == 1 && ne13 == 1 &&
@@ -453,7 +453,7 @@ static inline void bonsai_m5_nax_pq2_trace(const char *fmt, ...) {
             "kernel_mul_mm_nax_pq2_0_f32",
             "bonsai_m5_nax_pq2_decode4",
             "get_left_input_cooperative_tensor",
-            "max_total_threads_per_threadgroup(256)",
+            "max_total_threads_per_threadgroup(128)",
         ],
     }
 

@@ -31,7 +31,7 @@ Only route operations matching all of:
 - activation type F32
 - non-transposed operands
 - K % 128 == 0
-- batch/prefill rows >= 64
+- prefill rows >= 16 and divisible by 16 (aligned to Build112's B16 ubatch)
 - output channels >= 128
 - single tensor batch dimensions
 - contiguous F32 output
@@ -42,10 +42,10 @@ Everything else remains on the inherited Prism path.
 
 kernel_mul_mm_nax_pq2_0_f32
 
-- output tile: 64 × 128
-- simdgroups: 2 × 4
-- threads: 256
-- per-simdgroup tile: 32 × 32
+- output tile: 16 × 128
+- simdgroups: 1 × 4
+- threads: 128
+- per-simdgroup tile: 16 × 32
 - TensorOps fragment: 16 × 32 × 16
 - K synchronization working set: 128
 - PQ2 dequantization: exact existing 2-bit codec semantics
