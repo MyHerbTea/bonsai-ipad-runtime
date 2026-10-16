@@ -1243,6 +1243,99 @@ final class LocalOpenAIServer: ObservableObject {
         prefillObservationLock.unlock()
     }
 
+    // Read only the three allowlisted M5-NAX-PQ2 markers from the native trace.
+    // This makes the existing /debug/prefill snapshot sufficient for the one-click
+    // Quick test ZIP without exporting arbitrary native log contents or file paths.
+    private func debugM5NaxPQ2TraceEvidence() -> [String: Any] {
+        let url = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent(
+            "bonsai_build84_native_context_trace.txt"
+        )
+
+        guard let raw = try? String(
+            contentsOf: url,
+            encoding: .utf8
+        ) else {
+            return [
+                "schema": "m5-nax-pq2-trace-evidence-v1",
+                "candidate": "M5-NAX-PQ2-01",
+                "trace_file_present": false,
+                "route_selected": false,
+                "pipeline_observed": false,
+                "pipeline_ready": false,
+                "dispatch_enqueued": false,
+                "state": "TRACE_FILE_UNAVAILABLE",
+                "trace_header": [String: String](),
+                "markers": [String]()
+            ]
+        }
+
+        let lines = raw.components(separatedBy: .newlines)
+        let markerPrefixes = [
+            "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED",
+            "BUILD113_M5_NAX_PQ2_PIPELINE_READY",
+            "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED"
+        ]
+        let markers = lines.filter { line in
+            markerPrefixes.contains { line.hasPrefix($0) }
+        }
+        let routeSelected = markers.contains {
+            $0.hasPrefix("BUILD113_M5_NAX_PQ2_ROUTE_SELECTED")
+        }
+        let pipelineLine = markers.first {
+            $0.hasPrefix("BUILD113_M5_NAX_PQ2_PIPELINE_READY")
+        }
+        let pipelineReady = pipelineLine?.contains("ok=1") ?? false
+        let dispatchLine = markers.first {
+            $0.hasPrefix("BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED")
+        }
+        let dispatchEnqueued = dispatchLine != nil
+
+        let allowedHeaderKeys: Set<String> = [
+            "build", "app_build", "trace_format", "context",
+            "batch", "seq_max", "kv_checkpoint", "started"
+        ]
+        var traceHeader = [String: String]()
+        for line in lines.prefix(12) {
+            let parts = line.split(
+                separator: "=",
+                maxSplits: 1,
+                omittingEmptySubsequences: false
+            )
+            guard parts.count == 2 else { continue }
+            let key = String(parts[0])
+            if allowedHeaderKeys.contains(key) {
+                traceHeader[key] = String(parts[1])
+            }
+        }
+
+        let state: String
+        if !routeSelected {
+            state = "ROUTE_NOT_OBSERVED"
+        } else if pipelineLine == nil || !pipelineReady {
+            state = "PIPELINE_NOT_READY_OR_INTERRUPTED"
+        } else if !dispatchEnqueued {
+            state = "DISPATCH_NOT_OBSERVED"
+        } else {
+            state = "DISPATCH_ENQUEUED_NOT_COMPLETION_PROOF"
+        }
+
+        return [
+            "schema": "m5-nax-pq2-trace-evidence-v1",
+            "candidate": "M5-NAX-PQ2-01",
+            "trace_file_present": true,
+            "route_selected": routeSelected,
+            "pipeline_observed": pipelineLine != nil,
+            "pipeline_ready": pipelineReady,
+            "dispatch_enqueued": dispatchEnqueued,
+            "state": state,
+            "trace_header": traceHeader,
+            "markers": Array(markers.suffix(3))
+        ]
+    }
+
     private func debugPrefillObject() -> [String: Any] {
         let defaults = UserDefaults.standard
         prefillObservationLock.lock()
@@ -1540,7 +1633,8 @@ final class LocalOpenAIServer: ObservableObject {
                     Int(capability.framework_embed_library)
             ],
             "last": last,
-            "last_observation": last
+            "last_observation": last,
+            "m5_nax_pq2_trace": debugM5NaxPQ2TraceEvidence()
         ]
     }
 

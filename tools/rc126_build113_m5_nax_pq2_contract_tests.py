@@ -9,6 +9,7 @@ WORKFLOW = ROOT / ".github/workflows/build112-b16-default.yml"
 DOC = ROOT / "docs/optimization/backburner-integration/RC1.26_BUILD113_M5_NAX_PQ2_01.md"
 VERIFY = ROOT / "tools/rc126_build113_verify_m5_nax_pq2_binary.sh"
 ENGINE = ROOT / "BonsaiLab/BonsaiEngine.swift"
+SERVER = ROOT / "BonsaiLab/LocalOpenAIServer.swift"
 
 def require(path: Path, *needles: str) -> None:
     source = path.read_text(encoding="utf-8")
@@ -65,6 +66,19 @@ require(
     "contextLength: validated.context",
     "BONSAI_M5_NAX_PQ2_TRACE_PATH",
     "unsetenv(\"BONSAI_M5_NAX_PQ2_TRACE_PATH\")",
+)
+
+require(
+    SERVER,
+    "debugM5NaxPQ2TraceEvidence",
+    "m5_nax_pq2_trace",
+    "m5-nax-pq2-trace-evidence-v1",
+    "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED",
+    "BUILD113_M5_NAX_PQ2_PIPELINE_READY",
+    "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED",
+    "TRACE_FILE_UNAVAILABLE",
+    "DISPATCH_ENQUEUED_NOT_COMPLETION_PROOF",
+    "trace_header",
 )
 
 require(

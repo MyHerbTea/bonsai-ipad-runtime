@@ -4,7 +4,7 @@
 
 **Experimental candidate. NOT DEVICE CERTIFIED.**
 
-Base application/runtime remains Build112. This phase does not promote a new product version and does not modify the Swift production path.
+Base application/runtime remains Build112. This phase does not promote a new product version or change the user-facing API behavior. The existing read-only `/debug/prefill` response exposes only allowlisted M5-NAX-PQ2 trace evidence for automated collection.
 
 ## Objective
 
@@ -76,7 +76,7 @@ The candidate is otherwise automatically selected only when the narrow host-side
 1. CI compiles the exact Prism base with Build83–89 patches plus this candidate.
 2. CI builds the Bonsai iOS app.
 3. CI verifies the final framework binary contains the embedded Metal kernel source, the host pipeline-getter symbol, and route/pipeline/dispatch trace markers. This is static linkage evidence only; the kernel is runtime-compiled by Metal, so CI does not certify runtime compilation or execution.
-4. On the M5 iPad, run a 32K-context request with a sufficiently large prefill and export the native trace. The NAX markers use a dedicated low-volume trace path so Build84-89 scheduler tracing remains disabled during inference. The expected one-per-process markers are `BUILD113_M5_NAX_PQ2_ROUTE_SELECTED`, `BUILD113_M5_NAX_PQ2_PIPELINE_READY ok=1`, and `BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED`. A missing route marker means the candidate gate was not observed; check shape eligibility before treating it as a failure. A route marker without `PIPELINE_READY ok=1` indicates the pipeline did not return ready. Dispatch-enqueued is not, by itself, proof of completed execution.
+4. On the M5 iPad, run a 32K-context request with a sufficiently large prefill. The existing Quick test kit saves `/debug/prefill` as `prefill-after.json`; this response now includes `m5_nax_pq2_trace`, containing the trace header allowlist and only the three expected NAX markers. No separate manual trace export is required. The NAX markers use a dedicated low-volume trace path so Build84-89 scheduler tracing remains disabled during inference. The expected one-per-process markers are `BUILD113_M5_NAX_PQ2_ROUTE_SELECTED`, `BUILD113_M5_NAX_PQ2_PIPELINE_READY ok=1`, and `BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED`. A missing route marker means the candidate gate was not observed; check shape eligibility before treating it as a failure. A route marker without `PIPELINE_READY ok=1` indicates the pipeline did not return ready. Dispatch-enqueued is not, by itself, proof of completed execution.
 5. Compare the inherited Build112 path against this candidate using the same model, prompt set, context, and measurement harness; verify a successful completed request and numerical correctness.
 6. Only after numerical correctness passes is performance promotion considered.
 
