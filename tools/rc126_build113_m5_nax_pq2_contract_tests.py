@@ -8,6 +8,7 @@ PATCH = ROOT / "tools/rc126_build113_patch_prism_m5_nax_pq2.py"
 WORKFLOW = ROOT / ".github/workflows/build112-b16-default.yml"
 DOC = ROOT / "docs/optimization/backburner-integration/RC1.26_BUILD113_M5_NAX_PQ2_01.md"
 VERIFY = ROOT / "tools/rc126_build113_verify_m5_nax_pq2_binary.sh"
+ENGINE = ROOT / "BonsaiLab/BonsaiEngine.swift"
 
 def require(path: Path, *needles: str) -> None:
     source = path.read_text(encoding="utf-8")
@@ -30,6 +31,8 @@ require(
     "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED",
     "std::atomic_flag",
     "bonsai-build84-trace.h",
+    "bonsai_m5_nax_pq2_trace",
+    "BONSAI_M5_NAX_PQ2_TRACE_PATH",
 )
 
 require(
@@ -50,6 +53,15 @@ require(
     "PQ2_0",
     "cooperative tensor",
     "NOT DEVICE CERTIFIED",
+)
+
+require(
+    ENGINE,
+    "enableBuild113NaxRouteTrace",
+    "contextLength: config.context",
+    "contextLength: validated.context",
+    "BONSAI_M5_NAX_PQ2_TRACE_PATH",
+    "unsetenv(\"BONSAI_M5_NAX_PQ2_TRACE_PATH\")",
 )
 
 require(

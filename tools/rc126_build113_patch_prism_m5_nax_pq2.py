@@ -338,14 +338,14 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
             std::getenv("BONSAI_BUILD84_TRACE_PATH") != nullptr &&
             !bonsai_m5_nax_pq2_trace_once.test_and_set(std::memory_order_relaxed);
         if (trace_this_dispatch) {
-            bonsai_build84_trace(
+            bonsai_m5_nax_pq2_trace(
                 "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED K=%d M=%d N=%d",
                 ne00, ne11, ne01);
         }
 
         const auto pipeline = ggml_metal_library_get_pipeline_mul_mm_nax_pq2(lib);
         if (trace_this_dispatch) {
-            bonsai_build84_trace(
+            bonsai_m5_nax_pq2_trace(
                 "BUILD113_M5_NAX_PQ2_PIPELINE_READY ok=%d nr0=%d nr1=%d nsg=%d",
                 pipeline.pipeline != nullptr, pipeline.nr0, pipeline.nr1, pipeline.nsg);
         }
@@ -382,7 +382,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
             32, pipeline.nsg, 1);
 
         if (trace_this_dispatch) {
-            bonsai_build84_trace(
+            bonsai_m5_nax_pq2_trace(
                 "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED tg0=%d tg1=%d tg2=%d",
                 (ne11 + pipeline.nr1 - 1)/pipeline.nr1,
                 (ne01 + pipeline.nr0 - 1)/pipeline.nr0,
@@ -393,10 +393,35 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
     }
 
 """
+    trace_helper = r'''
+static inline void bonsai_m5_nax_pq2_trace(const char *fmt, ...) {
+    const char *path = std::getenv("BONSAI_M5_NAX_PQ2_TRACE_PATH");
+    if (!path || !*path) { return; }
+    char line[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = std::vsnprintf(line, sizeof(line) - 2, fmt, ap);
+    va_end(ap);
+    if (n <= 0) { return; }
+    size_t size = (size_t)n < sizeof(line) - 2 ? (size_t)n : sizeof(line) - 2;
+    line[size++] = '\n';
+    int fd = ::open(path, O_CREAT | O_APPEND | O_WRONLY, 0600);
+    if (fd < 0) { return; }
+    size_t done = 0;
+    while (done < size) {
+        ssize_t count = ::write(fd, line + done, size - done);
+        if (count <= 0) { break; }
+        done += (size_t)count;
+    }
+    ::fsync(fd);
+    ::close(fd);
+}
+'''
+
     replace_once(
         ops_cpp,
         '#include <cstdlib>\n#include "ggml-metal-ops.h"\n',
-        '#include <cstdlib>\n#include <atomic>\n#include "ggml-metal-ops.h"\n#include "../../../src/bonsai-build84-trace.h"\n',
+        '#include <cstdlib>\n#include <atomic>\n#include "ggml-metal-ops.h"\n#include "../../../src/bonsai-build84-trace.h"\n' + trace_helper,
     )
 
     replace_once(
@@ -417,6 +442,8 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
         ops_cpp: [
             "use_pq2_nax",
             "GGML_METAL_PQ2_NAX_DISABLE",
+            "BONSAI_M5_NAX_PQ2_TRACE_PATH",
+            "bonsai_m5_nax_pq2_trace",
             'bonsai-build84-trace.h',
             "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED",
             "BUILD113_M5_NAX_PQ2_PIPELINE_READY",

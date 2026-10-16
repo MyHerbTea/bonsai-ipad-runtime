@@ -298,6 +298,8 @@ actor BonsaiEngine {
     // Native trace is enabled only for experimental >=32K context creation.
     // Prism fsyncs each stage to survive process termination before Swift can catch errors.
     private func beginBuild84NativeContextTrace(contextLength: Int) {
+        // Clear a prior NAX trace target before attempting a new context.
+        unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
         guard contextLength >= 32_768 else {
             unsetenv("BONSAI_BUILD84_TRACE_PATH")
             return
@@ -342,6 +344,23 @@ actor BonsaiEngine {
 
     private func endBuild84NativeContextTrace() {
         unsetenv("BONSAI_BUILD84_TRACE_PATH")
+    }
+
+    // Keep the NAX-only trace available during inference without enabling the
+    // high-volume Build84-89 scheduler trace. Only the first eligible dispatch
+    // in a process writes its three diagnostic markers.
+    private func enableBuild113NaxRouteTrace(contextLength: Int) {
+        guard contextLength >= 32_768 else {
+            unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
+            return
+        }
+        let url = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent(
+            "bonsai_build84_native_context_trace.txt"
+        )
+        setenv("BONSAI_M5_NAX_PQ2_TRACE_PATH", url.path, 1)
     }
 
     func loadModel(url: URL, runtime: RuntimeConfig) throws -> ModelMetrics {
@@ -516,6 +535,7 @@ actor BonsaiEngine {
             stopModelScope()
             throw LabError.contextCreateFailed
         }
+        enableBuild113NaxRouteTrace(contextLength: config.context)
         mark("MODEL_08_CONTEXT_CREATE_DONE")
         B16RuntimeEvidence.created(parameters: [
             "context": Int(contextParams.n_ctx),
@@ -2862,6 +2882,7 @@ actor BonsaiEngine {
     func unloadAll(
         releaseStagedResident: Bool = true
     ) {
+        unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
         B16RuntimeEvidence.invalidate()
         apiVisionPrefixReuseKey = nil
         apiVisionPrefixPositions = 0
@@ -2946,6 +2967,7 @@ actor BonsaiEngine {
         guard let created = llama_init_from_model(model, params) else {
             throw LabError.contextCreateFailed
         }
+        enableBuild113NaxRouteTrace(contextLength: validated.context)
         B16RuntimeEvidence.created(parameters: [
             "context": Int(params.n_ctx),
             "batch": Int(params.n_batch),
