@@ -37,6 +37,7 @@ require_symbol() {
 # not claim that a device successfully compiled or executed the kernel.
 require_string "kernel_mul_mm_nax_pq2_0_f32"
 require_string "GGML_METAL_PQ2_NAX_DISABLE"
+require_string "BONSAI_M5_NAX_PQ2_TRACE_PATH"
 require_string "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED"
 require_string "BUILD113_M5_NAX_PQ2_PIPELINE_READY"
 require_string "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED"

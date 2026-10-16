@@ -72,6 +72,7 @@ require(
     "kernel_mul_mm_nax_pq2_0_f32",
     "_ggml_metal_library_get_pipeline_mul_mm_nax_pq2",
     "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED",
+    "BONSAI_M5_NAX_PQ2_TRACE_PATH",
     "runtime_metal_compile=NOT_VERIFIED",
     "performance=NOT_MEASURED",
 )
