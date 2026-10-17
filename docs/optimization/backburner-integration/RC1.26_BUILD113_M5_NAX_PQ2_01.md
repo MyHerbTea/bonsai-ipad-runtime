@@ -6,7 +6,7 @@
 
 Base application/runtime remains Build112. This phase does not promote a new product version or change the user-facing API behavior. The existing read-only `/debug/prefill` response exposes only allowlisted M5-NAX-PQ2 trace evidence for automated collection.
 
-**Default safety and opt-in experiment:** stock Build112 disables the Tensor API by default. This branch preserves that default unless the user explicitly selects the experimental M5 NAX-PQ2 Tensor candidate in Advanced & Diagnostics. The selected arm is immutable for the running process and requires a full app quit/relaunch. In CANDIDATE mode, the experiment enables the process-global Metal Tensor API, so generic TensorOps matmuls may also change; this is a combined Tensor-enabled + NAX-PQ2 bundle, not an isolated estimate of NAX's contribution.
+**Default safety and opt-in experiment:** stock Build112 disables the Tensor API by default. The experimental arm is immutable for the running process and requires a full app quit/relaunch. The application enables it only when the selected model filename is eligible for the PQ2_0 experiment; PTQ1_0 forces the safe Tensor-disabled path even if CANDIDATE was selected. The custom NAX kernel independently checks actual GGML weight type and shape before dispatch. For eligible PQ2_0 runs, this remains a combined Tensor-enabled + NAX-PQ2 bundle, not an isolated estimate of NAX's contribution.
 
 ## Objective
 
