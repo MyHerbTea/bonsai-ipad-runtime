@@ -7,6 +7,9 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+@main
+enum CandidateShapePolicyTestRunner {
+    static func main() {
 let suiteName = "BonsaiBuild113CandidateShapeTests.\(UUID().uuidString)"
 guard let defaults = UserDefaults(suiteName: suiteName) else {
     fatalError("Could not create isolated defaults suite")
@@ -104,3 +107,5 @@ expect(
 )
 
 print("PASS Build113 candidate-only B16 shape trial and fallback lifecycle")
+    }
+}
