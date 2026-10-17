@@ -30,5 +30,5 @@ Classification
 Security and interpretation
 - The API Key is held only in process memory for the test and is never written to reports, request artifacts, manifests or the ZIP.
 - Request headers are not saved. Authentication probes record only endpoint, HTTP status and pass/fail.
-- The script returns exit code 0 only for PASS; FAIL=1, INCOMPLETE=2, BLOCKED=3.
+- Exit codes: PASS=0, FAIL=1, INCOMPLETE=2, BLOCKED=3.
 - CI and this smoke test are not proof of crash-free behavior on every M5 launch, numerical correctness, or performance improvement. A crash that terminates the app before /health returns still requires the persistent app/native diagnostic evidence from the next launch.
