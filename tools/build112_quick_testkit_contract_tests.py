@@ -45,7 +45,8 @@ for needle in (
     "without Authorization or X-API-Key",
     "Exit codes: PASS=0, FAIL=1, INCOMPLETE=2, BLOCKED=3",
     "PTQ1_0",
-    "API Key values and request headers are never written",
+    "API Key is held only in process memory for the test",
+    "never written to reports, request artifacts, manifests or the ZIP",
 ):
     assert needle in readme, f"Quick TestKit README missing: {needle}"
 
