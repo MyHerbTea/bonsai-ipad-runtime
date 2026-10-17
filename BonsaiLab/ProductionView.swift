@@ -3,62 +3,6 @@ import UniformTypeIdentifiers
 import UIKit
 import Darwin
 
-private enum RC126APIStartupLifecycle {
-    static let stateKey = "BonsaiRC126APIStartupStage"
-    static let previousIncompleteKey =
-        "BonsaiRC126APIPreviousIncompleteStage"
-    static let attemptKey = "BonsaiRC126APIStartupAttempt"
-    static let errorKey = "BonsaiRC126APIStartupLastError"
-    static let timestampKey = "BonsaiRC126APIStartupStageTime"
-    static let buildKey = "BonsaiRC126APIStartupBuild"
-
-    private static let terminalStates: Set<String> = [
-        "READY",
-        "FAILED",
-    ]
-
-    static func begin(build: String) {
-        let defaults = UserDefaults.standard
-        if let previous = defaults.string(forKey: stateKey),
-           !previous.isEmpty,
-           !terminalStates.contains(previous) {
-            defaults.set(
-                previous,
-                forKey: previousIncompleteKey
-            )
-        }
-
-        let attempt = defaults.integer(forKey: attemptKey) + 1
-        defaults.set(attempt, forKey: attemptKey)
-        defaults.set(build, forKey: buildKey)
-        defaults.removeObject(forKey: errorKey)
-        mark("BEGIN")
-    }
-
-    static func mark(_ stage: String) {
-        let defaults = UserDefaults.standard
-        defaults.set(stage, forKey: stateKey)
-        defaults.set(
-            Date().timeIntervalSince1970,
-            forKey: timestampKey
-        )
-        defaults.synchronize()
-    }
-
-    static func ready() {
-        mark("READY")
-    }
-
-    static func fail(_ error: Error) {
-        let defaults = UserDefaults.standard
-        defaults.set(
-            error.localizedDescription,
-            forKey: errorKey
-        )
-        mark("FAILED")
-    }
-}
-
 private enum RC1232PerformanceDiagnostics {
     static let defaultsKey =
         "BonsaiRC1232LastAPIRequestMetrics"
@@ -1364,17 +1308,40 @@ struct ProductionView: View {
                             .frame(width: 10, height: 10)
                     }
 
+                    Toggle(
+                        "API Key 鉴权",
+                        isOn: Binding(
+                            get: { apiServer.apiKeyAuthenticationEnabled },
+                            set: { apiServer.setAPIKeyAuthenticationEnabled($0) }
+                        )
+                    )
+                    if apiServer.apiKeyAuthenticationEnabled {
+                        Text("开启后，受保护的 API 路由必须提供正确的 API Key；设置立即生效。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("鉴权已关闭：同一局域网中其他可达客户端也可能访问此服务。原 API Key 已保留，重新开启后恢复使用。")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+
                     if apiServer.isRunning {
                         LabeledContent(
                             "Model",
                             value: apiServer.modelID
                         )
-                        LabeledContent(
-                            "API Key",
-                            value: apiServer.apiKey
-                        )
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
+                        if apiServer.apiKeyAuthenticationEnabled {
+                            LabeledContent(
+                                "API Key",
+                                value: apiServer.apiKey
+                            )
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                        } else {
+                            Text("API Key 已保留；当前鉴权关闭，无需在客户端填写。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         LabeledContent(
                             "推理请求",
                             value: "\(apiServer.requestCount)"
@@ -3294,6 +3261,7 @@ struct ProductionView: View {
     }
 
     private func startOrResumeAPIServer() {
+        guard !busy else { return }
         guard apiServer.canResumePreservedRuntime else {
             startAPIServer()
             return
@@ -3341,7 +3309,8 @@ struct ProductionView: View {
     private func applyBuild82LongContextPolicy(
         to apiRuntime: inout RuntimeConfig,
         context: Int,
-        source: String
+        source: String,
+        allowNAXCandidate: Bool = false
     ) {
         let longContext = context > 4096
         if longContext {
@@ -3359,7 +3328,7 @@ struct ProductionView: View {
             // Build112: the 32K text path has one small policy:
             // B16 is the default; startup failure falls back to B8, then SAFE4.
             // Historical Build93/94 certification/checkpoint state is ignored.
-            let candidateNAX = Phase2CMetalTensorLaunchLatch.arm == .candidate
+            let candidateNAX = allowNAXCandidate
             let candidateShapeTrial = M5RuntimeGovernor.beginCandidateShapeTrialIfPending(
                 buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA,
                 candidate: candidateNAX
@@ -3468,6 +3437,10 @@ struct ProductionView: View {
             selectedAPIContextValue
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
+        let allowNAXCandidateForModel =
+            Phase2CMetalTensorLaunchLatch.arm == .candidate
+            && selectedModelURL.lastPathComponent
+                .localizedCaseInsensitiveContains("PQ2_0")
 
         let previouslyLoadedGPULayers =
             UserDefaults.standard.integer(
@@ -3475,6 +3448,10 @@ struct ProductionView: View {
             )
 
         var apiRuntime = selectedRuntime
+        Phase2CMetalTensorLaunchLatch.apply(
+            to: &apiRuntime,
+            allowNAXCandidate: allowNAXCandidateForModel
+        )
         apiRuntime.context = selectedAPIContext
         apiRuntime.batch = 8
         apiRuntime.ubatch = 8
@@ -3503,7 +3480,8 @@ struct ProductionView: View {
 applyBuild82LongContextPolicy(
             to: &apiRuntime,
             context: selectedAPIContext,
-            source: "context_switch"
+            source: "context_switch",
+            allowNAXCandidate: allowNAXCandidateForModel
         )
 
         let requiresModelReload =
@@ -3642,6 +3620,7 @@ applyBuild82LongContextPolicy(
     }
 
     private func startAPIServer() {
+        guard !busy else { return }
         guard let selectedModelURL = modelURL else {
             status = "请先选择主模型"
             return
@@ -3674,8 +3653,12 @@ applyBuild82LongContextPolicy(
                 RC126APIStartupLifecycle.mark("VISION_RELEASE_DONE")
 
                 var apiRuntime = selectedRuntime
-                // Apply the immutable process-launch arm before cold-start/backend init.
-                Phase2CMetalTensorLaunchLatch.apply(to: &apiRuntime)
+                // Enable the experimental Tensor backend only for the selected PQ2_0 model.
+                // PTQ1_0 remains on the safe Tensor-disabled backend path.
+                Phase2CMetalTensorLaunchLatch.apply(
+                    to: &apiRuntime,
+                    allowNAXCandidate: allowNAXCandidateForModel
+                )
                 apiRuntime.context = selectedAPIContext
                 apiRuntime.batch = 8
                 apiRuntime.ubatch = 8
@@ -3704,7 +3687,8 @@ applyBuild82LongContextPolicy(
 applyBuild82LongContextPolicy(
                     to: &apiRuntime,
                     context: selectedAPIContext,
-                    source: "fresh_start"
+                    source: "fresh_start",
+                    allowNAXCandidate: allowNAXCandidateForModel
                 )
 
                 RC126APIStartupLifecycle.mark(
@@ -3712,7 +3696,8 @@ applyBuild82LongContextPolicy(
                 )
                 try await sharedEngine.prepareAPIColdStart(
                     metalTensorDisabled:
-                        apiRuntime.disableMetalTensorAPI
+                        apiRuntime.disableMetalTensorAPI,
+                    allowNAXCandidate: allowNAXCandidateForModel
                 )
                 RC126APIStartupLifecycle.mark(
                     "BACKEND_PREWARM_DONE"
@@ -4516,6 +4501,9 @@ applyBuild82LongContextPolicy(
     }
 
     private func copyAPIConfig() {
+        let apiKeyLine = apiServer.apiKeyAuthenticationEnabled
+            ? "API Key: \(apiServer.apiKey)"
+            : "API Key: not required (authentication disabled)"
         let chatboxHost =
             apiServer.baseURL.hasSuffix("/v1")
                 ? String(apiServer.baseURL.dropLast(3))
@@ -4525,7 +4513,7 @@ applyBuild82LongContextPolicy(
         OpenAI Compatible API
         Base URL: \(apiServer.baseURL)
         Model: \(apiServer.modelID)
-        API Key: \(apiServer.apiKey)
+        \(apiKeyLine)
         Context Window: \(apiContextProfile)
         Server Max Output Tokens: \(apiMaxOutputTokens)
         Recommended Client Max Output: \(apiMaxOutputTokens) (same as iPad UI; default if omitted)
