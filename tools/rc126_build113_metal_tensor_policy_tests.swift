@@ -11,8 +11,12 @@ struct Build113MetalTensorPolicyTests {
                      "ordinary API must not be promoted into candidate mode")
         precondition(!Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: false, launchArmRawValue: nil),
                      "caller config must be preserved outside candidate mode")
-        precondition(!Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "CANDIDATE"),
-                     "explicit CANDIDATE must enable TensorOps")
+        precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "CANDIDATE"),
+                     "candidate without explicit PQ2_0 eligibility must stay disabled")
+        precondition(!Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "CANDIDATE", allowNAXCandidate: true),
+                     "eligible PQ2_0 candidate may enable TensorOps")
+        precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: false, launchArmRawValue: "CANDIDATE", allowNAXCandidate: false),
+                     "PTQ1_0 must stay Tensor-disabled even if the experiment arm is selected")
         precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "candidate"),
                      "invalid arm strings must fail safe")
         precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "UNKNOWN"),
