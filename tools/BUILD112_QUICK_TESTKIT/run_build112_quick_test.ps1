@@ -349,8 +349,8 @@ try {
     model_general_file_type_raw = $modelTypeRaw
     model_quantization_hint = $quantHint
     nax_tensor_api_enabled = $tensorEnabledValue
-    nax_prefill_effective = Get-Field $prefill "m5_nax_pq2_prefill_effective"
-    nax_prefill_state = Get-Field $prefill "m5_nax_pq2_prefill_state"
+    nax_prefill_effective = (Get-Field $prefill "m5_nax_pq2_prefill_effective")
+    nax_prefill_state = (Get-Field $prefill "m5_nax_pq2_prefill_state")
     nax_route_selected = (Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "route_selected")
     nax_pipeline_ready = (Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "pipeline_ready")
     nax_dispatch_enqueued = (Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "dispatch_enqueued")
