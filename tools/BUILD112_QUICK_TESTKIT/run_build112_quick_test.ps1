@@ -237,10 +237,35 @@ try {
   if ($authRequired) {
     $currentStage = "auth_probes"
     $probeBody = [ordered]@{ model = "bonsai-2-27b-local"; messages = @(@{ role = "user"; content = "Authentication probe; request must be rejected before inference." }); max_tokens = 1; temperature = 0; stream = $false }
+    # The server applies authentication before protected route dispatch, so these
+    # probes are safe even for launch/control endpoints: missing/wrong keys must
+    # be rejected before any handler can mutate state.
     $routes = @(
       [pscustomobject]@{ method = "GET"; path = "/v1/models"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/v1/models/bonsai-2-27b-local"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/b16/evidence"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/build106/governor"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/execution"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/build94/launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/build102/launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/build94/next-launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/build102/next-launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/request-trace"; body = $null },
       [pscustomobject]@{ method = "GET"; path = "/debug/build"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/runtime"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/telemetry"; body = $null },
       [pscustomobject]@{ method = "GET"; path = "/debug/prefill"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2c/launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2c/next-launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2d/launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2d/next-launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2e/launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2e/next-launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2f/launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/phase2f/next-launch"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/governor"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/gc-or-trim"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/runtime/profile"; body = $null },
       [pscustomobject]@{ method = "POST"; path = "/v1/chat/completions"; body = $probeBody }
     )
     $probeResults = [System.Collections.Generic.List[object]]::new()
@@ -257,7 +282,7 @@ try {
     Save-Json "auth-route-probes.json" @($probeResults.ToArray())
     $summary.auth.missing_key_probe = "ALL_PROTECTED_ROUTES_401"
     $summary.auth.wrong_key_probe = "ALL_PROTECTED_ROUTES_401"
-    Set-Stage "auth_probes" "PASS" "Missing and incorrect keys returned HTTP 401 on models, build diagnostics, prefill diagnostics and inference."
+    Set-Stage "auth_probes" "PASS" "Missing and incorrect keys returned HTTP 401 on all known protected models, diagnostics, runtime-profile and inference routes."
     $secure = Read-Host "API Key (required because IPA /health reports auth_required=true)" -AsSecureString
     $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     try { $apiKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
@@ -480,7 +505,7 @@ try {
 Bonsai Build112 PTQ1_0 Auth-Aware Quick TestKit 2.0
 - Reads the real IPA auth_required boolean from unauthenticated GET /health.
 - Prompts for an API Key only when auth_required=true; disabled mode sends no Authorization or X-API-Key header.
-- When auth is enabled, missing/wrong keys must receive HTTP 401 on models, build diagnostics, prefill diagnostics and inference.
+- When auth is enabled, missing/wrong keys must receive HTTP 401 on every known protected route, including runtime-profile, launch/control and inference routes.
 - Verifies independent App source SHA and Build112 identity, PTQ1_0 model filename, runtime shape, persistent startup evidence, NAX Tensor isolation, and real smoke inference.
 - Result ZIP contains endpoint status, auth mode/probes, model and runtime identity, startup diagnostics, smoke request/response, per-file SHA-256 manifest and summary.
 - API Key values and request headers are never written to result files.
