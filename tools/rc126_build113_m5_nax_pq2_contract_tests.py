@@ -70,6 +70,8 @@ require(
 
 require(
     SERVER,
+    '"build_id": "rc1.26-build112-m5-nax-pq2-01"',
+    '"candidate_build_id": "rc1.26-build112-m5-nax-pq2-01"',
     "debugM5NaxPQ2TraceEvidence",
     "m5_nax_pq2_trace",
     "m5-nax-pq2-trace-evidence-v1",

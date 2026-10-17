@@ -2018,10 +2018,10 @@ final class LocalOpenAIServer: ObservableObject {
         let info = Bundle.main.infoDictionary ?? [:]
         return [
             "program": "RC1.26_BACKBURNER_RUNTIME_OPTIMIZATION",
-            "build_id": "rc1.26-build106-m5-governor",
+            "build_id": "rc1.26-build112-m5-nax-pq2-01",
             "product_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA,
             "source_git_sha": BonsaiCertificationBuildIdentity.sourceGitSHA,
-            "candidate_build_id": "rc1.26-build112-b16-default",
+            "candidate_build_id": "rc1.26-build112-m5-nax-pq2-01",
             "build_number": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown",
             "workflow_run_id": BonsaiCertificationBuildIdentity.workflowRunID,
             "prism_upstream_sha": "adfffbe41b2cabcd51fff326ab045662265062bb",
