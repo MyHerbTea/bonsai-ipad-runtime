@@ -310,6 +310,16 @@ final class LocalOpenAIServer: ObservableObject {
 
     private static let keyDefaults = "BonsaiLocalAPIKey"
 
+    /// Read persisted settings on every request so changes take effect immediately.
+    var apiKeyAuthenticationEnabled: Bool {
+        LocalAPIAuthenticationPolicy.isRequired()
+    }
+
+    func setAPIKeyAuthenticationEnabled(_ enabled: Bool) {
+        LocalAPIAuthenticationPolicy.setRequired(enabled)
+        objectWillChange.send()
+    }
+
     var apiKey: String {
         if let existing = UserDefaults.standard.string(
             forKey: Self.keyDefaults
@@ -612,6 +622,7 @@ final class LocalOpenAIServer: ObservableObject {
                 status: 200,
                 object: [
                     "status": "ok",
+                    "auth_required": apiKeyAuthenticationEnabled,
                     "model": modelID,
                     "streaming": "chunked_sse",
                     "resource_governor": "v1",
@@ -668,6 +679,22 @@ final class LocalOpenAIServer: ObservableObject {
                                 forKey:
                                     "BonsaiRC126APIStartupLastError"
                             ) ?? "none",
+                        "api_startup_last_success_stage":
+                            UserDefaults.standard.string(
+                                forKey: "BonsaiRC126APILastSuccessfulStage"
+                            ) ?? "none",
+                        "api_startup_last_failure_stage":
+                            UserDefaults.standard.string(
+                                forKey: "BonsaiRC126APILastFailureStage"
+                            ) ?? "none",
+                        "api_startup_last_failure_error":
+                            UserDefaults.standard.string(
+                                forKey: "BonsaiRC126APILastFailureError"
+                            ) ?? "none",
+                        "api_startup_last_failure_time":
+                            UserDefaults.standard.double(
+                                forKey: "BonsaiRC126APILastFailureTime"
+                            ),
                         "last_api_image_count":
                             UserDefaults.standard.integer(
                                 forKey:
@@ -2665,20 +2692,12 @@ final class LocalOpenAIServer: ObservableObject {
     private func authorized(
         _ request: HTTPRequest
     ) -> Bool {
-        let expected = "Bearer \(apiKey)"
-
-        if request.headers["authorization"] == expected {
-            return true
-        }
-
-        // OpenAI-compatible clients overwhelmingly use Bearer auth, but a
-        // small set of local clients expose only an API-key header field.
-        // Accept this alias without advertising a different security model.
-        if request.headers["x-api-key"] == apiKey {
-            return true
-        }
-
-        return false
+        LocalAPIAuthenticationPolicy.isAuthorized(
+            required: apiKeyAuthenticationEnabled,
+            expectedAPIKey: apiKey,
+            authorizationHeader: request.headers["authorization"],
+            apiKeyHeader: request.headers["x-api-key"]
+        )
     }
 
     private func sendCompletion(
