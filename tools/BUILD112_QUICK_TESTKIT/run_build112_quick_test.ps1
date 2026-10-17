@@ -200,12 +200,29 @@ try {
   }
   $health = $healthResult.json
   Save-Json "health.json" $health
+  $summary.api_reachable = $true
+  $healthDiagnostics = Get-Field $health "diagnostics"
+  $startup = [ordered]@{
+    retrieval_status = "AVAILABLE"
+    source = "GET /health diagnostics"
+    api_startup_stage = (Get-Field $healthDiagnostics "api_startup_stage")
+    api_startup_previous_incomplete = (Get-Field $healthDiagnostics "api_startup_previous_incomplete")
+    api_startup_attempt = (Get-Field $healthDiagnostics "api_startup_attempt")
+    api_startup_last_error = (Get-Field $healthDiagnostics "api_startup_last_error")
+    api_startup_last_success_stage = (Get-Field $healthDiagnostics "api_startup_last_success_stage")
+    api_startup_last_failure_stage = (Get-Field $healthDiagnostics "api_startup_last_failure_stage")
+    api_startup_last_failure_error = (Get-Field $healthDiagnostics "api_startup_last_failure_error")
+    api_startup_last_failure_time = (Get-Field $healthDiagnostics "api_startup_last_failure_time")
+    last_engine_stage = (Get-Field $healthDiagnostics "last_engine_stage")
+    context_switch_state = (Get-Field $healthDiagnostics "context_switch_state")
+    collected_at = (Get-Date).ToString("o")
+  }
+  Save-Json "startup-diagnostics.json" $startup
   if ([string](Get-Field $health "status") -ne "ok") {
     throw "QUICK_RESULT|FAIL|FAIL_HEALTH_CHECK|GET /health did not return status=ok."
   }
   try { $authRequired = Resolve-AuthRequired $health }
   catch { throw "QUICK_RESULT|FAIL|FAIL_AUTH_MODE_UNDETERMINED|/health is missing a boolean auth_required field." }
-  $summary.api_reachable = $true
   $summary.auth.auth_required = $authRequired
   $summary.auth.mode = if ($authRequired) { "API_KEY_REQUIRED" } else { "NO_API_KEY_REQUIRED" }
   Save-Json "auth-mode.json" ([ordered]@{
@@ -277,7 +294,7 @@ try {
     source_git_sha = $appSHA
     candidate_build_id = $candidateBuildID
     build_number = $buildNo
-    workflow_run_id = Get-Field $build "workflow_run_id"
+    workflow_run_id = (Get-Field $build "workflow_run_id")
     matches_expected_app_source_sha = ($appSHA -eq $expectedAppSHA)
     is_build112 = ($buildNo -eq "112")
   }
@@ -321,22 +338,22 @@ try {
   }
   $tensorEnabledValue = Get-Field $prefill "m5_nax_pq2_tensor_api_enabled"
   $summary.runtime = [ordered]@{
-    api_context = Get-Field $prefill "api_context"
-    api_batch = Get-Field $prefill "api_batch"
-    api_ubatch = Get-Field $prefill "api_ubatch"
-    native_context_created = Get-Field $prefill "native_context_created"
-    native_context_context = Get-Field $prefill "native_context_context"
-    native_context_batch = Get-Field $prefill "native_context_batch"
-    native_context_ubatch = Get-Field $prefill "native_context_ubatch"
-    native_context_source = Get-Field $prefill "native_context_source"
+    api_context = (Get-Field $prefill "api_context")
+    api_batch = (Get-Field $prefill "api_batch")
+    api_ubatch = (Get-Field $prefill "api_ubatch")
+    native_context_created = (Get-Field $prefill "native_context_created")
+    native_context_context = (Get-Field $prefill "native_context_context")
+    native_context_batch = (Get-Field $prefill "native_context_batch")
+    native_context_ubatch = (Get-Field $prefill "native_context_ubatch")
+    native_context_source = (Get-Field $prefill "native_context_source")
     model_general_file_type_raw = $modelTypeRaw
     model_quantization_hint = $quantHint
     nax_tensor_api_enabled = $tensorEnabledValue
     nax_prefill_effective = Get-Field $prefill "m5_nax_pq2_prefill_effective"
     nax_prefill_state = Get-Field $prefill "m5_nax_pq2_prefill_state"
-    nax_route_selected = Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "route_selected"
-    nax_pipeline_ready = Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "pipeline_ready"
-    nax_dispatch_enqueued = Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "dispatch_enqueued"
+    nax_route_selected = (Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "route_selected")
+    nax_pipeline_ready = (Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "pipeline_ready")
+    nax_dispatch_enqueued = (Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "dispatch_enqueued")
   }
   Save-Json "runtime-diagnostics.json" $summary.runtime
   if ($null -eq $tensorEnabledValue) {
@@ -344,23 +361,6 @@ try {
   } elseif ([bool]$tensorEnabledValue) {
     $deferredFailure = "FAIL_NAX_ISOLATION"
   }
-  $healthDiagnostics = Get-Field $health "diagnostics"
-  $startup = [ordered]@{
-    retrieval_status = "AVAILABLE"
-    source = "GET /health diagnostics"
-    api_startup_stage = Get-Field $healthDiagnostics "api_startup_stage"
-    api_startup_previous_incomplete = Get-Field $healthDiagnostics "api_startup_previous_incomplete"
-    api_startup_attempt = Get-Field $healthDiagnostics "api_startup_attempt"
-    api_startup_last_error = Get-Field $healthDiagnostics "api_startup_last_error"
-    api_startup_last_success_stage = Get-Field $healthDiagnostics "api_startup_last_success_stage"
-    api_startup_last_failure_stage = Get-Field $healthDiagnostics "api_startup_last_failure_stage"
-    api_startup_last_failure_error = Get-Field $healthDiagnostics "api_startup_last_failure_error"
-    api_startup_last_failure_time = Get-Field $healthDiagnostics "api_startup_last_failure_time"
-    last_engine_stage = Get-Field $healthDiagnostics "last_engine_stage"
-    context_switch_state = Get-Field $healthDiagnostics "context_switch_state"
-    collected_at = (Get-Date).ToString("o")
-  }
-  Save-Json "startup-diagnostics.json" $startup
   if ([string](Get-Field $startup "api_startup_stage") -ne "READY") {
     if ($null -eq $deferredFailure) { $deferredFailure = "FAIL_STARTUP_LIFECYCLE_NOT_READY" }
   }
