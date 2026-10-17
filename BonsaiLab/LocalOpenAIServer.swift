@@ -1373,9 +1373,19 @@ final class LocalOpenAIServer: ObservableObject {
             "GGML_METAL_TENSOR_DISABLE"
         ).map { String(cString: $0) }
         let capability = BonsaiProbeMetalTensorCapability()
-        let launchArm = Phase2CMetalTensorLaunchLatch.arm
-        let requested =
-            launchArm == .candidate
+        // This experimental branch always requests Tensor API for the NAX kernel.
+        // The legacy Phase2C launch-arm flag describes an older experiment and is
+        // not authoritative for this candidate.
+        let m5NaxTrace = debugM5NaxPQ2TraceEvidence()
+        let requested = true
+        let tensorAPIEnabled = m5NaxTrace["tensor_api_enabled"] as? Bool ?? false
+        let routeSelected = m5NaxTrace["route_selected"] as? Bool ?? false
+        let pipelineReady = m5NaxTrace["pipeline_ready"] as? Bool ?? false
+        let dispatchEnqueued = m5NaxTrace["dispatch_enqueued"] as? Bool ?? false
+        let tensorPrefillEffective = tensorAPIEnabled
+            && routeSelected
+            && pipelineReady
+            && dispatchEnqueued
         let pipelineCompiled =
             capability.tensor_pipeline_compiled != 0
         let embeddedLibrary =
@@ -1387,12 +1397,14 @@ final class LocalOpenAIServer: ObservableObject {
             && embeddedLibrary
 
         let fallbackReason: String
-        if requested {
-            fallbackReason = candidateProbeEligible
-                ? "fresh_process_backend_init_required"
-                : "metal_tensor_capability_unavailable"
+        if !candidateProbeEligible {
+            fallbackReason = "metal_tensor_capability_unavailable"
+        } else if !tensorAPIEnabled {
+            fallbackReason = "m5_nax_tensor_api_not_enabled"
+        } else if tensorPrefillEffective {
+            fallbackReason = "m5_nax_pq2_dispatch_enqueued"
         } else {
-            fallbackReason = "baseline_frozen_workaround"
+            fallbackReason = "nax_route_not_observed_or_incomplete"
         }
 
         let last: Any
@@ -1618,9 +1630,11 @@ final class LocalOpenAIServer: ObservableObject {
             "ggml_metal_tensor_disable":
                 tensorDisable ?? "unset",
             "metal_tensor_prefill_requested": requested,
-            "metal_tensor_prefill_effective": false,
+            "metal_tensor_prefill_effective": tensorPrefillEffective,
+            "metal_tensor_backend_enabled": tensorAPIEnabled,
+            "metal_tensor_prefill_effective_state": m5NaxTrace["state"] as? String ?? "UNKNOWN",
             "metal_tensor_prefill_policy":
-                "fresh_process_launch_latched_viability",
+                "m5_nax_pq2_combined_tensor_route",
             "fallback_reason": fallbackReason,
             "candidate_probe_eligible": candidateProbeEligible,
             "backend_latch": [
@@ -1660,7 +1674,7 @@ final class LocalOpenAIServer: ObservableObject {
             ],
             "last": last,
             "last_observation": last,
-            "m5_nax_pq2_trace": debugM5NaxPQ2TraceEvidence()
+            "m5_nax_pq2_trace": m5NaxTrace
         ]
     }
 
