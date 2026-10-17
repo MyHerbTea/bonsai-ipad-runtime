@@ -42,8 +42,12 @@ struct Phase2CMetalTensorLaunchLatch {
         UserDefaults.standard.synchronize()
     }
 
-    static func apply(to runtime: inout RuntimeConfig) {
-        runtime.disableMetalTensorAPI = arm != .candidate
+    static func apply(
+        to runtime: inout RuntimeConfig,
+        allowNAXCandidate: Bool = false
+    ) {
+        runtime.disableMetalTensorAPI =
+            !(arm == .candidate && allowNAXCandidate)
     }
 }
 
