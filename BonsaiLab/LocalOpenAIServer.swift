@@ -602,6 +602,45 @@ final class LocalOpenAIServer: ObservableObject {
         }
     }
 
+    private func healthDiagnostics() -> [String: Any] {
+        let defaults = UserDefaults.standard
+        var diagnostics: [String: Any] = [:]
+        diagnostics["last_engine_stage"] =
+            defaults.string(forKey: "BonsaiLabLastStage") ?? "none"
+        diagnostics["last_mlx_vision_stage"] =
+            defaults.string(forKey: "BonsaiMLXVisionStage") ?? "none"
+        diagnostics["last_two_phase_vision_stage"] =
+            Self.persistedSupportText("bonsai_two_phase_vision_stage.txt")
+        diagnostics["vision_request_stage"] =
+            defaults.string(forKey: "BonsaiRC1252VisionRequestStage") ?? "none"
+        diagnostics["configured_vision_prefix_kv_reuse_enabled"] =
+            defaults.bool(forKey: "BonsaiRC1232VisionPrefixKVReuseEnabled")
+        diagnostics["api_vision_prefix_reuse_effective"] = false
+        diagnostics["context_switch_state"] =
+            defaults.string(forKey: "BonsaiRC1252ContextSwitchState") ?? "none"
+        diagnostics["api_startup_stage"] =
+            defaults.string(forKey: "BonsaiRC126APIStartupStage") ?? "none"
+        diagnostics["api_startup_previous_incomplete"] =
+            defaults.string(forKey: "BonsaiRC126APIPreviousIncompleteStage") ?? "none"
+        diagnostics["api_startup_attempt"] =
+            defaults.integer(forKey: "BonsaiRC126APIStartupAttempt")
+        diagnostics["api_startup_last_error"] =
+            defaults.string(forKey: "BonsaiRC126APIStartupLastError") ?? "none"
+        diagnostics["api_startup_last_success_stage"] =
+            defaults.string(forKey: "BonsaiRC126APILastSuccessfulStage") ?? "none"
+        diagnostics["api_startup_last_failure_stage"] =
+            defaults.string(forKey: "BonsaiRC126APILastFailureStage") ?? "none"
+        diagnostics["api_startup_last_failure_error"] =
+            defaults.string(forKey: "BonsaiRC126APILastFailureError") ?? "none"
+        diagnostics["api_startup_last_failure_time"] =
+            defaults.double(forKey: "BonsaiRC126APILastFailureTime")
+        diagnostics["last_api_image_count"] =
+            defaults.integer(forKey: "BonsaiRC1250LastAPIImageCount")
+        diagnostics["last_multi_image_layout"] =
+            defaults.string(forKey: "BonsaiRC1250LastMultiImageLayout") ?? "none"
+        return diagnostics
+    }
+
     private func process(
         _ request: HTTPRequest,
         connection: NWConnection
@@ -629,83 +668,7 @@ final class LocalOpenAIServer: ObservableObject {
                     "default_reasoning_effort": "none",
                     "context_window": advertisedContextWindow,
                     "max_output_tokens": advertisedMaxOutputTokens,
-                    "diagnostics": [
-                        "last_engine_stage":
-                            UserDefaults.standard.string(
-                                forKey: "BonsaiLabLastStage"
-                            ) ?? "none",
-                        "last_mlx_vision_stage":
-                            UserDefaults.standard.string(
-                                forKey: "BonsaiMLXVisionStage"
-                            ) ?? "none",
-                        "last_two_phase_vision_stage":
-                            Self.persistedSupportText(
-                                "bonsai_two_phase_vision_stage.txt"
-                            ),
-                        "vision_request_stage":
-                            UserDefaults.standard.string(
-                                forKey:
-                                    "BonsaiRC1252VisionRequestStage"
-                            ) ?? "none",
-                        "configured_vision_prefix_kv_reuse_enabled":
-                            UserDefaults.standard.bool(
-                                forKey:
-                                    "BonsaiRC1232VisionPrefixKVReuseEnabled"
-                            ),
-                        "api_vision_prefix_reuse_effective":
-                            false,
-                        "context_switch_state":
-                            UserDefaults.standard.string(
-                                forKey:
-                                    "BonsaiRC1252ContextSwitchState"
-                            ) ?? "none",
-                        "api_startup_stage":
-                            UserDefaults.standard.string(
-                                forKey:
-                                    "BonsaiRC126APIStartupStage"
-                            ) ?? "none",
-                        "api_startup_previous_incomplete":
-                            UserDefaults.standard.string(
-                                forKey:
-                                    "BonsaiRC126APIPreviousIncompleteStage"
-                            ) ?? "none",
-                        "api_startup_attempt":
-                            UserDefaults.standard.integer(
-                                forKey:
-                                    "BonsaiRC126APIStartupAttempt"
-                            ),
-                        "api_startup_last_error":
-                            UserDefaults.standard.string(
-                                forKey:
-                                    "BonsaiRC126APIStartupLastError"
-                            ) ?? "none",
-                        "api_startup_last_success_stage":
-                            UserDefaults.standard.string(
-                                forKey: "BonsaiRC126APILastSuccessfulStage"
-                            ) ?? "none",
-                        "api_startup_last_failure_stage":
-                            UserDefaults.standard.string(
-                                forKey: "BonsaiRC126APILastFailureStage"
-                            ) ?? "none",
-                        "api_startup_last_failure_error":
-                            UserDefaults.standard.string(
-                                forKey: "BonsaiRC126APILastFailureError"
-                            ) ?? "none",
-                        "api_startup_last_failure_time":
-                            UserDefaults.standard.double(
-                                forKey: "BonsaiRC126APILastFailureTime"
-                            ),
-                        "last_api_image_count":
-                            UserDefaults.standard.integer(
-                                forKey:
-                                    "BonsaiRC1250LastAPIImageCount"
-                            ),
-                        "last_multi_image_layout":
-                            UserDefaults.standard.string(
-                                forKey:
-                                    "BonsaiRC1250LastMultiImageLayout"
-                            ) ?? "none"
-                    ],
+                    "diagnostics": healthDiagnostics(),
                     "capabilities": [
                         "chat": true,
                         "vision": true,
