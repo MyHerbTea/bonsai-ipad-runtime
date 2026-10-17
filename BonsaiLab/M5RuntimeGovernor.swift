@@ -51,7 +51,8 @@ enum M5RuntimeGovernor {
         buildSHA: String,
         defaults: UserDefaults = .standard
     ) {
-        if defaults.string(forKey: candidateTrialStateKey) == "ATTEMPTING_B16" {
+        if defaults.string(forKey: candidateTrialBuildSHAKey) == buildSHA,
+           defaults.string(forKey: candidateTrialStateKey) == "ATTEMPTING_B16" {
             return
         }
         defaults.set(buildSHA, forKey: candidateTrialBuildSHAKey)
@@ -150,7 +151,7 @@ enum M5RuntimeGovernor {
         buildSHA: String,
         defaults: UserDefaults = .standard
     ) {
-        guard promptTokens >= 200,
+        guard promptTokens >= 512,
               isCandidateShapeTrialAttempting(buildSHA: buildSHA, defaults: defaults)
         else { return }
         let previous = defaults.string(forKey: candidateTrialPreviousFallbackKey) ?? "NONE"

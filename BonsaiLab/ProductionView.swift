@@ -4378,7 +4378,8 @@ applyBuild82LongContextPolicy(
                             )
                         default:
                             if selectedAPIContext == 32_768,
-                               Phase2CMetalTensorLaunchLatch.arm == .candidate {
+                               Phase2CMetalTensorLaunchLatch.arm == .candidate,
+                               payload.certificationTrace?.testCase == "m5-nax-pq2-long-prefill-v1" {
                                 M5RuntimeGovernor.noteCandidateShapeTrialInferenceFailure(
                                     buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA
                                 )
@@ -4399,7 +4400,8 @@ applyBuild82LongContextPolicy(
                         M5RuntimeGovernor.noteTextSuccess(
                             promptTokens: metrics.promptTokens
                         )
-                        if Phase2CMetalTensorLaunchLatch.arm == .candidate {
+                        if Phase2CMetalTensorLaunchLatch.arm == .candidate,
+                           payload.certificationTrace?.testCase == "m5-nax-pq2-long-prefill-v1" {
                             M5RuntimeGovernor.noteCandidateShapeTrialTextSuccess(
                                 promptTokens: metrics.promptTokens,
                                 buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA
