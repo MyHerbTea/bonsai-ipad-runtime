@@ -3368,7 +3368,7 @@ struct ProductionView: View {
             if candidateShapeTrial {
                 // A single explicit candidate-only B16 retry tests the required
                 // 16-row kernel shape. Historical fallback is retained until
-                // a successful >=200-token candidate request proves recovery.
+                // the attributed >=512-token candidate long-prefill proves recovery.
                 governorDecision = M5RuntimeDecision(
                     profile: .performance16,
                     reason: "build113_candidate_b16_shape_trial"

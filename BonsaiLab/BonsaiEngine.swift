@@ -600,9 +600,9 @@ actor BonsaiEngine {
             throw LabError.contextCreateFailed
         }
         recordBuild113NativeContextCreated(
-            context: Int(contextParams.n_ctx),
-            batch: Int(contextParams.n_batch),
-            ubatch: Int(contextParams.n_ubatch),
+            context: Int(llama_n_ctx(loadedContext)),
+            batch: Int(llama_n_batch(loadedContext)),
+            ubatch: Int(llama_n_ubatch(loadedContext)),
             source: "load_model"
         )
         enableBuild113NaxRouteTrace(contextLength: config.context)
@@ -642,9 +642,23 @@ actor BonsaiEngine {
         var descBuffer = [CChar](repeating: 0, count: 512)
         _ = llama_model_desc(loadedModel, &descBuffer, descBuffer.count)
         let desc = String(cString: descBuffer)
+        var fileTypeBuffer = [CChar](repeating: 0, count: 64)
+        let fileTypeStatus = llama_model_meta_val_str(
+            loadedModel,
+            "general.file_type",
+            &fileTypeBuffer,
+            fileTypeBuffer.count
+        )
+        let fileTypeRaw = fileTypeStatus >= 0
+            ? String(cString: fileTypeBuffer)
+            : "unavailable"
         UserDefaults.standard.set(
             desc,
             forKey: "BonsaiBuild113ModelDescription"
+        )
+        UserDefaults.standard.set(
+            fileTypeRaw,
+            forKey: "BonsaiBuild113ModelGeneralFileTypeRaw"
         )
         UserDefaults.standard.synchronize()
 
@@ -3049,9 +3063,9 @@ actor BonsaiEngine {
             throw LabError.contextCreateFailed
         }
         recordBuild113NativeContextCreated(
-            context: Int(params.n_ctx),
-            batch: Int(params.n_batch),
-            ubatch: Int(params.n_ubatch),
+            context: Int(llama_n_ctx(created)),
+            batch: Int(llama_n_batch(created)),
+            ubatch: Int(llama_n_ubatch(created)),
             source: "make_context"
         )
         enableBuild113NaxRouteTrace(contextLength: validated.context)

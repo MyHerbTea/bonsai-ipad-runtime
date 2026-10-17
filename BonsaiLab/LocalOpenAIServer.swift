@@ -1641,6 +1641,8 @@ final class LocalOpenAIServer: ObservableObject {
                 defaults.string(forKey: "BonsaiBuild113ModelFileName") ?? "unknown",
             "model_description":
                 defaults.string(forKey: "BonsaiBuild113ModelDescription") ?? "unknown",
+            "model_general_file_type_raw":
+                defaults.string(forKey: "BonsaiBuild113ModelGeneralFileTypeRaw") ?? "unavailable",
             "model_quantization_hint":
                 defaults.string(forKey: "BonsaiBuild113ModelQuantizationHint") ?? "unknown",
             "m5_nax_candidate_shape_trial":
