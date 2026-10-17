@@ -1,0 +1,51 @@
+name: Package Build112 NAX Quick TestKit
+
+on:
+  push:
+    branches:
+      - lab/m5-nax-pq2-01
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$env:GITHUB_WORKSPACE/tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1",
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+      - name: Package one-click Quick TestKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf package
+          mkdir -p package/Build112-Quick-TestKit
+          cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
+          printf '%s\n' 'Build112 NAX Quick TestKit 1.1' > package/Build112-Quick-TestKit/VERSION.txt
+          printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
+          (cd package && zip -qr ../BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip Build112-Quick-TestKit)
+          sha256sum BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip > BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip.sha256
+      - name: Upload one-click package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BONSAI_BUILD112_NAX_QUICK_TESTKIT
+          path: |
+            BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip
+            BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip.sha256
+          if-no-files-found: error
+          retention-days: 14

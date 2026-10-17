@@ -36,6 +36,11 @@ jobs:
           set -euo pipefail
           python3 -m py_compile tools/rc126_build113_patch_prism_m5_nax_pq2.py
           python3 tools/rc126_build113_m5_nax_pq2_contract_tests.py
+          xcrun swiftc -swift-version 5 \
+            BonsaiLab/Build113MetalTensorPolicy.swift \
+            tools/rc126_build113_metal_tensor_policy_tests.swift \
+            -o "$RUNNER_TEMP/build113_metal_tensor_policy_tests"
+          "$RUNNER_TEMP/build113_metal_tensor_policy_tests"
           git diff --check
 
       - name: Targeted Build112 policy test
@@ -183,8 +188,8 @@ jobs:
           M5-NAX-PQ2-01 is active only on lab/m5-nax-pq2-01.
           Candidate kernel: kernel_mul_mm_nax_pq2_0_f32.
           Candidate path: GGML_TYPE_PQ2_0 x F32 full B16 prefill chunks (16 x 128 output tile).
-          Metal Tensor API: enabled for this experimental candidate; generic TensorOps matmuls are also enabled.
-          Experiment scope: combined Tensor + NAX-PQ2 bundle versus stock B16; this does not isolate the NAX kernel contribution.
+          Metal Tensor API: default-disabled; explicit Phase2C CANDIDATE launch arm enables it before backend init.
+          Experiment scope: explicit CANDIDATE mode combines Tensor-enabled generic matmuls + NAX-PQ2; BASELINE preserves the safe default.
           Final binary: static kernel-source and host-dispatch checks recorded in M5_NAX_PQ2_BINARY_VERIFICATION.txt.
           Runtime Metal compilation, device dispatch, numerical correctness, and performance remain unverified pending M5 device evidence.
           Commit: $GITHUB_SHA

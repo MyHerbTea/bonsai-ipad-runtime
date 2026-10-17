@@ -9,6 +9,9 @@ WORKFLOW = ROOT / ".github/workflows/build112-b16-default.yml"
 DOC = ROOT / "docs/optimization/backburner-integration/RC1.26_BUILD113_M5_NAX_PQ2_01.md"
 VERIFY = ROOT / "tools/rc126_build113_verify_m5_nax_pq2_binary.sh"
 ENGINE = ROOT / "BonsaiLab/BonsaiEngine.swift"
+PRODUCTION = ROOT / "BonsaiLab/ProductionView.swift"
+POLICY = ROOT / "BonsaiLab/Build113MetalTensorPolicy.swift"
+POLICY_TESTS = ROOT / "tools/rc126_build113_metal_tensor_policy_tests.swift"
 SERVER = ROOT / "BonsaiLab/LocalOpenAIServer.swift"
 
 def require(path: Path, *needles: str) -> None:
@@ -46,8 +49,10 @@ require(
     "rc126_build113_patch_prism_m5_nax_pq2.py",
     "build-xcframework.sh ios-device",
     "M5-NAX-PQ2-01",
-    "Metal Tensor API: enabled for this experimental candidate",
+    "Metal Tensor API: default-disabled; explicit Phase2C CANDIDATE launch arm enables it",
     "combined Tensor + NAX-PQ2 bundle versus stock B16",
+    "rc126_build113_metal_tensor_policy_tests.swift",
+    "build113_metal_tensor_policy_tests",
     "rc126_build113_verify_m5_nax_pq2_binary.sh",
     "M5_NAX_PQ2_BINARY_VERIFICATION.txt",
 )
@@ -66,7 +71,9 @@ require(
 require(
     ENGINE,
     "effectiveBuild113MetalTensorDisabled",
-    "return false",
+    "Build113MetalTensorPolicy.effectiveDisabled",
+    "Phase2CMetalTensorLaunchLatch.arm.rawValue",
+    "Build113MetalTensorPolicy.requiresRestart",
     "unsetenv(\"GGML_METAL_TENSOR_DISABLE\")",
     "enableBuild113NaxRouteTrace",
     "contextLength: config.context",
@@ -76,10 +83,35 @@ require(
 )
 
 require(
+    POLICY,
+    'launchArmRawValue == "CANDIDATE"',
+    "return requestedDisabled",
+    "requiresRestart",
+    "latchedDisabled != effectiveDisabled",
+)
+
+require(
+    POLICY_TESTS,
+    "Default API cold start",
+    "explicit CANDIDATE",
+    "PASS Build113 Metal Tensor policy",
+)
+
+require(
+    PRODUCTION,
+    "Phase2CMetalTensorLaunchLatch.apply(to: &apiRuntime)",
+    "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
+    "Phase2CMetalTensorLaunchLatch.scheduleNext",
+)
+
+require(
     SERVER,
     '"build_id": "rc1.26-build112-m5-nax-pq2-01"',
     '"candidate_build_id": "rc1.26-build112-m5-nax-pq2-01"',
     "debugM5NaxPQ2TraceEvidence",
+    "api_startup_stage",
+    "api_startup_previous_incomplete",
+    "api_startup_last_error",
     "m5_nax_pq2_trace",
     "m5-nax-pq2-trace-evidence-v1",
     "m5_nax_pq2_prefill_effective",

@@ -182,21 +182,24 @@ actor BonsaiEngine {
         return index
     }
 
-    // Build113 M5-NAX-PQ2 uses Metal TensorOps, so this experimental branch
-    // intentionally measures a combined Tensor-enabled + NAX candidate against
-    // the stock B16 baseline. It does not isolate NAX from generic TensorOps.
+    // Build113 TensorOps is opt-in through the immutable process launch arm.
+    // BASELINE preserves caller configuration; CANDIDATE explicitly enables
+    // TensorOps before the process-global backend is initialized.
     private func effectiveBuild113MetalTensorDisabled(_ requested: Bool) -> Bool {
-        _ = requested
-        return false
+        Build113MetalTensorPolicy.effectiveDisabled(
+            requestedDisabled: requested,
+            launchArmRawValue: Phase2CMetalTensorLaunchLatch.arm.rawValue
+        )
     }
 
     private func prepareMetalTensorBackend(
         disabled: Bool
     ) throws {
         let effectiveDisabled = effectiveBuild113MetalTensorDisabled(disabled)
-        if let latched =
-            backendRegistryMetalTensorDisabledAtFirstInit,
-           latched != effectiveDisabled {
+        if Build113MetalTensorPolicy.requiresRestart(
+            latchedDisabled: backendRegistryMetalTensorDisabledAtFirstInit,
+            effectiveDisabled: effectiveDisabled
+        ) {
             mark("PHASE2C1_METAL_TENSOR_RESTART_REQUIRED")
             throw LabError.invalidConfig(
                 "Metal Tensor backend arm 已在本进程首次 backend init 时锁存；"

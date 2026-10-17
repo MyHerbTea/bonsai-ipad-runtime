@@ -990,6 +990,8 @@ struct ProductionView: View {
     @State private var showImageImporter = false
     @State private var showMLXVisionImporter = false
     @State private var showAdvanced = false
+    @State private var build113NAXCandidateNextLaunch =
+        Phase2CMetalTensorLaunchLatch.nextArm == .candidate
     @State private var certification: [CertificationResult] = []
     @State private var warmSessionSummary = ""
     @State private var warmSessionPass: Bool?
@@ -1588,6 +1590,22 @@ struct ProductionView: View {
 
                         Text(
                             "Build 79 Long Context：4096 只是回归基线。6144/8192 使用 Q8 KV；16K/32K/64K 使用 Q4 KV。32K/64K 逐步减少 Metal 常驻层，让更多 GGUF 权重保持 file-backed mmap，由 SSD 作为可回收页的后备来源。"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                        Toggle(
+                            "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
+                            isOn: $build113NAXCandidateNextLaunch
+                        )
+                        .onChange(of: build113NAXCandidateNextLaunch) { _, enabled in
+                            Phase2CMetalTensorLaunchLatch.scheduleNext(
+                                enabled ? .candidate : .baseline
+                            )
+                        }
+                        .disabled(busy)
+                        Text(
+                            "当前进程模式：\(Phase2CMetalTensorLaunchLatch.arm.rawValue)；下次启动：\(build113NAXCandidateNextLaunch ? "CANDIDATE" : "BASELINE")。候选模式会在进程首次 backend init 前启用 Metal Tensor API（包括通用 TensorOps）；必须完全退出并重新打开 App 后生效。默认 BASELINE 保留安全配置。"
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -3635,6 +3653,8 @@ applyBuild82LongContextPolicy(
                 RC126APIStartupLifecycle.mark("VISION_RELEASE_DONE")
 
                 var apiRuntime = selectedRuntime
+                // Apply the immutable process-launch arm before cold-start/backend init.
+                Phase2CMetalTensorLaunchLatch.apply(to: &apiRuntime)
                 apiRuntime.context = selectedAPIContext
                 apiRuntime.batch = 8
                 apiRuntime.ubatch = 8
