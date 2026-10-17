@@ -53,7 +53,7 @@ require(
     "M5-NAX-PQ2-01",
     "PTQ1_0 forces the safe Tensor-disabled backend even if CANDIDATE was selected.",
     "API Key auth: persistent setting defaults on; /health exposes only auth_required; disabled mode permits local development without a key.",
-    "combined Tensor + NAX-PQ2 bundle versus stock B16",
+    "NAX-PQ2-01 remains experimental and model-gated; PTQ1_0 forces the safe Tensor-disabled backend even if CANDIDATE was selected.",
     "rc126_build113_metal_tensor_policy_tests.swift",
     "build113_metal_tensor_policy_tests",
     "rc126_build113_verify_m5_nax_pq2_binary.sh",
