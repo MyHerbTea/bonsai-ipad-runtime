@@ -9,380 +9,483 @@ function Get-Field($Object, [string]$Name) {
   if ($null -eq $property) { return $null }
   return $property.Value
 }
-function Test-ShapePreconditions($Snapshot) {
-  $failures = [System.Collections.Generic.List[string]]::new()
-  if (-not [bool](Get-Field $Snapshot "metal_tensor_prefill_requested")) { $failures.Add("candidate_launch_arm_not_requested") }
-  if (-not [bool](Get-Field $Snapshot "m5_nax_pq2_tensor_api_enabled")) { $failures.Add("tensor_api_not_enabled") }
-  $apiContext = [int](Get-Field $Snapshot "api_context")
-  $apiBatch = [int](Get-Field $Snapshot "api_batch")
-  $apiUBatch = [int](Get-Field $Snapshot "api_ubatch")
-  if ($apiContext -ne 32768) { $failures.Add("api_context_not_32768") }
-  if ($apiBatch -lt 16) { $failures.Add("api_batch_below_16") }
-  if ($apiUBatch -lt 16 -or ($apiUBatch % 16) -ne 0) { $failures.Add("api_ubatch_below_16_or_unaligned") }
-  if (-not [bool](Get-Field $Snapshot "native_context_created")) { $failures.Add("native_context_creation_not_confirmed") }
-  if ([int](Get-Field $Snapshot "native_context_context") -ne 32768) { $failures.Add("native_context_not_32768") }
-  $nativeBatch = [int](Get-Field $Snapshot "native_context_batch")
-  $nativeUBatch = [int](Get-Field $Snapshot "native_context_ubatch")
-  if ($nativeBatch -lt 16) { $failures.Add("native_context_batch_below_16") }
-  if ($nativeUBatch -lt 16 -or ($nativeUBatch % 16) -ne 0) { $failures.Add("native_context_ubatch_below_16_or_unaligned") }
-  if ($nativeBatch -lt $nativeUBatch) { $failures.Add("native_context_batch_below_ubatch") }
-  $modelFile = [string](Get-Field $Snapshot "model_file_name")
-  $quantHint = [string](Get-Field $Snapshot "model_quantization_hint")
-  if ($modelFile -notmatch "(?i)PQ2_0" -or $quantHint -ne "PQ2_0_FILENAME_HINT") { $failures.Add("PQ2_0_model_identity_not_confirmed") }
-  return [pscustomobject]@{
-    eligible = ($failures.Count -eq 0); failures = @($failures.ToArray())
-    api_context = $apiContext; api_batch = $apiBatch; api_ubatch = $apiUBatch
-    native_context_created = [bool](Get-Field $Snapshot "native_context_created")
-    native_context_context = [int](Get-Field $Snapshot "native_context_context")
-    native_context_batch = $nativeBatch; native_context_ubatch = $nativeUBatch
-    model_file_name = $modelFile; model_description = [string](Get-Field $Snapshot "model_description")
-    model_general_file_type_raw = [string](Get-Field $Snapshot "model_general_file_type_raw")
-    model_quantization_hint = $quantHint
+function Save-Json([string]$Name, $Value) {
+  $Value | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath (Join-Path $outDir $Name) -Encoding UTF8
+}
+function Set-Stage([string]$Name, [string]$Status, [string]$Detail) {
+  $summary.stages[$Name] = [ordered]@{
+    status = $Status
+    detail = $Detail
+    timestamp = (Get-Date).ToString("o")
   }
 }
-function Test-TraceHasMarkers($Trace) {
-  if ($null -eq $Trace) { return $false }
-  if ([bool](Get-Field $Trace "route_selected")) { return $true }
-  if ([bool](Get-Field $Trace "pipeline_observed")) { return $true }
-  if ([bool](Get-Field $Trace "pipeline_ready")) { return $true }
-  if ([bool](Get-Field $Trace "dispatch_enqueued")) { return $true }
-  return (@(Get-Field $Trace "markers").Count -gt 0)
+function Get-HttpStatusCode($Record) {
+  try {
+    $response = $Record.Exception.Response
+    if ($null -ne $response -and $null -ne $response.StatusCode) {
+      return [int]$response.StatusCode
+    }
+  } catch {}
+  return 0
 }
-function Get-NaxFinalClassification(
-  [bool]$CandidateRequested, [bool]$TensorEnabled, [bool]$ShapeEligible,
-  [bool]$TraceBeforeClean, [bool]$InferenceSucceeded, [bool]$SentinelFound,
-  [bool]$UsageValid, [bool]$ObservationMatched, [bool]$RouteSelected,
-  [bool]$PipelineReady, [bool]$DispatchEnqueued
+function Get-ExitCodeForStatus([string]$Status) {
+  switch ($Status) {
+    "PASS" { return 0 }
+    "FAIL" { return 1 }
+    "INCOMPLETE" { return 2 }
+    "BLOCKED" { return 3 }
+    default { return 1 }
+  }
+}
+function Resolve-AuthRequired($Health) {
+  $value = Get-Field $Health "auth_required"
+  if ($null -eq $value -or $value -isnot [bool]) {
+    throw "AUTH_MODE_UNDETERMINED"
+  }
+  return [bool]$value
+}
+function New-RequestHeaders(
+  [bool]$AuthRequired,
+  [string]$Key,
+  [bool]$AllowMissingKey = $false
 ) {
-  if (-not $CandidateRequested -or -not $TensorEnabled) { return "FAIL_TENSOR_API_NOT_ENABLED" }
-  if (-not $ShapeEligible) { return "BLOCKED_SHAPE_PRECONDITION" }
-  if (-not $TraceBeforeClean) { return "FAIL_STALE_TRACE_EVIDENCE" }
-  if (-not $InferenceSucceeded -or -not $SentinelFound) { return "FAIL_INFERENCE" }
-  if (-not $UsageValid) { return "FAIL_PREFILL_TOKEN_COUNT_OUT_OF_RANGE" }
-  if (-not $ObservationMatched) { return "FAIL_REQUEST_OBSERVATION_MISMATCH" }
-  if (-not $RouteSelected) { return "FAIL_ROUTE_NOT_SELECTED" }
-  if (-not $PipelineReady) { return "FAIL_PIPELINE_NOT_READY" }
-  if (-not $DispatchEnqueued) { return "FAIL_DISPATCH_NOT_ENQUEUED" }
-  return "PASS_CANDIDATE_ROUTE_AND_INFERENCE"
+  $headers = @{}
+  if (-not $AuthRequired) { return $headers }
+  if ([string]::IsNullOrWhiteSpace($Key)) {
+    if ($AllowMissingKey) { return $headers }
+    throw "API_KEY_REQUIRED"
+  }
+  $headers["X-API-Key"] = $Key
+  return $headers
+}
+function Invoke-ApiJson(
+  [string]$Method,
+  [string]$Path,
+  $Body = $null,
+  [string]$Key = $null,
+  [bool]$AuthRequired = $false,
+  [bool]$AllowMissingKey = $false,
+  [int]$TimeoutSec = 45
+) {
+  $headers = New-RequestHeaders -AuthRequired:$AuthRequired -Key $Key -AllowMissingKey:$AllowMissingKey
+  try {
+    if ($Method -eq "GET") {
+      $json = Invoke-RestMethod -Method Get -Uri ($root + $Path) -Headers $headers -TimeoutSec $TimeoutSec
+    } else {
+      $wire = $Body | ConvertTo-Json -Depth 40 -Compress
+      $json = Invoke-RestMethod -Method Post -Uri ($root + $Path) -Headers $headers -ContentType "application/json" -Body $wire -TimeoutSec $TimeoutSec
+    }
+    return [pscustomobject]@{ http_status = 200; json = $json; error = $null }
+  } catch {
+    $code = Get-HttpStatusCode $_
+    if ($code -eq 401 -or $code -eq 403) { $safeError = "unauthorized" }
+    elseif ($code -gt 0) { $safeError = "HTTP $code" }
+    else { $safeError = "connection failed; raw exception omitted to protect request metadata" }
+    if (-not [string]::IsNullOrWhiteSpace($Key)) {
+      $safeError = $safeError.Replace($Key, "[REDACTED]")
+    }
+    return [pscustomobject]@{ http_status = $code; json = $null; error = $safeError }
+  }
+}
+function Throw-ApiFailure($Response, [string]$Stage, [string]$FailureClass) {
+  if ($Response.http_status -eq 0) {
+    throw "QUICK_RESULT|INCOMPLETE|INCOMPLETE_API_NOT_REACHABLE|$Stage could not reach the API endpoint."
+  }
+  if ($Response.http_status -eq 401 -or $Response.http_status -eq 403) {
+    throw "QUICK_RESULT|FAIL|AUTH_FAILED|$Stage was rejected by API authentication."
+  }
+  throw "QUICK_RESULT|FAIL|$FailureClass|$Stage returned HTTP $($Response.http_status)."
+}
+function Write-StartupDiagnosticsUnavailable([string]$Reason) {
+  if (-not (Test-Path -LiteralPath (Join-Path $outDir "startup-diagnostics.json"))) {
+    Save-Json "startup-diagnostics.json" ([ordered]@{
+      retrieval_status = "NOT_RETRIEVABLE_OVER_HTTP"
+      reason = $Reason
+      api_startup_stage = "UNAVAILABLE"
+      api_startup_previous_incomplete = "UNAVAILABLE"
+      api_startup_last_success_stage = "UNAVAILABLE"
+      api_startup_last_failure_stage = "UNAVAILABLE"
+      api_startup_last_failure_error = "UNAVAILABLE"
+      api_key_saved = $false
+      note = "When the listener is down, reopen Bonsai diagnostics or share the app's native startup evidence separately."
+    })
+  }
 }
 
 if ($args -contains "-SelfTest") {
-  $good = [pscustomobject]@{
-    metal_tensor_prefill_requested = $true; m5_nax_pq2_tensor_api_enabled = $true
-    api_context = 32768; api_batch = 16; api_ubatch = 16
-    native_context_created = $true; native_context_context = 32768
-    native_context_batch = 16; native_context_ubatch = 16
-    model_file_name = "Ternary-Bonsai-2-27B-PQ2_0.gguf"
-    model_description = "Qwen family model"; model_quantization_hint = "PQ2_0_FILENAME_HINT"
-  }
-  $shapeGood = Test-ShapePreconditions $good
-  if (-not $shapeGood.eligible) { throw ("SelfTest expected B16 shape to pass: " + ($shapeGood.failures -join ",")) }
-  $badUbatch = $good | Select-Object *
-  $badUbatch.api_ubatch = 4
-  $badUbatch.native_context_ubatch = 4
-  $shapeBad = Test-ShapePreconditions $badUbatch
-  if ($shapeBad.eligible -or -not ($shapeBad.failures -contains "native_context_ubatch_below_16_or_unaligned")) { throw "SelfTest must block native ubatch=4." }
-  if ((Get-NaxFinalClassification $true $true $false $true $true $true $true $true $true $true $true) -ne "BLOCKED_SHAPE_PRECONDITION") { throw "SelfTest shape classification failed." }
-  if ((Get-NaxFinalClassification $true $false $true $true $true $true $true $true $true $true $true) -ne "FAIL_TENSOR_API_NOT_ENABLED") { throw "SelfTest Tensor classification failed." }
-  if ((Get-NaxFinalClassification $true $true $true $true $true $true $true $true $false $false $false) -ne "FAIL_ROUTE_NOT_SELECTED") { throw "SelfTest route classification failed." }
-  if ((Get-NaxFinalClassification $true $true $true $true $true $true $true $true $true $false $false) -ne "FAIL_PIPELINE_NOT_READY") { throw "SelfTest Pipeline classification failed." }
-  if ((Get-NaxFinalClassification $true $true $true $true $false $false $false $false $false $false $false) -ne "FAIL_INFERENCE") { throw "SelfTest inference classification failed." }
-  if ((Get-NaxFinalClassification $true $true $true $true $true $true $true $true $true $true $true) -ne "PASS_CANDIDATE_ROUTE_AND_INFERENCE") { throw "SelfTest PASS classification failed." }
-  Write-Host "PASS Quick TestKit 1.2 shape gate and result-classification self-tests"
+  if ((Resolve-AuthRequired ([pscustomobject]@{ auth_required = $true })) -ne $true) { throw "SelfTest expected auth_required=true." }
+  if ((Resolve-AuthRequired ([pscustomobject]@{ auth_required = $false })) -ne $false) { throw "SelfTest expected auth_required=false." }
+  $missingModeRejected = $false
+  try { $null = Resolve-AuthRequired ([pscustomobject]@{}) } catch { $missingModeRejected = $true }
+  if (-not $missingModeRejected) { throw "SelfTest must reject an unknown auth mode." }
+  $disabledHeaders = New-RequestHeaders -AuthRequired:$false -Key "must-not-be-sent"
+  if ($disabledHeaders.Count -ne 0) { throw "SelfTest: disabled mode must send no API key header." }
+  $enabledHeaders = New-RequestHeaders -AuthRequired:$true -Key "test-key"
+  if ($enabledHeaders["X-API-Key"] -ne "test-key") { throw "SelfTest: enabled mode must attach the supplied key." }
+  $missingProbeHeaders = New-RequestHeaders -AuthRequired:$true -Key "" -AllowMissingKey:$true
+  if ($missingProbeHeaders.Count -ne 0) { throw "SelfTest: missing-key auth probe must not add a header." }
+  if ((Get-ExitCodeForStatus "PASS") -ne 0) { throw "SelfTest: PASS exit code must be 0." }
+  if ((Get-ExitCodeForStatus "FAIL") -eq 0) { throw "SelfTest: FAIL exit code must be nonzero." }
+  if ((Get-ExitCodeForStatus "INCOMPLETE") -eq 0) { throw "SelfTest: INCOMPLETE exit code must be nonzero." }
+  if ((Get-ExitCodeForStatus "BLOCKED") -eq 0) { throw "SelfTest: BLOCKED exit code must be nonzero." }
+  Write-Host "PASS Quick TestKit auth-mode detection, no-key headers and exit-code self-tests"
   exit 0
 }
 
 $testkitSourceCommit = (Get-Content -LiteralPath (Join-Path $scriptRoot "SOURCE_COMMIT.txt") -Raw).Trim()
 $expectedAppSHA = (Get-Content -LiteralPath (Join-Path $scriptRoot "EXPECTED_APP_SOURCE_SHA.txt") -Raw).Trim()
-$defaultBase = "http://192.168.1.85:8080"
+$defaultBase = "http://192.168.0.102:8080"
 $enteredBase = Read-Host "Bonsai Base URL [$defaultBase]"
 if ([string]::IsNullOrWhiteSpace($enteredBase)) { $enteredBase = $defaultBase }
 $root = $enteredBase.Trim().TrimEnd("/")
 if ($root.EndsWith("/v1")) { $root = $root.Substring(0, $root.Length - 3) }
-$secure = Read-Host "API Key (needed for authenticated build/models/prefill checks)" -AsSecureString
-$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-try { $apiKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
-finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $resultsRoot = Join-Path $scriptRoot "RESULTS"
-$outDir = Join-Path $resultsRoot ("Build112-NAX-LongPrefill-" + $stamp)
+$outDir = Join-Path $resultsRoot ("Build112-PTQ1-Auth-Startup-" + $stamp)
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$apiKey = ""
+$effectiveKey = $null
+$authRequired = $false
+$currentStage = "health"
+$deferredFailure = $null
 $summary = [ordered]@{
-  schema_version = 2; testkit = "Bonsai Build112 M5 NAX-PQ2 Long-Prefill TestKit"; testkit_version = "1.2"
-  testkit_source_commit = $testkitSourceCommit; expected_app_source_sha = $expectedAppSHA
-  expected_candidate_build_id = "rc1.26-build112-m5-nax-pq2-01"; expected_model_id = "bonsai-2-27b-local"
-  started_at = (Get-Date).ToString("o"); base_url = $root; api_key_saved = $false
-  app_identity = [ordered]@{ source_git_sha = "unavailable" }; status = "INCOMPLETE"
-  failure_class = "NOT_RUN"; failed_stage = "none"; stages = [ordered]@{}
-}
-function Save-Json([string]$Name, $Value) { $Value | ConvertTo-Json -Depth 35 | Set-Content -LiteralPath (Join-Path $outDir $Name) -Encoding UTF8 }
-function Set-Stage([string]$Name, [string]$Status, [string]$Detail) { $summary.stages[$Name] = [ordered]@{ status = $Status; detail = $Detail; timestamp = (Get-Date).ToString("o") } }
-function Get-HttpStatusCode($Record) {
-  try { $response = $Record.Exception.Response; if ($null -ne $response -and $null -ne $response.StatusCode) { return [int]$response.StatusCode } } catch {}
-  return 0
-}
-function Invoke-ApiJson([string]$Method, [string]$Path, $Body = $null, [bool]$UseKey = $true, [hashtable]$ExtraHeaders = @{}) {
-  $headers = @{}
-  if ($UseKey -and -not [string]::IsNullOrWhiteSpace($apiKey)) { $headers["X-API-Key"] = $apiKey }
-  if ($null -ne $ExtraHeaders) { foreach ($key in $ExtraHeaders.Keys) { $headers[$key] = $ExtraHeaders[$key] } }
-  try {
-    if ($Method -eq "GET") { return Invoke-RestMethod -Method Get -Uri ($root + $Path) -Headers $headers -TimeoutSec 45 }
-    $wire = $Body | ConvertTo-Json -Depth 35 -Compress
-    return Invoke-RestMethod -Method Post -Uri ($root + $Path) -Headers $headers -ContentType "application/json" -Body $wire -TimeoutSec 600
-  } catch {
-    $code = Get-HttpStatusCode $_
-    if ($code -eq 401 -or $code -eq 403) { $kind = "AUTH_FAILED" }
-    elseif ($code -eq 400 -or $code -eq 422) { $kind = "REQUEST_CONFIGURATION_ERROR" }
-    elseif ($currentStage -eq "health" -and $code -ge 500) { $kind = "HEALTH_CHECK_FAILED" }
-    elseif ($currentStage -eq "models" -and $code -ge 500) { $kind = "MODEL_LIST_FAILED" }
-    elseif ($currentStage -eq "long_prefill" -and $code -ge 500) { $kind = "INFERENCE_FAILED" }
-    elseif ($code -ge 500) { $kind = "API_SERVER_ERROR" }
-    elseif ($code -eq 0) { $kind = "API_NOT_REACHABLE" } else { $kind = "HTTP_ERROR" }
-    throw ("QUICK_API_ERROR|{0}|{1}|{2}|{3}" -f $kind, $code, $Path, $_.Exception.Message)
-  }
-}
-function Write-StartupDiagnosticsUnavailable([string]$Reason) {
-  if (-not (Test-Path -LiteralPath (Join-Path $outDir "startup-diagnostics.json"))) {
-    Save-Json "startup-diagnostics.json" ([ordered]@{
-      retrieval_status = "NOT_RETRIEVABLE_OVER_HTTP"; reason = $Reason
-      api_startup_stage = "UNAVAILABLE"; api_startup_previous_incomplete = "UNAVAILABLE"
-      api_startup_attempt = $null; api_startup_last_error = "UNAVAILABLE"
-      note = "When the listener is down, refresh Advanced & Diagnostics in Bonsai; startup stage/error remain in the app."
-    })
-  }
+  schema_version = 3
+  testkit = "Bonsai Build112 PTQ1_0 Auth-Aware Quick TestKit"
+  testkit_version = "2.0"
+  testkit_source_commit = $testkitSourceCommit
+  expected_app_source_sha = $expectedAppSHA
+  started_at = (Get-Date).ToString("o")
+  base_url = $root
+  api_key_saved = $false
+  api_reachable = $false
+  app_identity = [ordered]@{ source_git_sha = "unavailable"; candidate_build_id = "unavailable"; build_number = "unavailable" }
+  auth = [ordered]@{ mode = "unknown"; auth_required = $null; detection_source = "/health.auth_required"; key_prompted = $false; api_key_header_sent = $false; missing_key_probe = "NOT_RUN"; wrong_key_probe = "NOT_RUN" }
+  model_identity = [ordered]@{ model_id = "unavailable"; model_file_name = "unavailable"; model_general_file_type_raw = "unavailable"; quantization_hint = "unavailable" }
+  runtime = [ordered]@{}
+  status = "INCOMPLETE"
+  failure_class = "NOT_RUN"
+  failed_stage = "none"
+  failure_detail = "Test did not complete."
+  stages = [ordered]@{}
 }
 Save-Json "environment.json" ([ordered]@{
-  collected_at = (Get-Date).ToString("o"); operating_system = [Environment]::OSVersion.VersionString
-  powershell_version = $PSVersionTable.PSVersion.ToString(); powershell_edition = $PSVersionTable.PSEdition
-  is_64_bit_os = [Environment]::Is64BitOperatingSystem; is_64_bit_process = [Environment]::Is64BitProcess; base_url = $root
+  collected_at = (Get-Date).ToString("o")
+  operating_system = [Environment]::OSVersion.VersionString
+  powershell_version = $PSVersionTable.PSVersion.ToString()
+  powershell_edition = $PSVersionTable.PSEdition
+  is_64_bit_os = [Environment]::Is64BitOperatingSystem
+  is_64_bit_process = [Environment]::Is64BitProcess
+  base_url = $root
+  api_key_saved = $false
 })
 Save-Json "testkit-identity.json" ([ordered]@{
-  testkit = $summary.testkit; version = $summary.testkit_version
-  testkit_source_commit = $testkitSourceCommit; expected_app_source_sha = $expectedAppSHA
-  expected_candidate_build_id = $summary.expected_candidate_build_id; api_key_saved = $false
+  testkit = $summary.testkit
+  version = $summary.testkit_version
+  testkit_source_commit = $testkitSourceCommit
+  expected_app_source_sha = $expectedAppSHA
+  api_key_saved = $false
 })
 
-$currentStage = "health"
 try {
-  $health = Invoke-ApiJson -Method GET -Path "/health" -UseKey:$false
+  $currentStage = "health"
+  $healthResult = Invoke-ApiJson -Method GET -Path "/health" -AuthRequired:$false
+  if ($healthResult.http_status -eq 0) {
+    Save-Json "health-error.json" ([ordered]@{ http_status = 0; error = "API not reachable"; base_url = $root })
+    throw "QUICK_RESULT|INCOMPLETE|INCOMPLETE_API_NOT_REACHABLE|GET /health could not reach the API endpoint."
+  }
+  if ($healthResult.http_status -ne 200) {
+    Save-Json "health-error.json" ([ordered]@{ http_status = $healthResult.http_status; error = $healthResult.error })
+    throw "QUICK_RESULT|FAIL|FAIL_AUTH_MODE_UNDETERMINED|Public GET /health did not return HTTP 200, so the effective auth mode cannot be trusted."
+  }
+  $health = $healthResult.json
   Save-Json "health.json" $health
-  $d = Get-Field $health "diagnostics"
+  if ([string](Get-Field $health "status") -ne "ok") {
+    throw "QUICK_RESULT|FAIL|FAIL_HEALTH_CHECK|GET /health did not return status=ok."
+  }
+  try { $authRequired = Resolve-AuthRequired $health }
+  catch { throw "QUICK_RESULT|FAIL|FAIL_AUTH_MODE_UNDETERMINED|/health is missing a boolean auth_required field." }
+  $summary.api_reachable = $true
+  $summary.auth.auth_required = $authRequired
+  $summary.auth.mode = if ($authRequired) { "API_KEY_REQUIRED" } else { "NO_API_KEY_REQUIRED" }
+  Save-Json "auth-mode.json" ([ordered]@{
+    auth_required = $authRequired
+    mode = $summary.auth.mode
+    detection_source = "/health.auth_required"
+    key_prompted = $false
+    api_key_saved = $false
+  })
+  Set-Stage "health" "PASS" "Public GET /health succeeded and supplied a trusted boolean auth_required field."
+
+  if ($authRequired) {
+    $currentStage = "auth_probes"
+    $probeBody = [ordered]@{ model = "bonsai-2-27b-local"; messages = @(@{ role = "user"; content = "Authentication probe; request must be rejected before inference." }); max_tokens = 1; temperature = 0; stream = $false }
+    $routes = @(
+      [pscustomobject]@{ method = "GET"; path = "/v1/models"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/build"; body = $null },
+      [pscustomobject]@{ method = "GET"; path = "/debug/prefill"; body = $null },
+      [pscustomobject]@{ method = "POST"; path = "/v1/chat/completions"; body = $probeBody }
+    )
+    $probeResults = [System.Collections.Generic.List[object]]::new()
+    foreach ($route in $routes) {
+      $missing = Invoke-ApiJson -Method $route.method -Path $route.path -Body $route.body -AuthRequired:$true -AllowMissingKey:$true -TimeoutSec 20
+      $wrongKey = "invalid-" + [guid]::NewGuid().ToString("N")
+      $wrong = Invoke-ApiJson -Method $route.method -Path $route.path -Body $route.body -Key $wrongKey -AuthRequired:$true -TimeoutSec 20
+      $probeResults.Add([ordered]@{ path = $route.path; method = $route.method; missing_key_status = $missing.http_status; wrong_key_status = $wrong.http_status; expected_status = 401; passed = ($missing.http_status -eq 401 -and $wrong.http_status -eq 401) })
+      if ($missing.http_status -ne 401 -or $wrong.http_status -ne 401) {
+        Save-Json "auth-route-probes.json" @($probeResults.ToArray())
+        throw "QUICK_RESULT|FAIL|FAIL_AUTH_POLICY_MISMATCH|A protected route did not return HTTP 401 for missing and incorrect keys."
+      }
+    }
+    Save-Json "auth-route-probes.json" @($probeResults.ToArray())
+    $summary.auth.missing_key_probe = "ALL_PROTECTED_ROUTES_401"
+    $summary.auth.wrong_key_probe = "ALL_PROTECTED_ROUTES_401"
+    Set-Stage "auth_probes" "PASS" "Missing and incorrect keys returned HTTP 401 on models, build diagnostics, prefill diagnostics and inference."
+    $secure = Read-Host "API Key (required because IPA /health reports auth_required=true)" -AsSecureString
+    $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try { $apiKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+      throw "QUICK_RESULT|FAIL|FAIL_API_KEY_REQUIRED|Authentication is enabled but no API Key was supplied."
+    }
+    $effectiveKey = $apiKey
+    $summary.auth.key_prompted = $true
+    $summary.auth.api_key_header_sent = $true
+  } else {
+    $effectiveKey = $null
+    $summary.auth.key_prompted = $false
+    $summary.auth.api_key_header_sent = $false
+    Save-Json "auth-route-probes.json" ([ordered]@{
+      mode = "NO_API_KEY_REQUIRED"
+      api_key_prompted = $false
+      api_key_header_sent = $false
+      note = "Protected endpoints will be called without Authorization or X-API-Key headers."
+    })
+    Set-Stage "auth_probes" "PASS" "IPA reports auth_required=false; no key prompt or API key header will be used."
+  }
+
+  $currentStage = "build_identity"
+  $buildResult = Invoke-ApiJson -Method GET -Path "/debug/build" -Key $effectiveKey -AuthRequired:$authRequired
+  if ($buildResult.http_status -ne 200) { Throw-ApiFailure $buildResult "GET /debug/build" "FAIL_BUILD_IDENTITY_UNAVAILABLE" }
+  $build = $buildResult.json
+  $appSHA = [string](Get-Field $build "source_git_sha")
+  if ([string]::IsNullOrWhiteSpace($appSHA) -or $appSHA -eq "unknown") { $appSHA = [string](Get-Field $build "product_git_sha") }
+  $buildNo = [string](Get-Field $build "build_number")
+  if ([string]::IsNullOrWhiteSpace($buildNo)) { $buildNo = [string](Get-Field $build "build") }
+  $candidateBuildID = [string](Get-Field $build "candidate_build_id")
+  $summary.app_identity = [ordered]@{
+    source_git_sha = $appSHA
+    candidate_build_id = $candidateBuildID
+    build_number = $buildNo
+    workflow_run_id = Get-Field $build "workflow_run_id"
+    matches_expected_app_source_sha = ($appSHA -eq $expectedAppSHA)
+    is_build112 = ($buildNo -eq "112")
+  }
+  Save-Json "app-identity.json" $summary.app_identity
+  if ($appSHA -ne $expectedAppSHA -or $buildNo -ne "112") {
+    throw "QUICK_RESULT|FAIL|FAIL_BUILD_IDENTITY_MISMATCH|Actual App source SHA or Build ID does not match the TestKit pin."
+  }
+  Set-Stage "build_identity" "PASS" "App source SHA and Build112 identity match the independent TestKit pin."
+
+  $currentStage = "models"
+  $modelsResult = Invoke-ApiJson -Method GET -Path "/v1/models" -Key $effectiveKey -AuthRequired:$authRequired
+  if ($modelsResult.http_status -ne 200) { Throw-ApiFailure $modelsResult "GET /v1/models" "FAIL_MODEL_LIST" }
+  $models = $modelsResult.json
+  $modelRows = @(Get-Field $models "data")
+  if ($modelRows.Count -lt 1) { throw "QUICK_RESULT|FAIL|FAIL_MODEL_IDENTITY_MISMATCH|/v1/models returned no usable model." }
+  $modelID = [string](Get-Field $modelRows[0] "id")
+  $summary.model_identity.model_id = $modelID
+  Save-Json "models.json" $models
+  if ($modelID -ne "bonsai-2-27b-local") {
+    throw "QUICK_RESULT|FAIL|FAIL_MODEL_IDENTITY_MISMATCH|Expected model ID bonsai-2-27b-local."
+  }
+  Set-Stage "models" "PASS" "OpenAI-compatible model list returned the expected local model ID."
+
+  $currentStage = "prefill_before"
+  $prefillResult = Invoke-ApiJson -Method GET -Path "/debug/prefill" -Key $effectiveKey -AuthRequired:$authRequired
+  if ($prefillResult.http_status -ne 200) { Throw-ApiFailure $prefillResult "GET /debug/prefill" "FAIL_PREFILL_DIAGNOSTICS" }
+  $prefill = $prefillResult.json
+  Save-Json "prefill-before.json" $prefill
+  $modelFile = [string](Get-Field $prefill "model_file_name")
+  $modelTypeRaw = [string](Get-Field $prefill "model_general_file_type_raw")
+  $quantHint = [string](Get-Field $prefill "model_quantization_hint")
+  $summary.model_identity = [ordered]@{
+    model_id = $modelID
+    model_file_name = $modelFile
+    model_general_file_type_raw = $modelTypeRaw
+    quantization_hint = $quantHint
+    quantization_note = "Raw GGUF metadata is preserved as raw metadata; filename hints do not prove kernel dispatch."
+  }
+  if ($modelFile -notmatch "(?i)PTQ1_0") {
+    throw "QUICK_RESULT|FAIL|FAIL_MODEL_IDENTITY_MISMATCH|The loaded model filename does not identify the required PTQ1_0 mainline model."
+  }
+  $tensorEnabledValue = Get-Field $prefill "m5_nax_pq2_tensor_api_enabled"
+  $summary.runtime = [ordered]@{
+    api_context = Get-Field $prefill "api_context"
+    api_batch = Get-Field $prefill "api_batch"
+    api_ubatch = Get-Field $prefill "api_ubatch"
+    native_context_created = Get-Field $prefill "native_context_created"
+    native_context_context = Get-Field $prefill "native_context_context"
+    native_context_batch = Get-Field $prefill "native_context_batch"
+    native_context_ubatch = Get-Field $prefill "native_context_ubatch"
+    native_context_source = Get-Field $prefill "native_context_source"
+    model_general_file_type_raw = $modelTypeRaw
+    model_quantization_hint = $quantHint
+    nax_tensor_api_enabled = $tensorEnabledValue
+    nax_prefill_effective = Get-Field $prefill "m5_nax_pq2_prefill_effective"
+    nax_prefill_state = Get-Field $prefill "m5_nax_pq2_prefill_state"
+    nax_route_selected = Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "route_selected"
+    nax_pipeline_ready = Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "pipeline_ready"
+    nax_dispatch_enqueued = Get-Field (Get-Field $prefill "m5_nax_pq2_trace") "dispatch_enqueued"
+  }
+  Save-Json "runtime-diagnostics.json" $summary.runtime
+  if ($null -eq $tensorEnabledValue) {
+    $deferredFailure = "FAIL_NAX_ISOLATION_EVIDENCE_MISSING"
+  } elseif ([bool]$tensorEnabledValue) {
+    $deferredFailure = "FAIL_NAX_ISOLATION"
+  }
+  $healthDiagnostics = Get-Field $health "diagnostics"
   $startup = [ordered]@{
-    retrieval_status = "AVAILABLE"; source = "GET /health diagnostics"
-    api_startup_stage = Get-Field $d "api_startup_stage"
-    api_startup_previous_incomplete = Get-Field $d "api_startup_previous_incomplete"
-    api_startup_attempt = Get-Field $d "api_startup_attempt"
-    api_startup_last_error = Get-Field $d "api_startup_last_error"
-    last_engine_stage = Get-Field $d "last_engine_stage"; context_switch_state = Get-Field $d "context_switch_state"
+    retrieval_status = "AVAILABLE"
+    source = "GET /health diagnostics"
+    api_startup_stage = Get-Field $healthDiagnostics "api_startup_stage"
+    api_startup_previous_incomplete = Get-Field $healthDiagnostics "api_startup_previous_incomplete"
+    api_startup_attempt = Get-Field $healthDiagnostics "api_startup_attempt"
+    api_startup_last_error = Get-Field $healthDiagnostics "api_startup_last_error"
+    api_startup_last_success_stage = Get-Field $healthDiagnostics "api_startup_last_success_stage"
+    api_startup_last_failure_stage = Get-Field $healthDiagnostics "api_startup_last_failure_stage"
+    api_startup_last_failure_error = Get-Field $healthDiagnostics "api_startup_last_failure_error"
+    api_startup_last_failure_time = Get-Field $healthDiagnostics "api_startup_last_failure_time"
+    last_engine_stage = Get-Field $healthDiagnostics "last_engine_stage"
+    context_switch_state = Get-Field $healthDiagnostics "context_switch_state"
     collected_at = (Get-Date).ToString("o")
   }
   Save-Json "startup-diagnostics.json" $startup
-  $summary.api_reachable = $true; $summary.api_startup_stage = [string]$startup.api_startup_stage
-  if ([string](Get-Field $health "status") -ne "ok") { Set-Stage "health" "FAIL" "GET /health did not return status=ok."; throw "QUICK_STAGE_FAILURE|HEALTH_CHECK_FAILED|Unexpected /health status." }
-  Set-Stage "health" "PASS" "GET /health returned status=ok."
-
-  $currentStage = "build_identity"
-  $build = Invoke-ApiJson -Method GET -Path "/debug/build"
-  Save-Json "build.json" $build
-  $appSHA = [string](Get-Field $build "source_git_sha")
-  $appID = [string](Get-Field $build "candidate_build_id")
-  $buildNo = [string](Get-Field $build "build_number")
-  $identityOK = ($buildNo -eq "112") -and ($appID -eq "rc1.26-build112-m5-nax-pq2-01") -and ($appSHA -eq $expectedAppSHA)
-  $summary.app_identity = [ordered]@{
-    source_git_sha = $appSHA; candidate_build_id = $appID; build_number = $buildNo
-    workflow_run_id = [string](Get-Field $build "workflow_run_id"); prism_upstream_sha = [string](Get-Field $build "prism_upstream_sha")
-    matches_expected_app_source_sha = ($appSHA -eq $expectedAppSHA)
-    testkit_source_commit = $testkitSourceCommit; app_sha_is_not_inferred_from_testkit_sha = $true
+  if ([string](Get-Field $startup "api_startup_stage") -ne "READY") {
+    if ($null -eq $deferredFailure) { $deferredFailure = "FAIL_STARTUP_LIFECYCLE_NOT_READY" }
   }
-  if (-not $identityOK) { Set-Stage "build_identity" "FAIL" "App source SHA/build ID does not match EXPECTED_APP_SOURCE_SHA.txt."; throw "QUICK_STAGE_FAILURE|FAIL_BUILD_IDENTITY_MISMATCH|App identity must match the separately pinned App SHA and Build112 candidate." }
-  Set-Stage "build_identity" "PASS" "Build112 identity matches the pinned App SHA; TestKit source identity is separate."
+  Set-Stage "prefill_before" "PASS" "Captured model identity, API/native context shape, backend and persistent startup diagnostics."
 
-  $currentStage = "models"
-  $models = Invoke-ApiJson -Method GET -Path "/v1/models"
-  Save-Json "models.json" $models
-  $modelRows = @(Get-Field $models "data")
-  if ($modelRows.Count -lt 1) { Set-Stage "models" "FAIL" "No model row returned."; throw "QUICK_STAGE_FAILURE|FAIL_MODEL_IDENTITY_MISMATCH|/v1/models returned no usable model." }
-  $modelID = [string](Get-Field $modelRows[0] "id")
-  if ($modelID -ne "bonsai-2-27b-local") { Set-Stage "models" "FAIL" ("Unexpected model ID: " + $modelID); throw "QUICK_STAGE_FAILURE|FAIL_MODEL_IDENTITY_MISMATCH|Expected bonsai-2-27b-local." }
-  Set-Stage "models" "PASS" ("Target model ID: " + $modelID)
-
-  $currentStage = "prefill_before"
-  $before = Invoke-ApiJson -Method GET -Path "/debug/prefill"
-  Save-Json "prefill-before.json" $before
-  Set-Stage "prefill_before" "PASS" "Captured API, native-context, model, governor and NAX evidence."
-  $requested = [bool](Get-Field $before "metal_tensor_prefill_requested")
-  $tensorEnabled = [bool](Get-Field $before "m5_nax_pq2_tensor_api_enabled")
-  if (-not $requested -or -not $tensorEnabled) { Set-Stage "candidate_tensor_api" "FAIL" "CANDIDATE arm and backend Tensor API evidence must both be true."; throw "QUICK_STAGE_FAILURE|FAIL_TENSOR_API_NOT_ENABLED|Candidate was not active before backend initialization or backend Tensor evidence is false." }
-  Set-Stage "candidate_tensor_api" "PASS" "CANDIDATE arm is active and backend log evidence confirms Tensor API enabled."
-  $modelFile = [string](Get-Field $before "model_file_name")
-  $quantHint = [string](Get-Field $before "model_quantization_hint")
-  if ($modelFile -notmatch "(?i)PQ2_0" -or $quantHint -ne "PQ2_0_FILENAME_HINT") { Set-Stage "model_quantization" "FAIL" "Loaded model basename does not confirm PQ2_0; runtime route marker remains authoritative for tensor type."; throw "QUICK_STAGE_FAILURE|FAIL_MODEL_IDENTITY_MISMATCH|Expected loaded model basename to identify PQ2_0." }
-  Set-Stage "model_quantization" "PASS" "Loaded model basename identifies PQ2_0; runtime route marker must prove actual kernel selection."
-  $shape = Test-ShapePreconditions $before
-  Save-Json "shape-preconditions.json" $shape
-  $summary.shape_preconditions = $shape
-  $summary.model_identity = [ordered]@{
-    model_id = $modelID
-    model_file_name = [string](Get-Field $before "model_file_name")
-    model_description = [string](Get-Field $before "model_description")
-    model_general_file_type_raw = [string](Get-Field $before "model_general_file_type_raw")
-    model_quantization_filename_hint = [string](Get-Field $before "model_quantization_hint")
-    quantization_note = "general.file_type is preserved as raw GGUF metadata; PQ2_0 kernel type is confirmed only by the runtime route marker."
-  }
-  if (-not $shape.eligible) { $currentStage = "shape_precondition"; Set-Stage "shape_precondition" "BLOCKED" ("Runtime shape is not eligible: " + ($shape.failures -join ", ")); throw ("QUICK_STAGE_FAILURE|BLOCKED_SHAPE_PRECONDITION|" + ($shape.failures -join ", ")) }
-  Set-Stage "shape_precondition" "PASS" "API and successful native context satisfy the 32K, aligned 16-row-or-larger batch and PQ2_0 hint gates."
-  $beforeTrace = Get-Field $before "m5_nax_pq2_trace"
-  if (Test-TraceHasMarkers $beforeTrace) { $summary.trace_before_request_clean = $false; Set-Stage "trace_isolation" "FAIL" "Trace already contains markers before this request."; throw "QUICK_STAGE_FAILURE|FAIL_STALE_TRACE_EVIDENCE|Fully restart Bonsai and rerun to isolate the first eligible dispatch." }
-  $summary.trace_before_request_clean = $true
-  Set-Stage "trace_isolation" "PASS" "No NAX route/pipeline/dispatch marker existed before the test request."
-
-  $records = [System.Collections.Generic.List[string]]::new()
-  for ($i = 1; $i -le 32; $i++) {
-    $n = $i.ToString("D3")
-    $records.Add("Record $($n): keep seed 17; ordered values are 2, 3, 5, 7, 11, 13, 17, 19. Preserve the order and retain this record.")
-  }
-  $nl = [Environment]::NewLine
-  $prompt = "Read every numbered record before answering. Do not summarize or omit records. After processing all records, reply with exactly BONSAI_NAX_PREFILL_OK and no other text." + $nl + $nl + ($records -join $nl)
-  $runID = [guid]::NewGuid().ToString("N")
-  $requestID = "nax-" + [guid]::NewGuid().ToString("N")
+  $currentStage = "smoke_inference"
+  $smokePrompt = "Reply with exactly BONSAI_PTQ1_API_SMOKE_OK and no other text."
   $requestBody = [ordered]@{
-    model = $modelID; messages = @(@{ role = "user"; content = $prompt })
-    max_tokens = 16; temperature = 0; stream = $false
+    model = $modelID
+    messages = @(@{ role = "user"; content = $smokePrompt })
+    max_tokens = 16
+    temperature = 0
+    stream = $false
   }
-  Save-Json "long-prefill-request.json" ([ordered]@{
-    run_id = $runID; request_id = $requestID; test_case = "m5-nax-pq2-long-prefill-v1"
-    requested_input_token_range = "512-1024; authoritative length is response usage.prompt_tokens"
-    request_body = $requestBody; api_key_saved = $false
+  Save-Json "smoke-request.json" ([ordered]@{
+    request_body = $requestBody
+    auth_required = $authRequired
+    api_key_saved = $false
+    request_headers_saved = $false
   })
-
-  $currentStage = "long_prefill"; $response = $null; $longError = $null
-  $requestStartedAt = (Get-Date).ToString("o")
-  try {
-    $extraHeaders = @{
-      "X-Bonsai-Run-Id" = $runID; "X-Bonsai-Request-Id" = $requestID
-      "X-Bonsai-Test-Case" = "m5-nax-pq2-long-prefill-v1"
-    }
-    $response = Invoke-ApiJson -Method POST -Path "/v1/chat/completions" -Body $requestBody -ExtraHeaders $extraHeaders
-    Save-Json "long-prefill-response.json" $response
-  } catch {
-    $longError = $_.Exception.Message
-    Save-Json "long-prefill-error.json" ([ordered]@{ request_id = $requestID; started_at = $requestStartedAt; error = $longError; api_key_saved = $false })
-  }
-
-  $currentStage = "prefill_after"; $after = $null; $afterError = $null
-  try {
-    $after = Invoke-ApiJson -Method GET -Path "/debug/prefill"
-    Save-Json "prefill-after.json" $after
-    Set-Stage "prefill_after" "PASS" "Post-request /debug/prefill snapshot collected."
-  } catch {
-    $afterError = $_.Exception.Message
-    Save-Json "prefill-after-error.json" ([ordered]@{ error = $afterError; request_id = $requestID })
-    Set-Stage "prefill_after" "FAIL" ("Could not collect post-request evidence: " + $afterError)
-  }
-
-  $inferenceSucceeded = ($null -ne $response) -and ($null -eq $longError)
-  $answer = ""; $promptTokens = 0; $completionTokens = 0; $sentinelFound = $false
-  if ($inferenceSucceeded) {
-    $choices = @(Get-Field $response "choices")
-    if ($choices.Count -gt 0) { $answer = [string](Get-Field (Get-Field $choices[0] "message") "content") }
-    $usage = Get-Field $response "usage"
-    $promptTokens = [int](Get-Field $usage "prompt_tokens")
-    $completionTokens = [int](Get-Field $usage "completion_tokens")
-    $sentinelFound = $answer.Contains("BONSAI_NAX_PREFILL_OK")
-    $usageValid = ($promptTokens -ge 512) -and ($promptTokens -le 1024) -and ($completionTokens -gt 0)
-  } else { $usageValid = $false }
-
-  $route = $false; $pipelineObserved = $false; $pipeline = $false; $dispatch = $false
-  $trace = $null; $observationMatched = $false
-  $sequenceBefore = 0; $sequenceAfter = 0; $observedPromptTokens = 0
-  if ($null -ne $after) {
-    $trace = Get-Field $after "m5_nax_pq2_trace"
-    $route = [bool](Get-Field $trace "route_selected")
-    $pipelineObserved = [bool](Get-Field $trace "pipeline_observed")
-    $pipeline = [bool](Get-Field $trace "pipeline_ready")
-    $dispatch = [bool](Get-Field $trace "dispatch_enqueued")
-    $beforeObservation = Get-Field $before "last"; $afterObservation = Get-Field $after "last"
-    $sequenceBefore = [int](Get-Field $beforeObservation "sequence")
-    $sequenceAfter = [int](Get-Field $afterObservation "sequence")
-    $observedPromptTokens = [int](Get-Field $afterObservation "prompt_tokens")
-    $observationMatched = $inferenceSucceeded -and ($sequenceAfter -gt $sequenceBefore) -and ($observedPromptTokens -eq $promptTokens)
-  }
-  $classification = Get-NaxFinalClassification -CandidateRequested $requested -TensorEnabled $tensorEnabled -ShapeEligible ([bool]$shape.eligible) -TraceBeforeClean (-not (Test-TraceHasMarkers $beforeTrace)) -InferenceSucceeded $inferenceSucceeded -SentinelFound $sentinelFound -UsageValid $usageValid -ObservationMatched $observationMatched -RouteSelected $route -PipelineReady $pipeline -DispatchEnqueued $dispatch
-  if ($null -ne $afterError -and $classification -eq "PASS_CANDIDATE_ROUTE_AND_INFERENCE") { $classification = "FAIL_DIAGNOSTICS_INCOMPLETE" }
-
-  Save-Json "nax-verification.json" ([ordered]@{
-    schema = "bonsai-build112-m5-nax-long-prefill-verification-v1"; classification = $classification
-    app_source_sha = $appSHA; testkit_source_commit = $testkitSourceCommit; expected_app_source_sha = $expectedAppSHA
-    request_id = $requestID; run_id = $runID; test_case = "m5-nax-pq2-long-prefill-v1"
-    checks = [ordered]@{
-      candidate_requested = $requested; tensor_api_enabled = $tensorEnabled; shape_preconditions = $shape.eligible
-      trace_clean_before_request = (-not (Test-TraceHasMarkers $beforeTrace))
-      inference_succeeded = $inferenceSucceeded; sentinel_found = $sentinelFound
-      usage_prompt_tokens = $promptTokens; usage_completion_tokens = $completionTokens
-      usage_in_range_512_to_1024 = $usageValid; prefill_observation_matches_response = $observationMatched
-      observation_sequence_before = $sequenceBefore; observation_sequence_after = $sequenceAfter
-      observation_prompt_tokens = $observedPromptTokens
-      route_selected = $route; pipeline_marker_observed = $pipelineObserved
-      pipeline_ready_ok_1 = $pipeline; dispatch_enqueued = $dispatch; after_snapshot_available = ($null -ne $after)
-    }
-    trace_evidence = $trace; note = "Dispatch-enqueued is not proof of completed GPU execution or numerical correctness."
-  })
-  $summary.long_prefill = [ordered]@{
-    request_id = $requestID; run_id = $runID; completed = $inferenceSucceeded
-    sentinel_found = $sentinelFound; prompt_tokens = $promptTokens; completion_tokens = $completionTokens
-    answer = $answer; error = $longError
-  }
-  $summary.nax_evidence = [ordered]@{
-    tensor_api_enabled = $tensorEnabled; prefill_effective = [bool](Get-Field $after "m5_nax_pq2_prefill_effective")
-    prefill_state = [string](Get-Field $after "m5_nax_pq2_prefill_state")
-    route_selected = $route; pipeline_observed = $pipelineObserved; pipeline_ready = $pipeline
-    dispatch_enqueued = $dispatch; trace_before_clean = (-not (Test-TraceHasMarkers $beforeTrace))
-  }
-  $summary.failure_class = $classification
-  $summary.failed_stage = if ($classification -eq "PASS_CANDIDATE_ROUTE_AND_INFERENCE") { "none" } else { "nax_verification" }
-  if ($classification -eq "PASS_CANDIDATE_ROUTE_AND_INFERENCE") {
-    $summary.status = "PASS"; Set-Stage "nax_verification" "PASS" "Candidate route, ok=1 Pipeline, Dispatch enqueue and attributed long-prefill inference passed."
-  } elseif ($classification -eq "BLOCKED_SHAPE_PRECONDITION") {
-    $summary.status = "BLOCKED"; Set-Stage "nax_verification" "BLOCKED" "Native shape preconditions are not satisfied."
-  } elseif ($classification -like "INCOMPLETE_*") {
-    $summary.status = "INCOMPLETE"; Set-Stage "nax_verification" "INCOMPLETE" $classification
+  $smokeResult = Invoke-ApiJson -Method POST -Path "/v1/chat/completions" -Body $requestBody -Key $effectiveKey -AuthRequired:$authRequired -TimeoutSec 600
+  if ($smokeResult.http_status -eq 200) {
+    Save-Json "smoke-response.json" $smokeResult.json
   } else {
-    $summary.status = "FAIL"; Set-Stage "nax_verification" "FAIL" $classification
+    Save-Json "smoke-error.json" ([ordered]@{ http_status = $smokeResult.http_status; error = $smokeResult.error; api_key_saved = $false })
   }
+
+  $currentStage = "prefill_after"
+  $afterResult = Invoke-ApiJson -Method GET -Path "/debug/prefill" -Key $effectiveKey -AuthRequired:$authRequired
+  if ($afterResult.http_status -eq 200) {
+    Save-Json "prefill-after.json" $afterResult.json
+    Set-Stage "prefill_after" "PASS" "Post-inference prefill/runtime snapshot collected."
+  } else {
+    Save-Json "prefill-after-error.json" ([ordered]@{ http_status = $afterResult.http_status; error = $afterResult.error })
+    Set-Stage "prefill_after" "INCOMPLETE" "Post-inference prefill snapshot could not be collected."
+    if ($null -eq $deferredFailure) { $deferredFailure = "INCOMPLETE_DIAGNOSTICS_AFTER_REQUEST" }
+  }
+  $healthAfterResult = Invoke-ApiJson -Method GET -Path "/health" -AuthRequired:$false
+  if ($healthAfterResult.http_status -eq 200) {
+    Save-Json "health-after.json" $healthAfterResult.json
+  } else {
+    Save-Json "health-after-error.json" ([ordered]@{ http_status = $healthAfterResult.http_status; error = $healthAfterResult.error })
+    if ($null -eq $deferredFailure) { $deferredFailure = "INCOMPLETE_HEALTH_AFTER_REQUEST" }
+  }
+
+  if ($smokeResult.http_status -ne 200) { Throw-ApiFailure $smokeResult "POST /v1/chat/completions" "FAIL_INFERENCE" }
+  $choices = @(Get-Field $smokeResult.json "choices")
+  $answer = ""
+  if ($choices.Count -gt 0) { $answer = [string](Get-Field (Get-Field $choices[0] "message") "content") }
+  $usage = Get-Field $smokeResult.json "usage"
+  $promptTokens = [int](Get-Field $usage "prompt_tokens")
+  $completionTokens = [int](Get-Field $usage "completion_tokens")
+  $sentinelFound = $answer.Contains("BONSAI_PTQ1_API_SMOKE_OK")
+  $summary.smoke_inference = [ordered]@{
+    http_status = $smokeResult.http_status
+    completed = $true
+    sentinel_found = $sentinelFound
+    prompt_tokens = $promptTokens
+    completion_tokens = $completionTokens
+    answer = $answer
+    api_key_saved = $false
+  }
+  Save-Json "smoke-result.json" $summary.smoke_inference
+  if (-not $sentinelFound -or $promptTokens -le 0 -or $completionTokens -le 0) {
+    throw "QUICK_RESULT|FAIL|FAIL_INFERENCE|Smoke request completed without the expected marker or valid usage counts."
+  }
+  Set-Stage "smoke_inference" "PASS" "PTQ1_0 completed a real non-streaming OpenAI-compatible inference request."
+
+  if ($null -ne $deferredFailure) {
+    if ($deferredFailure -like "INCOMPLETE_*") {
+      throw "QUICK_RESULT|INCOMPLETE|$deferredFailure|Smoke inference completed but a required follow-up diagnostic was unavailable."
+    }
+    throw "QUICK_RESULT|FAIL|$deferredFailure|PTQ1_0 must keep the NAX Tensor experiment isolated and startup must reach READY."
+  }
+  $summary.status = "PASS"
+  $summary.failure_class = "PASS_PTQ1_AUTH_AND_STARTUP_SMOKE"
+  $summary.failed_stage = "none"
+  $summary.failure_detail = "Auth behavior, Build112 identity, PTQ1_0 model identity, NAX isolation and real smoke inference passed."
+  Set-Stage "final" "PASS" $summary.failure_detail
 } catch {
-  $message = $_.Exception.Message; $class = "UNCLASSIFIED_FAILURE"; $detail = $message
-  if ($message.StartsWith("QUICK_API_ERROR|")) {
-    $parts = $message -split "\|", 5
-    if ($parts.Count -ge 5) { $class = $parts[1]; $detail = "HTTP " + $parts[2] + " " + $parts[3] + ": " + $parts[4] }
-  } elseif ($message.StartsWith("QUICK_STAGE_FAILURE|")) {
-    $parts = $message -split "\|", 3
-    if ($parts.Count -ge 3) { $class = $parts[1]; $detail = $parts[2] }
+  $message = $_.Exception.Message
+  if ($message.StartsWith("QUICK_RESULT|")) {
+    $parts = $message -split "\|", 4
+    if ($parts.Count -eq 4) {
+      $summary.status = $parts[1]
+      $summary.failure_class = $parts[2]
+      $summary.failure_detail = $parts[3]
+    } else {
+      $summary.status = "FAIL"
+      $summary.failure_class = "UNCLASSIFIED_FAILURE"
+      $summary.failure_detail = "TestKit returned an invalid result record."
+    }
+  } elseif ($message -eq "AUTH_MODE_UNDETERMINED") {
+    $summary.status = "FAIL"
+    $summary.failure_class = "FAIL_AUTH_MODE_UNDETERMINED"
+    $summary.failure_detail = "Could not establish the actual auth mode from /health.auth_required."
+  } elseif ($message -eq "API_KEY_REQUIRED") {
+    $summary.status = "FAIL"
+    $summary.failure_class = "FAIL_API_KEY_REQUIRED"
+    $summary.failure_detail = "Authentication is enabled but no API Key was supplied."
+  } else {
+    $summary.status = "FAIL"
+    $summary.failure_class = "UNCLASSIFIED_FAILURE"
+    $summary.failure_detail = "An unexpected test stage failed; raw exception text is omitted."
   }
-  if ($class -eq "API_NOT_REACHABLE") { $class = "INCOMPLETE_API_NOT_REACHABLE"; $summary.status = "INCOMPLETE" }
-  elseif ($class -eq "BLOCKED_SHAPE_PRECONDITION") { $summary.status = "BLOCKED" } else { $summary.status = "FAIL" }
-  $summary.failure_class = $class; $summary.failed_stage = $currentStage; $summary.failure_detail = $detail
-  Set-Stage $currentStage $summary.status $detail
-  if ($currentStage -eq "health") { Write-StartupDiagnosticsUnavailable $detail }
-  if ($currentStage -eq "shape_precondition" -or $currentStage -eq "trace_isolation" -or $currentStage -eq "candidate_tensor_api") {
-    try {
-      $blockedAfter = Invoke-ApiJson -Method GET -Path "/debug/prefill"
-      Save-Json "prefill-after.json" $blockedAfter
-      Set-Stage "prefill_after" "PASS" "Post-gate snapshot collected; no long-prefill request was sent."
-    } catch { Save-Json "prefill-after-error.json" ([ordered]@{ error = $_.Exception.Message; request_sent = $false }) }
-  }
+  $summary.failed_stage = $currentStage
+  Set-Stage $currentStage $summary.status $summary.failure_detail
+  if ($currentStage -eq "health") { Write-StartupDiagnosticsUnavailable $summary.failure_detail }
 } finally {
-  if (-not (Test-Path -LiteralPath (Join-Path $outDir "startup-diagnostics.json"))) { Write-StartupDiagnosticsUnavailable "API health was not queried successfully." }
+  if (-not (Test-Path -LiteralPath (Join-Path $outDir "startup-diagnostics.json"))) {
+    Write-StartupDiagnosticsUnavailable "API startup diagnostics were not available over HTTP."
+  }
   $summary.finished_at = (Get-Date).ToString("o")
+  $summary.api_key_saved = $false
   Save-Json "summary.json" $summary
   $readme = @'
-Bonsai Build112 M5 NAX-PQ2 Long-Prefill TestKit 1.2
-Expected App SHA is pinned in EXPECTED_APP_SOURCE_SHA.txt; SOURCE_COMMIT.txt identifies this packaged TestKit revision.
-The long-prefill request is sent only when candidate/Tensor evidence, PQ2_0 filename hint, API context and successful native context batch/ubatch satisfy the shape gate.
-The ZIP includes before/after snapshots, deterministic request and response/error, usage, route markers, phase report and SHA-256 manifest.
-PASS means route-selected + PIPELINE_READY ok=1 + dispatch-enqueued were observed after this request and the request completed with the fixed sentinel and 512-1024 input-token usage.
-Dispatch-enqueued is not proof of completed GPU execution or numerical correctness. This is not performance A/B or device certification.
-API key is never written to result files.
+Bonsai Build112 PTQ1_0 Auth-Aware Quick TestKit 2.0
+- Reads the real IPA auth_required boolean from unauthenticated GET /health.
+- Prompts for an API Key only when auth_required=true; disabled mode sends no Authorization or X-API-Key header.
+- When auth is enabled, missing/wrong keys must receive HTTP 401 on models, build diagnostics, prefill diagnostics and inference.
+- Verifies independent App source SHA and Build112 identity, PTQ1_0 model filename, runtime shape, persistent startup evidence, NAX Tensor isolation, and real smoke inference.
+- Result ZIP contains endpoint status, auth mode/probes, model and runtime identity, startup diagnostics, smoke request/response, per-file SHA-256 manifest and summary.
+- API Key values and request headers are never written to result files.
+- Exit codes: PASS=0, FAIL=1, INCOMPLETE=2, BLOCKED=3.
+- PASS is a software/API smoke result, not M5 crash-free certification or a performance claim.
 '@
   Set-Content -LiteralPath (Join-Path $outDir "README.txt") -Value $readme -Encoding UTF8
   $hashes = [ordered]@{}
@@ -390,12 +493,17 @@ API key is never written to result files.
     $hashes[$_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   }
   Save-Json "manifest.json" ([ordered]@{
-    schema_version = 2; status = $summary.status; failure_class = $summary.failure_class
-    testkit_version = "1.2"; testkit_source_commit = $testkitSourceCommit
-    expected_app_source_sha = $expectedAppSHA; app_source_git_sha = $summary.app_identity.source_git_sha
-    api_key_saved = $false; files_sha256 = $hashes
+    schema_version = 3
+    status = $summary.status
+    failure_class = $summary.failure_class
+    testkit_version = "2.0"
+    testkit_source_commit = $testkitSourceCommit
+    expected_app_source_sha = $expectedAppSHA
+    app_source_git_sha = $summary.app_identity.source_git_sha
+    api_key_saved = $false
+    files_sha256 = $hashes
   })
-  $zipPath = Join-Path $resultsRoot ("Bonsai-Build112-M5-NAX-PQ2-LongPrefill-" + $stamp + ".zip")
+  $zipPath = Join-Path $resultsRoot ("Bonsai-Build112-PTQ1-Auth-Startup-" + $stamp + ".zip")
   Compress-Archive -Path (Join-Path $outDir "*") -DestinationPath $zipPath -CompressionLevel Optimal
   $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
   Set-Content -LiteralPath ($zipPath + ".sha256") -Value ($zipHash + "  " + [IO.Path]::GetFileName($zipPath)) -Encoding ASCII
@@ -403,6 +511,8 @@ API key is never written to result files.
   Write-Host ("FINAL: {0} / {1}" -f $summary.status, $summary.failure_class)
   Write-Host ("Evidence ZIP: " + $zipPath)
   Write-Host ("SHA-256: " + $zipHash)
-  Write-Host ""
   Remove-Variable apiKey -ErrorAction SilentlyContinue
 }
+$exitCode = Get-ExitCodeForStatus ([string]$summary.status)
+Write-Host ("ExitCode: " + $exitCode)
+exit $exitCode
