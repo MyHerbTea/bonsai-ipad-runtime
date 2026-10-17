@@ -1247,6 +1247,20 @@ final class LocalOpenAIServer: ObservableObject {
     // This makes the existing /debug/prefill snapshot sufficient for the one-click
     // Quick test ZIP without exporting arbitrary native log contents or file paths.
     private func debugM5NaxPQ2TraceEvidence() -> [String: Any] {
+        let defaults = UserDefaults.standard
+        let tensorDisable = getenv("GGML_METAL_TENSOR_DISABLE")
+        let backendLogObserved = defaults.bool(
+            forKey: Phase2CMetalTensorLaunchLatch.backendLogObservedKey
+        )
+        let backendHasTensorRaw = defaults.integer(
+            forKey: Phase2CMetalTensorLaunchLatch.backendHasTensorKey
+        )
+        let backendHasTensor: Any = backendLogObserved
+            ? (backendHasTensorRaw == 1)
+            : NSNull()
+        let tensorAPIEnabled = tensorDisable == nil
+            && backendLogObserved
+            && backendHasTensorRaw == 1
         let url = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -1262,6 +1276,10 @@ final class LocalOpenAIServer: ObservableObject {
                 "schema": "m5-nax-pq2-trace-evidence-v1",
                 "candidate": "M5-NAX-PQ2-01",
                 "trace_file_present": false,
+                "tensor_api_enabled": tensorAPIEnabled,
+                "tensor_disable_env_present": tensorDisable != nil,
+                "backend_tensor_log_observed": backendLogObserved,
+                "backend_has_tensor": backendHasTensor,
                 "route_selected": false,
                 "pipeline_observed": false,
                 "pipeline_ready": false,
@@ -1312,7 +1330,11 @@ final class LocalOpenAIServer: ObservableObject {
         }
 
         let state: String
-        if !routeSelected {
+        if !backendLogObserved {
+            state = "TENSOR_API_STATE_UNVERIFIED"
+        } else if !tensorAPIEnabled {
+            state = "TENSOR_API_NOT_ENABLED"
+        } else if !routeSelected {
             state = "ROUTE_NOT_OBSERVED"
         } else if pipelineLine == nil || !pipelineReady {
             state = "PIPELINE_NOT_READY_OR_INTERRUPTED"
@@ -1326,6 +1348,10 @@ final class LocalOpenAIServer: ObservableObject {
             "schema": "m5-nax-pq2-trace-evidence-v1",
             "candidate": "M5-NAX-PQ2-01",
             "trace_file_present": true,
+            "tensor_api_enabled": tensorAPIEnabled,
+            "tensor_disable_env_present": tensorDisable != nil,
+            "backend_tensor_log_observed": backendLogObserved,
+            "backend_has_tensor": backendHasTensor,
             "route_selected": routeSelected,
             "pipeline_observed": pipelineLine != nil,
             "pipeline_ready": pipelineReady,

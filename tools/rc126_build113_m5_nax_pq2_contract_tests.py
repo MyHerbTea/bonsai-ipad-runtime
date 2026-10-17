@@ -86,6 +86,11 @@ require(
     "BUILD113_M5_NAX_PQ2_PIPELINE_READY",
     "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED",
     "TRACE_FILE_UNAVAILABLE",
+    "tensor_api_enabled",
+    "tensor_disable_env_present",
+    "backend_tensor_log_observed",
+    "backend_has_tensor",
+    "TENSOR_API_NOT_ENABLED",
     "DISPATCH_ENQUEUED_NOT_COMPLETION_PROOF",
     "trace_header",
 )
