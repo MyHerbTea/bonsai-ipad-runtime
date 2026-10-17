@@ -131,7 +131,8 @@ require(
 
 require(
     PRODUCTION,
-    "Phase2CMetalTensorLaunchLatch.apply(to: &apiRuntime)",
+    "Phase2CMetalTensorLaunchLatch.apply(",
+    "allowNAXCandidate: allowNAXCandidateForModel",
     "beginCandidateShapeTrialIfPending",
     "noteCandidateShapeTrialTextSuccess",
     "noteCandidateShapeTrialStartupFailure",
