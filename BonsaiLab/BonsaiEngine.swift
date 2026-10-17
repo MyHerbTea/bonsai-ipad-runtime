@@ -182,12 +182,21 @@ actor BonsaiEngine {
         return index
     }
 
+    // Build113 M5-NAX-PQ2 uses Metal TensorOps, so this experimental branch
+    // intentionally measures a combined Tensor-enabled + NAX candidate against
+    // the stock B16 baseline. It does not isolate NAX from generic TensorOps.
+    private func effectiveBuild113MetalTensorDisabled(_ requested: Bool) -> Bool {
+        _ = requested
+        return false
+    }
+
     private func prepareMetalTensorBackend(
         disabled: Bool
     ) throws {
+        let effectiveDisabled = effectiveBuild113MetalTensorDisabled(disabled)
         if let latched =
             backendRegistryMetalTensorDisabledAtFirstInit,
-           latched != disabled {
+           latched != effectiveDisabled {
             mark("PHASE2C1_METAL_TENSOR_RESTART_REQUIRED")
             throw LabError.invalidConfig(
                 "Metal Tensor backend arm 已在本进程首次 backend init 时锁存；"
@@ -195,7 +204,7 @@ actor BonsaiEngine {
             )
         }
 
-        if disabled {
+        if effectiveDisabled {
             setenv("GGML_METAL_TENSOR_DISABLE", "1", 1)
         } else {
             unsetenv("GGML_METAL_TENSOR_DISABLE")
@@ -207,8 +216,9 @@ actor BonsaiEngine {
         beginStage: String,
         doneStage: String
     ) throws {
+        let effectiveDisabled = effectiveBuild113MetalTensorDisabled(metalTensorDisabled)
         try prepareMetalTensorBackend(
-            disabled: metalTensorDisabled
+            disabled: effectiveDisabled
         )
 
         guard !backendInitialized else {
@@ -228,10 +238,10 @@ actor BonsaiEngine {
 
         if firstRegistryInit {
             backendRegistryMetalTensorDisabledAtFirstInit =
-                metalTensorDisabled
+                effectiveDisabled
 
             let arm =
-                metalTensorDisabled
+                effectiveDisabled
                     ? Phase2CMetalTensorLaunchArm.baseline
                     : Phase2CMetalTensorLaunchArm.candidate
             UserDefaults.standard.set(

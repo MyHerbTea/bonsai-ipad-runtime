@@ -6,6 +6,8 @@
 
 Base application/runtime remains Build112. This phase does not promote a new product version or change the user-facing API behavior. The existing read-only `/debug/prefill` response exposes only allowlisted M5-NAX-PQ2 trace evidence for automated collection.
 
+**Important experiment scope:** the candidate kernel requires Metal TensorOps, but stock Build112 disables the Tensor API. This experimental branch therefore enables the Tensor API at backend initialization. The first device comparison measures the combined Tensor-enabled + NAX-PQ2 bundle against stock B16; generic TensorOps matmuls may also change. It is not an isolated estimate of the NAX kernel's contribution.
+
 ## Objective
 
 Test one specific engine hypothesis:
@@ -36,7 +38,7 @@ Only route operations matching all of:
 - single tensor batch dimensions
 - contiguous F32 output
 
-Everything else remains on the inherited Prism path.
+Operations that do not match the custom host-side NAX gate remain on Prism's existing Tensor-enabled kernels. Because enabling Tensor API also changes the generic matmul implementation, this experiment does not isolate NAX-only performance.
 
 ### Kernel
 
@@ -69,6 +71,8 @@ The candidate is otherwise automatically selected only when the narrow host-side
 - batch governor
 - Build112 recovery behavior
 - model format
+- B16 batch/ubatch values
+- context and KV configuration
 - PQ2 mathematical encoding
 
 ## Validation order
@@ -77,7 +81,7 @@ The candidate is otherwise automatically selected only when the narrow host-side
 2. CI builds the Bonsai iOS app.
 3. CI verifies the final framework binary contains the embedded Metal kernel source, the host pipeline-getter symbol, and route/pipeline/dispatch trace markers. This is static linkage evidence only; the kernel is runtime-compiled by Metal, so CI does not certify runtime compilation or execution.
 4. On the M5 iPad, run a 32K-context request with a sufficiently large prefill. The existing Quick test kit saves `/debug/prefill` as `prefill-after.json`; this response now includes `m5_nax_pq2_trace`, containing the trace header allowlist and only the three expected NAX markers. No separate manual trace export is required. The NAX markers use a dedicated low-volume trace path so Build84-89 scheduler tracing remains disabled during inference. The expected one-per-process markers are `BUILD113_M5_NAX_PQ2_ROUTE_SELECTED`, `BUILD113_M5_NAX_PQ2_PIPELINE_READY ok=1`, and `BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED`. A missing route marker means the candidate gate was not observed; check shape eligibility before treating it as a failure. A route marker without `PIPELINE_READY ok=1` indicates the pipeline did not return ready. Dispatch-enqueued is not, by itself, proof of completed execution.
-5. Compare the inherited Build112 path against this candidate using the same model, prompt set, context, and measurement harness; verify a successful completed request and numerical correctness.
+5. Compare the stock Build112 B16 path against this combined Tensor + NAX candidate using the same model, prompt set, context, and measurement harness; verify a successful completed request and numerical correctness. If the bundle meets promotion criteria, a subsequent Tensor-enabled baseline versus Tensor-enabled NAX A/B will isolate the NAX contribution.
 6. Only after numerical correctness passes is performance promotion considered.
 
 ## Promotion criteria
