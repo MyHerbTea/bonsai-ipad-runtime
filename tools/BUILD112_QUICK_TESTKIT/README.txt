@@ -2,7 +2,7 @@ Bonsai Build112 PTQ1_0 Auth-Aware Startup Quick TestKit 2.0
 
 Purpose
 - Detect the actual IPA authentication setting from the unauthenticated GET /health field auth_required.
-- Prompt for an API Key only when auth_required=true. If false, do not prompt and do not send Authorization or X-API-Key headers.
+- When auth_required=true, prompt for an API Key only after reading the server state. When auth_required=false, do not prompt and call protected routes without Authorization or X-API-Key headers.
 - When auth is enabled, verify that missing and incorrect keys receive HTTP 401 on /v1/models, /debug/build, /debug/prefill and /v1/chat/completions before asking for the real key.
 - Verify the actual App source SHA independently from the TestKit source commit and confirm Build112 identity.
 - Verify the loaded PTQ1_0 model filename, capture raw GGUF metadata as raw metadata, record API/native context and batch/ubatch, and collect persistent startup diagnostics.
