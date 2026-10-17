@@ -36,6 +36,7 @@ function Test-ShapePreconditions($Snapshot) {
     native_context_context = [int](Get-Field $Snapshot "native_context_context")
     native_context_batch = $nativeBatch; native_context_ubatch = $nativeUBatch
     model_file_name = $modelFile; model_description = [string](Get-Field $Snapshot "model_description")
+    model_general_file_type_raw = [string](Get-Field $Snapshot "model_general_file_type_raw")
     model_quantization_hint = $quantHint
   }
 }
@@ -221,6 +222,14 @@ try {
   $shape = Test-ShapePreconditions $before
   Save-Json "shape-preconditions.json" $shape
   $summary.shape_preconditions = $shape
+  $summary.model_identity = [ordered]@{
+    model_id = $modelID
+    model_file_name = [string](Get-Field $before "model_file_name")
+    model_description = [string](Get-Field $before "model_description")
+    model_general_file_type_raw = [string](Get-Field $before "model_general_file_type_raw")
+    model_quantization_filename_hint = [string](Get-Field $before "model_quantization_hint")
+    quantization_note = "general.file_type is preserved as raw GGUF metadata; PQ2_0 kernel type is confirmed only by the runtime route marker."
+  }
   if (-not $shape.eligible) { $currentStage = "shape_precondition"; Set-Stage "shape_precondition" "BLOCKED" ("Runtime shape is not eligible: " + ($shape.failures -join ", ")); throw ("QUICK_STAGE_FAILURE|BLOCKED_SHAPE_PRECONDITION|" + ($shape.failures -join ", ")) }
   Set-Stage "shape_precondition" "PASS" "API and successful native context satisfy the 32K, aligned 16-row-or-larger batch and PQ2_0 hint gates."
   $beforeTrace = Get-Field $before "m5_nax_pq2_trace"

@@ -11,7 +11,7 @@ workflow = WORKFLOW.read_text(encoding="utf-8")
 
 for needle in (
     "EXPECTED_APP_SOURCE_SHA.txt", "testkit_source_commit", "expected_app_source_sha",
-    "Test-ShapePreconditions", "native_context_created", "native_context_ubatch",
+    "Test-ShapePreconditions", "native_context_created", "native_context_ubatch", "model_general_file_type_raw",
     "prefill-before.json", "prefill-after.json", "long-prefill-request.json",
     "long-prefill-response.json", "temperature = 0", "max_tokens = 16",
     "m5-nax-pq2-long-prefill-v1", "PASS_CANDIDATE_ROUTE_AND_INFERENCE",

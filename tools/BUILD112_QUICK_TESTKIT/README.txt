@@ -18,5 +18,5 @@ Result classifications include PASS_CANDIDATE_ROUTE_AND_INFERENCE, BLOCKED_SHAPE
 
 The script does not send a long request when shape prerequisites fail. In that case it records the before/after snapshots and returns BLOCKED_SHAPE_PRECONDITION.
 The API key is never saved. The result ZIP includes request metadata, response/error, usage, startup diagnostics, before/after snapshots, stage report and SHA-256 manifest.
-The model quantization precheck is explicitly labelled a filename hint. Actual PQ2_0 route selection is proven only by the runtime route marker.
+The result records the loaded model basename, model description, raw GGUF general.file_type metadata and a clearly labelled filename hint. The raw file_type value is not misrepresented as a PQ2_0 enum name; actual PQ2_0 kernel selection is proven only by the runtime route marker.
 Dispatch-enqueued is not proof of completed GPU execution, numerical correctness or performance improvement. This package is not a performance A/B or device certification.
