@@ -12,6 +12,7 @@ ENGINE = ROOT / "BonsaiLab/BonsaiEngine.swift"
 PRODUCTION = ROOT / "BonsaiLab/ProductionView.swift"
 POLICY = ROOT / "BonsaiLab/Build113MetalTensorPolicy.swift"
 POLICY_TESTS = ROOT / "tools/rc126_build113_metal_tensor_policy_tests.swift"
+APP = ROOT / "BonsaiLab/BonsaiLabApp.swift"
 SERVER = ROOT / "BonsaiLab/LocalOpenAIServer.swift"
 
 def require(path: Path, *needles: str) -> None:
@@ -80,6 +81,21 @@ require(
     "contextLength: validated.context",
     "BONSAI_M5_NAX_PQ2_TRACE_PATH",
     "unsetenv(\"BONSAI_M5_NAX_PQ2_TRACE_PATH\")",
+)
+
+require(
+    APP,
+    "init()",
+    "Phase2CMetalTensorLaunchLatch.arm",
+)
+
+require(
+    ROOT / "tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1",
+    "HEALTH_CHECK_FAILED",
+    "MODEL_LIST_FAILED",
+    "INFERENCE_FAILED",
+    "AUTH_FAILED",
+    "REQUEST_CONFIGURATION_ERROR",
 )
 
 require(

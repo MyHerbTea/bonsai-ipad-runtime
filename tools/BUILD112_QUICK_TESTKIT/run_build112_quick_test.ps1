@@ -45,6 +45,9 @@ function Invoke-ApiJson([string]$Method,[string]$Path,$Body=$null,[bool]$UseKey=
     $code=Get-HttpStatusCode $_
     if ($code -eq 401 -or $code -eq 403) { $kind="AUTH_FAILED" }
     elseif ($code -eq 400 -or $code -eq 422) { $kind="REQUEST_CONFIGURATION_ERROR" }
+    elseif ($code -ge 500 -and $currentStage -eq "health") { $kind="HEALTH_CHECK_FAILED" }
+    elseif ($code -ge 500 -and $currentStage -eq "models") { $kind="MODEL_LIST_FAILED" }
+    elseif ($code -ge 500 -and $currentStage -eq "smoke") { $kind="INFERENCE_FAILED" }
     elseif ($code -ge 500) { $kind="API_SERVER_ERROR" }
     elseif ($code -eq 0) { $kind="API_NOT_REACHABLE" } else { $kind="HTTP_ERROR" }
     throw ("QUICK_API_ERROR|{0}|{1}|{2}|{3}" -f $kind,$code,$Path,$_.Exception.Message)
@@ -73,8 +76,6 @@ $currentStage="health"
 try {
   $health=Invoke-ApiJson -Method GET -Path "/health" -UseKey:$false
   Save-Json "health.json" $health
-  if ([string]$health.status -ne "ok") { Set-Stage "health" "FAIL" "Unexpected /health status."; throw "QUICK_STAGE_FAILURE|HEALTH_CHECK_FAILED|Unexpected /health status." }
-  Set-Stage "health" "PASS" "GET /health returned status=ok."
   $d=$health.diagnostics
   $startup=[ordered]@{
     retrieval_status="AVAILABLE";source="GET /health diagnostics";api_startup_stage=$d.api_startup_stage
@@ -84,6 +85,8 @@ try {
   }
   Save-Json "startup-diagnostics.json" $startup
   $summary.api_reachable=$true;$summary.api_startup_stage=[string]$startup.api_startup_stage
+  if ([string]$health.status -ne "ok") { Set-Stage "health" "FAIL" "Unexpected /health status."; throw "QUICK_STAGE_FAILURE|HEALTH_CHECK_FAILED|Unexpected /health status." }
+  Set-Stage "health" "PASS" "GET /health returned status=ok."
 
   $currentStage="build_identity"
   $build=Invoke-ApiJson -Method GET -Path "/debug/build";Save-Json "build.json" $build
