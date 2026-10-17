@@ -107,11 +107,22 @@ require(
 
 require(
     ROOT / "tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1",
-    "HEALTH_CHECK_FAILED",
-    "MODEL_LIST_FAILED",
-    "INFERENCE_FAILED",
-    "AUTH_FAILED",
-    "REQUEST_CONFIGURATION_ERROR",
+    "Resolve-AuthRequired",
+    "auth_required",
+    "New-RequestHeaders",
+    "NO_API_KEY_REQUIRED",
+    "INCOMPLETE_API_NOT_REACHABLE",
+    "FAIL_AUTH_MODE_UNDETERMINED",
+    "FAIL_AUTH_POLICY_MISMATCH",
+    "PTQ1_0",
+    "FAIL_NAX_ISOLATION",
+    "Get-ExitCodeForStatus",
+    "ExitCode:",
+    "api_key_saved = $false",
+    "auth-route-probes.json",
+    "startup-diagnostics.json",
+    "manifest.json",
+    "PASS_PTQ1_AUTH_AND_STARTUP_SMOKE",
 )
 
 require(
@@ -138,6 +149,50 @@ require(
     "noteCandidateShapeTrialStartupFailure",
     "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
     "Phase2CMetalTensorLaunchLatch.scheduleNext",
+)
+
+require(
+    ROOT / "BonsaiLab/APIKeyAuthenticationPolicy.swift",
+    "BonsaiLocalAPIKeyAuthEnabled",
+    "guard required else { return true }",
+    'authorizationHeader == "Bearer \\(expectedAPIKey)"',
+)
+
+require(
+    ROOT / "tools/api_key_authentication_policy_tests.swift",
+    "new installs must default to authentication enabled",
+    "disabled authentication must allow requests without headers",
+    "disabled preference must persist",
+)
+
+require(
+    ROOT / "BonsaiLab/Build112APIStartupDiagnostics.swift",
+    "lastSuccessfulStageKey",
+    "lastFailureStageKey",
+    "lastFailureErrorKey",
+    'mark("FAILED", defaults: defaults)',
+)
+
+require(
+    ROOT / "tools/build112_api_startup_diagnostics_tests.swift",
+    "interrupted model load must preserve its incomplete stage",
+    "new attempt must not erase prior failure evidence",
+)
+
+require(
+    PRODUCTION,
+    "API Key 鉴权",
+    "guard !busy else { return }",
+    "allowNAXCandidate: allowNAXCandidateForModel",
+)
+
+require(
+    SERVER,
+    '"auth_required": apiKeyAuthenticationEnabled',
+    "LocalAPIAuthenticationPolicy.isAuthorized",
+    "api_startup_last_success_stage",
+    "api_startup_last_failure_stage",
+    "api_startup_last_failure_error",
 )
 
 require(
