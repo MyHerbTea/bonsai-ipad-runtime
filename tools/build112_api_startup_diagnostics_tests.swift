@@ -15,7 +15,7 @@ struct Build112APIStartupDiagnosticsTests {
             fatalError("Could not create isolated UserDefaults suite")
         }
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        
+
         RC126APIStartupLifecycle.begin(build: "112", defaults: defaults)
         RC126APIStartupLifecycle.mark("BACKEND_PREWARM_DONE", defaults: defaults)
         RC126APIStartupLifecycle.mark("MODEL_LOAD_BEGIN", defaults: defaults)
