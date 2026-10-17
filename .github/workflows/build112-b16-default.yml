@@ -189,7 +189,7 @@ jobs:
           Candidate kernel: kernel_mul_mm_nax_pq2_0_f32.
           Candidate path: GGML_TYPE_PQ2_0 x F32 full B16 prefill chunks (16 x 128 output tile).
           Metal Tensor API: default-disabled; explicit Phase2C CANDIDATE launch arm enables it before backend init.
-          Experiment scope: explicit CANDIDATE mode combines Tensor-enabled generic matmuls + NAX-PQ2; BASELINE preserves the safe default.
+          Experiment scope: combined Tensor + NAX-PQ2 bundle versus stock B16 only in explicit CANDIDATE mode; BASELINE preserves the safe default.
           Final binary: static kernel-source and host-dispatch checks recorded in M5_NAX_PQ2_BINARY_VERIFICATION.txt.
           Runtime Metal compilation, device dispatch, numerical correctness, and performance remain unverified pending M5 device evidence.
           Commit: $GITHUB_SHA
