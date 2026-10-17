@@ -3359,12 +3359,33 @@ struct ProductionView: View {
             // Build112: the 32K text path has one small policy:
             // B16 is the default; startup failure falls back to B8, then SAFE4.
             // Historical Build93/94 certification/checkpoint state is ignored.
-            let governorDecision = M5RuntimeGovernor.decide(
-                context: context
+            let candidateNAX = Phase2CMetalTensorLaunchLatch.arm == .candidate
+            let candidateShapeTrial = M5RuntimeGovernor.beginCandidateShapeTrialIfPending(
+                buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA,
+                candidate: candidateNAX
             )
+            let governorDecision: M5RuntimeDecision
+            if candidateShapeTrial {
+                // A single explicit candidate-only B16 retry tests the required
+                // 16-row kernel shape. Historical fallback is retained until
+                // a successful >=200-token candidate request proves recovery.
+                governorDecision = M5RuntimeDecision(
+                    profile: .performance16,
+                    reason: "build113_candidate_b16_shape_trial"
+                )
+            } else {
+                governorDecision = M5RuntimeGovernor.decide(
+                    context: context
+                )
+            }
             apiRuntime.batch = governorDecision.profile.batch
             apiRuntime.ubatch = governorDecision.profile.ubatch
-            M5RuntimeGovernor.persist(governorDecision, source: source)
+            M5RuntimeGovernor.persist(
+                governorDecision,
+                source: candidateShapeTrial
+                    ? source + "_nax_candidate_b16_shape_trial"
+                    : source
+            )
             apiRuntime.gpuLayers = 99
             apiRuntime.offloadKQV = true
             apiRuntime.opOffload = true
@@ -4356,6 +4377,12 @@ applyBuild82LongContextPolicy(
                                     error.localizedDescription
                             )
                         default:
+                            if selectedAPIContext == 32_768,
+                               Phase2CMetalTensorLaunchLatch.arm == .candidate {
+                                M5RuntimeGovernor.noteCandidateShapeTrialInferenceFailure(
+                                    buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA
+                                )
+                            }
                             throw OpenAIHandlerHTTPError(
                                 status: 500,
                                 code:
@@ -4372,6 +4399,12 @@ applyBuild82LongContextPolicy(
                         M5RuntimeGovernor.noteTextSuccess(
                             promptTokens: metrics.promptTokens
                         )
+                        if Phase2CMetalTensorLaunchLatch.arm == .candidate {
+                            M5RuntimeGovernor.noteCandidateShapeTrialTextSuccess(
+                                promptTokens: metrics.promptTokens,
+                                buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA
+                            )
+                        }
                     }
 
                     let resourceSnapshot =
@@ -4451,9 +4484,17 @@ applyBuild82LongContextPolicy(
                     UserDefaults.standard.string(
                         forKey: "BonsaiLabLastStage"
                     ) ?? ""
-                if selectedAPIContext == 32_768,
-                   lastStage.hasPrefix("MODEL_"),
-                   lastStage != "MODEL_09_READY" {
+                let candidateTrialBuildSHA =
+                    BonsaiCertificationBuildIdentity.sourceGitSHA
+                if M5RuntimeGovernor.isCandidateShapeTrialAttempting(
+                    buildSHA: candidateTrialBuildSHA
+                ) {
+                    M5RuntimeGovernor.noteCandidateShapeTrialStartupFailure(
+                        buildSHA: candidateTrialBuildSHA
+                    )
+                } else if selectedAPIContext == 32_768,
+                          lastStage.hasPrefix("MODEL_"),
+                          lastStage != "MODEL_09_READY" {
                     M5RuntimeGovernor.noteStartupFailure()
                 }
                 RC126APIStartupLifecycle.fail(error)

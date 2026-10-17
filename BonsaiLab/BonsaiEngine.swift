@@ -114,6 +114,39 @@ actor BonsaiEngine {
         )
     }
 
+    private func recordBuild113NativeContextAttempt(
+        context: Int,
+        batch: Int,
+        ubatch: Int,
+        source: String
+    ) {
+        let defaults = UserDefaults.standard
+        defaults.set(false, forKey: "BonsaiBuild113NativeContextCreated")
+        defaults.set(context, forKey: "BonsaiBuild113NativeContextAttemptContext")
+        defaults.set(batch, forKey: "BonsaiBuild113NativeContextAttemptBatch")
+        defaults.set(ubatch, forKey: "BonsaiBuild113NativeContextAttemptUBatch")
+        defaults.set(source, forKey: "BonsaiBuild113NativeContextAttemptSource")
+        defaults.set(Date().timeIntervalSince1970, forKey: "BonsaiBuild113NativeContextAttemptAt")
+        defaults.synchronize()
+    }
+
+    private func recordBuild113NativeContextCreated(
+        context: Int,
+        batch: Int,
+        ubatch: Int,
+        source: String
+    ) {
+        let defaults = UserDefaults.standard
+        defaults.set(context, forKey: "BonsaiBuild113NativeContextContext")
+        defaults.set(batch, forKey: "BonsaiBuild113NativeContextBatch")
+        defaults.set(ubatch, forKey: "BonsaiBuild113NativeContextUBatch")
+        defaults.set(source, forKey: "BonsaiBuild113NativeContextSource")
+        defaults.set(Date().timeIntervalSince1970, forKey: "BonsaiBuild113NativeContextCreatedAt")
+        // This flag is written only after llama_init_from_model returned a non-null context.
+        defaults.set(true, forKey: "BonsaiBuild113NativeContextCreated")
+        defaults.synchronize()
+    }
+
     private func clearTextKVReuseState(
         reason: String
     ) {
@@ -424,6 +457,18 @@ actor BonsaiEngine {
         UserDefaults.standard.set(true, forKey: "BonsaiBuild82ModelLoadCompleted")
         UserDefaults.standard.synchronize()
         mark("MODEL_06_LOAD_DONE")
+        let modelFileName = url.lastPathComponent
+        UserDefaults.standard.set(
+            modelFileName,
+            forKey: "BonsaiBuild113ModelFileName"
+        )
+        UserDefaults.standard.set(
+            modelFileName.uppercased().contains("PQ2_0")
+                ? "PQ2_0_FILENAME_HINT"
+                : "UNVERIFIED_FILENAME",
+            forKey: "BonsaiBuild113ModelQuantizationHint"
+        )
+        UserDefaults.standard.synchronize()
         persistSystemDiagnostics(
             prefix: "BonsaiBuild79AfterModelMmap"
         )
@@ -539,6 +584,12 @@ actor BonsaiEngine {
             forKey: "BonsaiBuild81ContextCreateCompleted"
         )
         UserDefaults.standard.synchronize()
+        recordBuild113NativeContextAttempt(
+            context: config.context,
+            batch: config.batch,
+            ubatch: config.ubatch,
+            source: "load_model"
+        )
         mark("MODEL_07_CONTEXT_CREATE_BEGIN")
         beginBuild84NativeContextTrace(contextLength: config.context)
         defer { endBuild84NativeContextTrace() }
@@ -548,6 +599,12 @@ actor BonsaiEngine {
             stopModelScope()
             throw LabError.contextCreateFailed
         }
+        recordBuild113NativeContextCreated(
+            context: Int(contextParams.n_ctx),
+            batch: Int(contextParams.n_batch),
+            ubatch: Int(contextParams.n_ubatch),
+            source: "load_model"
+        )
         enableBuild113NaxRouteTrace(contextLength: config.context)
         mark("MODEL_08_CONTEXT_CREATE_DONE")
         B16RuntimeEvidence.created(parameters: [
@@ -585,6 +642,11 @@ actor BonsaiEngine {
         var descBuffer = [CChar](repeating: 0, count: 512)
         _ = llama_model_desc(loadedModel, &descBuffer, descBuffer.count)
         let desc = String(cString: descBuffer)
+        UserDefaults.standard.set(
+            desc,
+            forKey: "BonsaiBuild113ModelDescription"
+        )
+        UserDefaults.standard.synchronize()
 
         let loadSeconds = Double(loadEnd - loadStart) / 1_000_000_000.0
         let metrics = ModelMetrics(
@@ -2975,11 +3037,23 @@ actor BonsaiEngine {
             forKey: "BonsaiBuild81EffectiveThreads"
         )
 
+        recordBuild113NativeContextAttempt(
+            context: validated.context,
+            batch: validated.batch,
+            ubatch: validated.ubatch,
+            source: "make_context"
+        )
         beginBuild84NativeContextTrace(contextLength: validated.context)
         defer { endBuild84NativeContextTrace() }
         guard let created = llama_init_from_model(model, params) else {
             throw LabError.contextCreateFailed
         }
+        recordBuild113NativeContextCreated(
+            context: Int(params.n_ctx),
+            batch: Int(params.n_batch),
+            ubatch: Int(params.n_ubatch),
+            source: "make_context"
+        )
         enableBuild113NaxRouteTrace(contextLength: validated.context)
         B16RuntimeEvidence.created(parameters: [
             "context": Int(params.n_ctx),

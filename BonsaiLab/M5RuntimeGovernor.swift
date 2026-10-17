@@ -39,6 +39,149 @@ enum M5RuntimeGovernor {
     /// certification/checkpoint state. This prevents stale SAFE4 state from
     /// blocking the new performance-default path.
     static let fallbackKey = "BonsaiBuild112FallbackProfile"
+    static let candidateTrialBuildSHAKey = "BonsaiBuild113NaxCandidateTrialBuildSHA"
+    static let candidateTrialPendingKey = "BonsaiBuild113NaxCandidateTrialPending"
+    static let candidateTrialStateKey = "BonsaiBuild113NaxCandidateTrialState"
+    static let candidateTrialPreviousFallbackKey = "BonsaiBuild113NaxCandidateTrialPreviousFallback"
+    static let candidateTrialFailureKey = "BonsaiBuild113NaxCandidateTrialFailure"
+
+    /// Explicit candidate selection authorizes one bounded B16 shape trial.
+    /// Existing fallback evidence is recorded, never erased at trial start.
+    static func scheduleCandidateShapeTrial(
+        buildSHA: String,
+        defaults: UserDefaults = .standard
+    ) {
+        if defaults.string(forKey: candidateTrialStateKey) == "ATTEMPTING_B16" {
+            return
+        }
+        defaults.set(buildSHA, forKey: candidateTrialBuildSHAKey)
+        defaults.set(true, forKey: candidateTrialPendingKey)
+        defaults.set("PENDING", forKey: candidateTrialStateKey)
+        defaults.set(
+            defaults.string(forKey: fallbackKey) ?? "NONE",
+            forKey: candidateTrialPreviousFallbackKey
+        )
+        defaults.removeObject(forKey: candidateTrialFailureKey)
+        defaults.synchronize()
+    }
+
+    /// A changed App source identity permits one new candidate-only attempt.
+    /// A failed attempt is not silently retried on every process launch.
+    static func beginCandidateShapeTrialIfPending(
+        buildSHA: String,
+        candidate: Bool,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        guard candidate else { return false }
+        if defaults.string(forKey: candidateTrialBuildSHAKey) != buildSHA {
+            scheduleCandidateShapeTrial(buildSHA: buildSHA, defaults: defaults)
+        }
+        guard defaults.bool(forKey: candidateTrialPendingKey) else {
+            return false
+        }
+        defaults.set(false, forKey: candidateTrialPendingKey)
+        defaults.set("ATTEMPTING_B16", forKey: candidateTrialStateKey)
+        defaults.synchronize()
+        return true
+    }
+
+    static func isCandidateShapeTrialAttempting(
+        buildSHA: String,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        defaults.string(forKey: candidateTrialBuildSHAKey) == buildSHA
+            && defaults.string(forKey: candidateTrialStateKey) == "ATTEMPTING_B16"
+    }
+
+    private static func recordCandidateShapeTrialFailure(
+        buildSHA: String,
+        state: String,
+        failure: String,
+        defaults: UserDefaults
+    ) {
+        guard isCandidateShapeTrialAttempting(buildSHA: buildSHA, defaults: defaults) else {
+            return
+        }
+        let previous = defaults.string(forKey: candidateTrialPreviousFallbackKey) ?? "NONE"
+        let fallback: M5RuntimeProfile =
+            previous == M5RuntimeProfile.safe4.rawValue
+                ? .safe4
+                : .balanced8
+        defaults.set(fallback.rawValue, forKey: fallbackKey)
+        defaults.set(fallback.rawValue, forKey: profileKey)
+        defaults.set(
+            "build113_candidate_b16_\(state.lowercased())_preserved_\(previous.lowercased())",
+            forKey: reasonKey
+        )
+        defaults.set("build113_candidate_shape_trial", forKey: sourceKey)
+        defaults.set(state, forKey: candidateTrialStateKey)
+        defaults.set(failure, forKey: candidateTrialFailureKey)
+        defaults.synchronize()
+    }
+
+    static func noteCandidateShapeTrialStartupFailure(
+        buildSHA: String,
+        defaults: UserDefaults = .standard
+    ) {
+        recordCandidateShapeTrialFailure(
+            buildSHA: buildSHA,
+            state: "STARTUP_FAILED",
+            failure: "candidate_b16_startup_failed",
+            defaults: defaults
+        )
+    }
+
+    static func noteCandidateShapeTrialInferenceFailure(
+        buildSHA: String,
+        defaults: UserDefaults = .standard
+    ) {
+        recordCandidateShapeTrialFailure(
+            buildSHA: buildSHA,
+            state: "INFERENCE_FAILED",
+            failure: "candidate_b16_inference_failed",
+            defaults: defaults
+        )
+    }
+
+    /// Only a real successful long-prefill request may re-arm B16 and clear
+    /// the old sticky fallback. The previous value remains in the audit fields.
+    static func noteCandidateShapeTrialTextSuccess(
+        promptTokens: Int,
+        buildSHA: String,
+        defaults: UserDefaults = .standard
+    ) {
+        guard promptTokens >= 200,
+              isCandidateShapeTrialAttempting(buildSHA: buildSHA, defaults: defaults)
+        else { return }
+        let previous = defaults.string(forKey: candidateTrialPreviousFallbackKey) ?? "NONE"
+        defaults.set("LONG_PREFILL_SUCCESS", forKey: candidateTrialStateKey)
+        defaults.set(
+            "build113_candidate_b16_long_prefill_succeeded_after_\(previous.lowercased())",
+            forKey: reasonKey
+        )
+        defaults.set("build113_candidate_long_prefill", forKey: sourceKey)
+        defaults.set(M5RuntimeProfile.performance16.rawValue, forKey: profileKey)
+        defaults.removeObject(forKey: fallbackKey)
+        defaults.removeObject(forKey: candidateTrialFailureKey)
+        defaults.synchronize()
+    }
+
+    static func candidateShapeTrialSnapshot(
+        buildSHA: String,
+        defaults: UserDefaults = .standard
+    ) -> [String: Any] {
+        [
+            "schema": "bonsai-build113-nax-shape-trial-v1",
+            "app_source_sha": buildSHA,
+            "recorded_app_source_sha": defaults.string(forKey: candidateTrialBuildSHAKey) ?? "none",
+            "state": defaults.string(forKey: candidateTrialStateKey) ?? "NOT_STARTED",
+            "pending": defaults.bool(forKey: candidateTrialPendingKey),
+            "previous_fallback_profile": defaults.string(forKey: candidateTrialPreviousFallbackKey) ?? "NONE",
+            "active_governor_profile": defaults.string(forKey: profileKey) ?? "unknown",
+            "active_fallback_profile": defaults.string(forKey: fallbackKey) ?? "NONE",
+            "failure": defaults.string(forKey: candidateTrialFailureKey) ?? "none"
+        ]
+    }
 
     static func decide(
         context: Int,

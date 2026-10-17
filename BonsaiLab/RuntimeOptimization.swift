@@ -34,6 +34,11 @@ struct Phase2CMetalTensorLaunchLatch {
 
     static func scheduleNext(_ next: Phase2CMetalTensorLaunchArm) {
         UserDefaults.standard.set(next.rawValue, forKey: nextArmKey)
+        if next == .candidate {
+            M5RuntimeGovernor.scheduleCandidateShapeTrial(
+                buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA
+            )
+        }
         UserDefaults.standard.synchronize()
     }
 

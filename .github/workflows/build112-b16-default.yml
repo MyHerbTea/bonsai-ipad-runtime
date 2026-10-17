@@ -5,6 +5,10 @@ on:
     branches:
       - chatgpt/build112-b16-default
       - lab/m5-nax-pq2-01
+    paths-ignore:
+      - 'tools/BUILD112_QUICK_TESTKIT/**'
+      - 'tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py'
+      - '.github/workflows/package-build112-quick-testkit.yml'
   workflow_dispatch:
 
 concurrency:
@@ -53,6 +57,11 @@ jobs:
             -o "$RUNNER_TEMP/build112_policy_tests"
           "$RUNNER_TEMP/build112_policy_tests"
           xcrun swiftc -frontend -parse BonsaiLab/M5RuntimeGovernor.swift
+          xcrun swiftc -swift-version 5 \
+            BonsaiLab/M5RuntimeGovernor.swift \
+            tools/rc126_build113_candidate_shape_policy_tests.swift \
+            -o "$RUNNER_TEMP/build113_candidate_shape_policy_tests"
+          "$RUNNER_TEMP/build113_candidate_shape_policy_tests"
           git diff --check
 
       - name: Install XcodeGen

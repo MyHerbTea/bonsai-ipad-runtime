@@ -11,6 +11,7 @@ VERIFY = ROOT / "tools/rc126_build113_verify_m5_nax_pq2_binary.sh"
 ENGINE = ROOT / "BonsaiLab/BonsaiEngine.swift"
 PRODUCTION = ROOT / "BonsaiLab/ProductionView.swift"
 POLICY = ROOT / "BonsaiLab/Build113MetalTensorPolicy.swift"
+GOVERNOR = ROOT / "BonsaiLab/M5RuntimeGovernor.swift"
 POLICY_TESTS = ROOT / "tools/rc126_build113_metal_tensor_policy_tests.swift"
 APP = ROOT / "BonsaiLab/BonsaiLabApp.swift"
 SERVER = ROOT / "BonsaiLab/LocalOpenAIServer.swift"
@@ -79,8 +80,23 @@ require(
     "enableBuild113NaxRouteTrace",
     "contextLength: config.context",
     "contextLength: validated.context",
+    "recordBuild113NativeContextAttempt",
+    "recordBuild113NativeContextCreated",
+    "BonsaiBuild113ModelFileName",
+    "PQ2_0_FILENAME_HINT",
     "BONSAI_M5_NAX_PQ2_TRACE_PATH",
     "unsetenv(\"BONSAI_M5_NAX_PQ2_TRACE_PATH\")",
+)
+
+require(
+    GOVERNOR,
+    "beginCandidateShapeTrialIfPending",
+    "noteCandidateShapeTrialStartupFailure",
+    "noteCandidateShapeTrialInferenceFailure",
+    "noteCandidateShapeTrialTextSuccess",
+    "candidateShapeTrialSnapshot",
+    "BonsaiBuild113NaxCandidateTrialPending",
+    "LONG_PREFILL_SUCCESS",
 )
 
 require(
@@ -116,6 +132,9 @@ require(
 require(
     PRODUCTION,
     "Phase2CMetalTensorLaunchLatch.apply(to: &apiRuntime)",
+    "beginCandidateShapeTrialIfPending",
+    "noteCandidateShapeTrialTextSuccess",
+    "noteCandidateShapeTrialStartupFailure",
     "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
     "Phase2CMetalTensorLaunchLatch.scheduleNext",
 )
@@ -133,6 +152,11 @@ require(
     "m5_nax_pq2_prefill_effective",
     "m5_nax_pq2_prefill_state",
     "m5_nax_pq2_tensor_api_enabled",
+    "native_context_created",
+    "native_context_ubatch",
+    "model_file_name",
+    "model_quantization_hint",
+    "m5_nax_candidate_shape_trial",
     "BUILD113_M5_NAX_PQ2_ROUTE_SELECTED",
     "BUILD113_M5_NAX_PQ2_PIPELINE_READY",
     "BUILD113_M5_NAX_PQ2_DISPATCH_ENQUEUED",

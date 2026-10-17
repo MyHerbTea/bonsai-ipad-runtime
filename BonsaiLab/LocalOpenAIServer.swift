@@ -1614,6 +1614,39 @@ final class LocalOpenAIServer: ObservableObject {
                 defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"),
             "build82_engine_context_ubatch":
                 defaults.integer(forKey: "BonsaiBuild82EngineContextUBatch"),
+            "api_context": advertisedContextWindow,
+            "api_batch": advertisedBatch,
+            "api_ubatch": advertisedUBatch,
+            "native_context_created":
+                defaults.bool(forKey: "BonsaiBuild113NativeContextCreated"),
+            "native_context_attempt_context":
+                defaults.integer(forKey: "BonsaiBuild113NativeContextAttemptContext"),
+            "native_context_attempt_batch":
+                defaults.integer(forKey: "BonsaiBuild113NativeContextAttemptBatch"),
+            "native_context_attempt_ubatch":
+                defaults.integer(forKey: "BonsaiBuild113NativeContextAttemptUBatch"),
+            "native_context_attempt_source":
+                defaults.string(forKey: "BonsaiBuild113NativeContextAttemptSource") ?? "unknown",
+            "native_context_context":
+                defaults.integer(forKey: "BonsaiBuild113NativeContextContext"),
+            "native_context_batch":
+                defaults.integer(forKey: "BonsaiBuild113NativeContextBatch"),
+            "native_context_ubatch":
+                defaults.integer(forKey: "BonsaiBuild113NativeContextUBatch"),
+            "native_context_source":
+                defaults.string(forKey: "BonsaiBuild113NativeContextSource") ?? "unknown",
+            "native_context_created_at":
+                defaults.double(forKey: "BonsaiBuild113NativeContextCreatedAt"),
+            "model_file_name":
+                defaults.string(forKey: "BonsaiBuild113ModelFileName") ?? "unknown",
+            "model_description":
+                defaults.string(forKey: "BonsaiBuild113ModelDescription") ?? "unknown",
+            "model_quantization_hint":
+                defaults.string(forKey: "BonsaiBuild113ModelQuantizationHint") ?? "unknown",
+            "m5_nax_candidate_shape_trial":
+                M5RuntimeGovernor.candidateShapeTrialSnapshot(
+                    buildSHA: BonsaiCertificationBuildIdentity.sourceGitSHA
+                ),
             "build83_prism_kv_layer_sharding": true,
             "build84_native_context_trace_supported": true,
             "build85_scheduler_reserve_trace_supported": true,
