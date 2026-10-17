@@ -1,4 +1,4 @@
-name: Package Build112 NAX Quick TestKit
+name: Package Build112 PTQ1 Auth Startup Quick TestKit
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - lab/m5-nax-pq2-01
     paths:
       - 'tools/BUILD112_QUICK_TESTKIT/**'
-      - 'tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py'
+      - 'tools/build112_quick_testkit_contract_tests.py'
       - '.github/workflows/package-build112-quick-testkit.yml'
   workflow_dispatch:
 
@@ -33,30 +33,30 @@ jobs:
             $errors | Format-List | Out-String | Write-Error
             exit 1
           }
-      - name: Validate TestKit result parsing and shape gate
+      - name: Validate auth-aware TestKit contracts and behavior
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py
-          python3 tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py
+          python3 -m py_compile tools/build112_quick_testkit_contract_tests.py
+          python3 tools/build112_quick_testkit_contract_tests.py
           pwsh -File tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1 -SelfTest
-      - name: Package one-click Quick TestKit 1.2
+      - name: Package one-click PTQ1_0 Auth Startup Quick TestKit 2.0
         shell: bash
         run: |
           set -euo pipefail
           rm -rf package
           mkdir -p package/Build112-Quick-TestKit
           cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
-          printf '%s\n' 'Build112 M5 NAX-PQ2 Long-Prefill TestKit 1.2' > package/Build112-Quick-TestKit/VERSION.txt
+          printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Startup TestKit 2.0' > package/Build112-Quick-TestKit/VERSION.txt
           printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
-          (cd package && zip -qr ../BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip Build112-Quick-TestKit)
-          sha256sum BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip > BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip.sha256
+          (cd package && zip -qr ../BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip Build112-Quick-TestKit)
+          sha256sum BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip > BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip.sha256
       - name: Upload one-click package
         uses: actions/upload-artifact@v4
         with:
-          name: BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2
+          name: BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0
           path: |
-            BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip
-            BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip.sha256
+            BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip
+            BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip.sha256
           if-no-files-found: error
           retention-days: 14
