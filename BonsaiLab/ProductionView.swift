@@ -3635,6 +3635,10 @@ applyBuild82LongContextPolicy(
             selectedAPIContextValue
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
+        let allowNAXCandidateForModel =
+            Phase2CMetalTensorLaunchLatch.arm == .candidate
+            && selectedModelURL.lastPathComponent
+                .localizedCaseInsensitiveContains("PQ2_0")
 
         RC126APIStartupLifecycle.begin(build: "112")
         busy = true
