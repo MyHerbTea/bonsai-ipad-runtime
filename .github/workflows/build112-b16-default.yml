@@ -47,10 +47,20 @@ jobs:
           "$RUNNER_TEMP/build113_metal_tensor_policy_tests"
           git diff --check
 
-      - name: Targeted Build112 policy test
+      - name: Targeted Build112 behavior and policy tests
         shell: bash
         run: |
           set -euo pipefail
+          xcrun swiftc -swift-version 5 \
+            BonsaiLab/APIKeyAuthenticationPolicy.swift \
+            tools/api_key_authentication_policy_tests.swift \
+            -o "$RUNNER_TEMP/api_key_authentication_policy_tests"
+          "$RUNNER_TEMP/api_key_authentication_policy_tests"
+          xcrun swiftc -swift-version 5 \
+            BonsaiLab/Build112APIStartupDiagnostics.swift \
+            tools/build112_api_startup_diagnostics_tests.swift \
+            -o "$RUNNER_TEMP/build112_api_startup_diagnostics_tests"
+          "$RUNNER_TEMP/build112_api_startup_diagnostics_tests"
           xcrun swiftc -swift-version 5 \
             BonsaiLab/M5RuntimeGovernor.swift \
             tools/rc126_build106_policy_tests.swift \
@@ -62,7 +72,7 @@ jobs:
             tools/rc126_build113_candidate_shape_policy_tests.swift \
             -o "$RUNNER_TEMP/build113_candidate_shape_policy_tests"
           "$RUNNER_TEMP/build113_candidate_shape_policy_tests"
-          git diff --check
+          git diff --check HEAD^ HEAD
 
       - name: Install XcodeGen
         shell: bash
