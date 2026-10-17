@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - lab/m5-nax-pq2-01
+    paths:
+      - 'tools/BUILD112_QUICK_TESTKIT/**'
+      - 'tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py'
+      - '.github/workflows/package-build112-quick-testkit.yml'
   workflow_dispatch:
 
 permissions:
@@ -29,23 +33,30 @@ jobs:
             $errors | Format-List | Out-String | Write-Error
             exit 1
           }
-      - name: Package one-click Quick TestKit
+      - name: Validate TestKit result parsing and shape gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py
+          python3 tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py
+          pwsh -File tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1 -SelfTest
+      - name: Package one-click Quick TestKit 1.2
         shell: bash
         run: |
           set -euo pipefail
           rm -rf package
           mkdir -p package/Build112-Quick-TestKit
           cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
-          printf '%s\n' 'Build112 NAX Quick TestKit 1.1' > package/Build112-Quick-TestKit/VERSION.txt
+          printf '%s\n' 'Build112 M5 NAX-PQ2 Long-Prefill TestKit 1.2' > package/Build112-Quick-TestKit/VERSION.txt
           printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
-          (cd package && zip -qr ../BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip Build112-Quick-TestKit)
-          sha256sum BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip > BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip.sha256
+          (cd package && zip -qr ../BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip Build112-Quick-TestKit)
+          sha256sum BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip > BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip.sha256
       - name: Upload one-click package
         uses: actions/upload-artifact@v4
         with:
-          name: BONSAI_BUILD112_NAX_QUICK_TESTKIT
+          name: BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2
           path: |
-            BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip
-            BONSAI_BUILD112_NAX_QUICK_TESTKIT.zip.sha256
+            BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip
+            BONSAI_BUILD112_M5_NAX_PQ2_QUICK_TESTKIT_1_2.zip.sha256
           if-no-files-found: error
           retention-days: 14

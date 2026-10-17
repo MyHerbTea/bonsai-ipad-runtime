@@ -1,19 +1,22 @@
-Bonsai Build112 NAX Quick TestKit
+Bonsai Build112 M5 NAX-PQ2 Long-Prefill TestKit 1.2
 
-Purpose: verify the exact Build112 M5-NAX-PQ2 identity, API health, model listing, one fixed Smoke request, startup lifecycle, Phase2C compatibility and NAX diagnostics. One result ZIP is created with per-stage PASS / FAIL / INCOMPLETE status and SHA-256 manifest.
+Purpose
+- Verify the exact Build112 App source SHA separately from the TestKit source commit.
+- Check /health, /debug/build, /v1/models and /debug/prefill.
+- Require explicit CANDIDATE + backend Tensor API evidence, the expected PQ2_0 model filename hint, API context 32768, and a successfully created native context with batch/ubatch capable of 16-row prefill.
+- Send one deterministic 512-1024-token long-prefill request with temperature=0, max_tokens=16 and a fixed response marker.
+- Capture /debug/prefill before and after the request and classify route, pipeline, dispatch and inference independently.
 
-Run:
-1. Extract the full ZIP into a writable folder.
-2. Double-click RUN_BUILD112_QUICK_TEST.cmd.
-3. Confirm the Base URL and enter the API key once. The key is held only in memory and never saved.
-4. Send the generated ZIP from RESULTS for analysis.
+Run
+1. Install the IPA built from the App source SHA pinned in EXPECTED_APP_SOURCE_SHA.txt.
+2. In Bonsai > Advanced & Diagnostics, enable “实验：M5 NAX-PQ2 Tensor 候选（下次启动）”.
+3. Fully quit and reopen Bonsai, then start the API on the configured 32768 context.
+4. Run RUN_BUILD112_QUICK_TEST.cmd once and enter the API URL and API key when prompted.
+5. Send the single ZIP under RESULTS to ChatGPT.
 
-Interpretation:
-- PASS means health, exact app/source identity, /v1/models, fixed Smoke and diagnostic-schema checks passed.
-- FAIL distinguishes authentication, build identity, health, model-list, request-configuration, inference and diagnostic failures.
-- INCOMPLETE / API_NOT_REACHABLE means the listener could not be reached; this alone does not prove why the app failed to start.
-- If the listener is down, the ZIP states that internal app diagnostics cannot be retrieved over HTTP. The app persists the last startup stage/error and exposes them under Advanced & Diagnostics > Refresh and copy full diagnostics.
-- The short Smoke request does not exercise NAX dispatch. It records the NAX route/pipeline/dispatch fields honestly; dispatch-enqueued is not proof of completed GPU execution.
-- Candidate mode must report Tensor API enabled; BASELINE must retain the safe default.
+Result classifications include PASS_CANDIDATE_ROUTE_AND_INFERENCE, BLOCKED_SHAPE_PRECONDITION, FAIL_TENSOR_API_NOT_ENABLED, FAIL_ROUTE_NOT_SELECTED, FAIL_PIPELINE_NOT_READY, FAIL_DISPATCH_NOT_ENQUEUED, FAIL_INFERENCE and INCOMPLETE_API_NOT_REACHABLE.
 
-Privacy: no API key is written to disk. The ZIP contains build/runtime identity, endpoint results and allowlisted diagnostics only.
+The script does not send a long request when shape prerequisites fail. In that case it records the before/after snapshots and returns BLOCKED_SHAPE_PRECONDITION.
+The API key is never saved. The result ZIP includes request metadata, response/error, usage, startup diagnostics, before/after snapshots, stage report and SHA-256 manifest.
+The model quantization precheck is explicitly labelled a filename hint. Actual PQ2_0 route selection is proven only by the runtime route marker.
+Dispatch-enqueued is not proof of completed GPU execution, numerical correctness or performance improvement. This package is not a performance A/B or device certification.
