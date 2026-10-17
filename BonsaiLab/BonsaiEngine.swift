@@ -59,6 +59,7 @@ actor BonsaiEngine {
     private var stagedResidentModelScopedURL: URL?
     private var hasStagedResidentModelScope = false
     private var backendInitialized = false
+    private var allowNAXCandidateForCurrentModel = false
     // Prism's Metal device registry is process-lifetime even if
     // llama_backend_free() is called. Never clear this latch in-process.
     private var backendRegistryMetalTensorDisabledAtFirstInit: Bool?
@@ -215,13 +216,14 @@ actor BonsaiEngine {
         return index
     }
 
-    // Build113 TensorOps is opt-in through the immutable process launch arm.
-    // BASELINE preserves caller configuration; CANDIDATE explicitly enables
-    // TensorOps before the process-global backend is initialized.
+    // Candidate TensorOps is enabled only when the selected PQ2_0 model is
+    // explicitly eligible. The custom kernel retains independent GGML type
+    // and matrix-shape dispatch gates.
     private func effectiveBuild113MetalTensorDisabled(_ requested: Bool) -> Bool {
         Build113MetalTensorPolicy.effectiveDisabled(
             requestedDisabled: requested,
-            launchArmRawValue: Phase2CMetalTensorLaunchLatch.arm.rawValue
+            launchArmRawValue: Phase2CMetalTensorLaunchLatch.arm.rawValue,
+            allowNAXCandidate: allowNAXCandidateForCurrentModel
         )
     }
 
@@ -318,8 +320,10 @@ actor BonsaiEngine {
     }
 
     func prepareAPIColdStart(
-        metalTensorDisabled: Bool
+        metalTensorDisabled: Bool,
+        allowNAXCandidate: Bool = false
     ) throws {
+        allowNAXCandidateForCurrentModel = allowNAXCandidate
         mark("API_COLD_00_BEGIN")
         unloadAll()
         persistSystemDiagnostics(
@@ -410,6 +414,8 @@ actor BonsaiEngine {
     }
 
     func loadModel(url: URL, runtime: RuntimeConfig) throws -> ModelMetrics {
+        allowNAXCandidateForCurrentModel =
+            url.lastPathComponent.localizedCaseInsensitiveContains("PQ2_0")
         let config = try runtime.validated()
         mark("MODEL_00_RESET_BEGIN")
         unloadAll()
