@@ -58,11 +58,16 @@ enum Phase2DPrefillBatchArm: String, Codable, Sendable {
 
 struct Phase2DPrefillBatchLaunchLatch {
     static let nextArmKey = "BonsaiRC126Phase2DNextLaunchArm"
+    static let trialStateKey = "BonsaiRC126Phase2DTrialState"
+    static let trialFailureKey = "BonsaiRC126Phase2DTrialFailure"
     static let processLaunchID = UUID().uuidString
 
     static let arm: Phase2DPrefillBatchArm = {
-        let raw = UserDefaults.standard.string(forKey: nextArmKey)
-            ?? Phase2DPrefillBatchArm.baseline8.rawValue
+        let raw = M5RuntimeGovernor.resolvePhase2DShapeTrialArm(
+            nextArmKey: nextArmKey,
+            stateKey: trialStateKey,
+            failureKey: trialFailureKey
+        )
         return Phase2DPrefillBatchArm(rawValue: raw) ?? .baseline8
     }()
 
@@ -72,13 +77,71 @@ struct Phase2DPrefillBatchLaunchLatch {
         return Phase2DPrefillBatchArm(rawValue: raw) ?? .baseline8
     }
 
+    static var nextArmForUI: Phase2DPrefillBatchArm {
+        _ = arm
+        return nextArm
+    }
+
+    static var trialState: String {
+        UserDefaults.standard.string(forKey: trialStateKey) ?? "IDLE"
+    }
+
+    static var trialAttempting: Bool {
+        M5RuntimeGovernor.isPhase2DShapeTrialAttempting(stateKey: trialStateKey)
+    }
+
     static var restartRequired: Bool {
         nextArm != arm
     }
 
     static func scheduleNext(_ next: Phase2DPrefillBatchArm) {
-        UserDefaults.standard.set(next.rawValue, forKey: nextArmKey)
-        UserDefaults.standard.synchronize()
+        let defaults = UserDefaults.standard
+        defaults.set(next.rawValue, forKey: nextArmKey)
+        if next == .candidate16 {
+            defaults.set("PENDING", forKey: trialStateKey)
+            defaults.removeObject(forKey: trialFailureKey)
+        } else {
+            defaults.set("IDLE", forKey: trialStateKey)
+            defaults.removeObject(forKey: trialFailureKey)
+        }
+        defaults.synchronize()
+    }
+
+    static func beginTrialIfPending() -> Bool {
+        M5RuntimeGovernor.beginPhase2DShapeTrialIfPending(
+            nextArmKey: nextArmKey,
+            stateKey: trialStateKey,
+            failureKey: trialFailureKey
+        )
+    }
+
+    static func noteStartupFailure() {
+        M5RuntimeGovernor.finishPhase2DShapeTrial(
+            state: "STARTUP_FAILED",
+            failure: "candidate16_startup_failed",
+            nextArmKey: nextArmKey,
+            stateKey: trialStateKey,
+            failureKey: trialFailureKey
+        )
+    }
+
+    static func noteInferenceFailure() {
+        M5RuntimeGovernor.finishPhase2DShapeTrial(
+            state: "INFERENCE_FAILED",
+            failure: "candidate16_inference_failed",
+            nextArmKey: nextArmKey,
+            stateKey: trialStateKey,
+            failureKey: trialFailureKey
+        )
+    }
+
+    static func noteInferenceSuccess() {
+        M5RuntimeGovernor.finishPhase2DShapeTrial(
+            state: "COMPLETED_SUCCESS",
+            nextArmKey: nextArmKey,
+            stateKey: trialStateKey,
+            failureKey: trialFailureKey
+        )
     }
 
     static var batch: Int {
@@ -86,12 +149,9 @@ struct Phase2DPrefillBatchLaunchLatch {
     }
 
     static func apply(to runtime: inout RuntimeConfig) {
-        let value = batch
-        runtime.batch = value
-        runtime.ubatch = value
-
-        // Phase 2C is closed as SAFE_NO_GAIN. Phase 2D must isolate batch
-        // shape and never accidentally combine it with Metal Tensor.
+        runtime.batch = 16
+        runtime.ubatch = 16
+        // This trial isolates shape only; TensorOps must remain disabled.
         runtime.disableMetalTensorAPI = true
     }
 }

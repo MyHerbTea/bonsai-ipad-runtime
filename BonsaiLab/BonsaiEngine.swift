@@ -347,10 +347,18 @@ actor BonsaiEngine {
 
     // Native trace is enabled only for experimental >=32K context creation.
     // Prism fsyncs each stage to survive process termination before Swift can catch errors.
-    private func beginBuild84NativeContextTrace(contextLength: Int) {
+    private func beginBuild84NativeContextTrace(
+        contextLength: Int,
+        batch: Int,
+        ubatch: Int
+    ) {
         // Clear a prior NAX trace target before attempting a new context.
         unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
-        guard contextLength >= 32_768 else {
+        guard M5RuntimeGovernor.shouldEnableNativeContextTrace(
+            context: contextLength,
+            batch: batch,
+            ubatch: ubatch
+        ) else {
             unsetenv("BONSAI_BUILD84_TRACE_PATH")
             return
         }
@@ -368,7 +376,7 @@ actor BonsaiEngine {
             )
             let defaults = UserDefaults.standard
             let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
-            let header = "build=89\napp_build=\(appBuild)\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"))\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
+            let header = "build=89\napp_build=\(appBuild)\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(batch)\nubatch=\(ubatch)\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
             // Preserve last attempt even when a new 32K run is started.
             // The diagnostic UI can export both traces after a crash.
             let previous = directory.appendingPathComponent(
@@ -597,7 +605,11 @@ actor BonsaiEngine {
             source: "load_model"
         )
         mark("MODEL_07_CONTEXT_CREATE_BEGIN")
-        beginBuild84NativeContextTrace(contextLength: config.context)
+        beginBuild84NativeContextTrace(
+            contextLength: config.context,
+            batch: config.batch,
+            ubatch: config.ubatch
+        )
         defer { endBuild84NativeContextTrace() }
         guard let loadedContext = llama_init_from_model(loadedModel, contextParams) else {
             mark("MODEL_07_CONTEXT_CREATE_NULL")
@@ -3063,7 +3075,11 @@ actor BonsaiEngine {
             ubatch: validated.ubatch,
             source: "make_context"
         )
-        beginBuild84NativeContextTrace(contextLength: validated.context)
+        beginBuild84NativeContextTrace(
+            contextLength: validated.context,
+            batch: validated.batch,
+            ubatch: validated.ubatch
+        )
         defer { endBuild84NativeContextTrace() }
         guard let created = llama_init_from_model(model, params) else {
             throw LabError.contextCreateFailed

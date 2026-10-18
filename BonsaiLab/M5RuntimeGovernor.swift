@@ -35,6 +35,94 @@ enum M5RuntimeGovernor {
     static let reasonKey = "BonsaiBuild106ActiveGovernorReason"
     static let sourceKey = "BonsaiBuild106GovernorSource"
 
+    /// Keep high-volume native tracing off for normal 8K/16K B8 starts, but
+    /// capture the previously untraced 16K/B16 shape-only experiment.
+    static func shouldEnableNativeContextTrace(
+        context: Int,
+        batch: Int,
+        ubatch: Int
+    ) -> Bool {
+        if context >= 32_768 { return true }
+        return context >= 16_384 && batch >= 16 && ubatch >= 16
+    }
+
+    static func resolvePhase2DShapeTrialArm(
+        nextArmKey: String,
+        stateKey: String,
+        failureKey: String,
+        defaults: UserDefaults = .standard
+    ) -> String {
+        let state = defaults.string(forKey: stateKey) ?? "IDLE"
+        switch state {
+        case "ATTEMPTING_CANDIDATE16":
+            defaults.set("BASELINE8", forKey: nextArmKey)
+            defaults.set("RECOVERED_AFTER_INTERRUPTED_STARTUP", forKey: stateKey)
+            defaults.set("candidate16_interrupted_before_terminal_outcome", forKey: failureKey)
+            defaults.synchronize()
+            return "BASELINE8"
+        case "COMPLETED_SUCCESS":
+            defaults.set("BASELINE8", forKey: nextArmKey)
+            defaults.set("COMPLETED_RETURNED_TO_BASELINE8", forKey: stateKey)
+            defaults.synchronize()
+            return "BASELINE8"
+        case "STARTUP_FAILED":
+            defaults.set("BASELINE8", forKey: nextArmKey)
+            defaults.set("STARTUP_FAILED_RETURNED_TO_BASELINE8", forKey: stateKey)
+            defaults.synchronize()
+            return "BASELINE8"
+        case "INFERENCE_FAILED":
+            defaults.set("BASELINE8", forKey: nextArmKey)
+            defaults.set("INFERENCE_FAILED_RETURNED_TO_BASELINE8", forKey: stateKey)
+            defaults.synchronize()
+            return "BASELINE8"
+        default:
+            return defaults.string(forKey: nextArmKey) ?? "BASELINE8"
+        }
+    }
+
+    static func beginPhase2DShapeTrialIfPending(
+        nextArmKey: String,
+        stateKey: String,
+        failureKey: String,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        guard defaults.string(forKey: nextArmKey) == "CANDIDATE16",
+              defaults.string(forKey: stateKey) == "PENDING"
+        else { return false }
+        defaults.set("ATTEMPTING_CANDIDATE16", forKey: stateKey)
+        // The next process is already pinned to B8 before native initialization.
+        defaults.set("BASELINE8", forKey: nextArmKey)
+        defaults.removeObject(forKey: failureKey)
+        defaults.synchronize()
+        return true
+    }
+
+    static func finishPhase2DShapeTrial(
+        state: String,
+        failure: String? = nil,
+        nextArmKey: String,
+        stateKey: String,
+        failureKey: String,
+        defaults: UserDefaults = .standard
+    ) {
+        guard defaults.string(forKey: stateKey) == "ATTEMPTING_CANDIDATE16" else {
+            return
+        }
+        defaults.set(state, forKey: stateKey)
+        defaults.set("BASELINE8", forKey: nextArmKey)
+        if let failure {
+            defaults.set(failure, forKey: failureKey)
+        }
+        defaults.synchronize()
+    }
+
+    static func isPhase2DShapeTrialAttempting(
+        stateKey: String,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        defaults.string(forKey: stateKey) == "ATTEMPTING_CANDIDATE16"
+    }
+
     /// Build112 state is intentionally independent of the old Build94
     /// certification/checkpoint state. This prevents stale SAFE4 state from
     /// blocking the new performance-default path.

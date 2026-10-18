@@ -936,6 +936,8 @@ struct ProductionView: View {
     @State private var showAdvanced = false
     @State private var build113NAXCandidateNextLaunch =
         Phase2CMetalTensorLaunchLatch.nextArm == .candidate
+    @State private var ptq1B16ShapeOnlyNextLaunch =
+        Phase2DPrefillBatchLaunchLatch.nextArmForUI == .candidate16
     @State private var certification: [CertificationResult] = []
     @State private var warmSessionSummary = ""
     @State private var warmSessionPass: Bool?
@@ -1566,6 +1568,10 @@ struct ProductionView: View {
                             isOn: $build113NAXCandidateNextLaunch
                         )
                         .onChange(of: build113NAXCandidateNextLaunch) { _, enabled in
+                            if enabled {
+                                Phase2DPrefillBatchLaunchLatch.scheduleNext(.baseline8)
+                                ptq1B16ShapeOnlyNextLaunch = false
+                            }
                             Phase2CMetalTensorLaunchLatch.scheduleNext(
                                 enabled ? .candidate : .baseline
                             )
@@ -1573,6 +1579,26 @@ struct ProductionView: View {
                         .disabled(busy)
                         Text(
                             "当前进程模式：\(Phase2CMetalTensorLaunchLatch.arm.rawValue)；下次启动：\(build113NAXCandidateNextLaunch ? "CANDIDATE" : "BASELINE")。候选模式会在进程首次 backend init 前启用 Metal Tensor API（包括通用 TensorOps）；必须完全退出并重新打开 App 后生效。默认 BASELINE 保留安全配置。"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                        Toggle(
+                            "实验：PTQ1_0 16K/B16 形状隔离（TensorOps 关闭，单次）",
+                            isOn: $ptq1B16ShapeOnlyNextLaunch
+                        )
+                        .onChange(of: ptq1B16ShapeOnlyNextLaunch) { _, enabled in
+                            if enabled {
+                                Phase2CMetalTensorLaunchLatch.scheduleNext(.baseline)
+                                build113NAXCandidateNextLaunch = false
+                                Phase2DPrefillBatchLaunchLatch.scheduleNext(.candidate16)
+                            } else {
+                                Phase2DPrefillBatchLaunchLatch.scheduleNext(.baseline8)
+                            }
+                        }
+                        .disabled(busy)
+                        Text(
+                            "只验证 PTQ1_0 在 16K Q4 KV 下的 B16/UBatch16 形状，Metal TensorOps 始终关闭。必须完全退出 App 后再启动 API；成功完成一次文本推理后，下次启动自动回到 B8。若进程中断，下次启动也会自动回退到 B8。此项不是性能 A/B。"
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -2544,6 +2570,9 @@ struct ProductionView: View {
             "engine_context_batch=" + String(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch")),
             "engine_context_ubatch=" + String(defaults.integer(forKey: "BonsaiBuild82EngineContextUBatch")),
             "engine_context_threads=" + String(defaults.integer(forKey: "BonsaiBuild81EffectiveThreads")),
+            "ptq1_b16_shape_trial_state=" + Phase2DPrefillBatchLaunchLatch.trialState,
+            "ptq1_b16_shape_trial_next_launch=" + Phase2DPrefillBatchLaunchLatch.nextArm.rawValue,
+            "ptq1_b16_shape_trial_current_arm=" + Phase2DPrefillBatchLaunchLatch.arm.rawValue,
             "context_create_attempt=" + String(defaults.integer(forKey: "BonsaiBuild81ContextCreateAttempt")),
             "context_create_completed=" + String(defaults.bool(forKey: "BonsaiBuild81ContextCreateCompleted")),
             "before_model_available_mib=" + String(defaults.integer(forKey: "BonsaiBuild79BeforeModelMmapAvailableMiB")),
@@ -3737,6 +3766,32 @@ applyBuild82LongContextPolicy(
             selectedAPIContextValue
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
+        let shapeArmForProcess = Phase2DPrefillBatchLaunchLatch.arm
+        let shapeArmForNextLaunch = Phase2DPrefillBatchLaunchLatch.nextArm
+        ptq1B16ShapeOnlyNextLaunch = shapeArmForNextLaunch == .candidate16
+        if shapeArmForNextLaunch == .candidate16,
+           shapeArmForProcess != .candidate16 {
+            status = "PTQ1_0 B16 形状隔离已安排"
+            detail = "请完全退出并重新打开 App 后再启动 API；当前进程仍是安全 B8 路径。"
+            return
+        }
+        let shapeTrialRequestedForProcess = shapeArmForProcess == .candidate16
+        let selectedModelIsPTQ1 =
+            selectedModelURL.lastPathComponent
+                .localizedCaseInsensitiveContains("PTQ1_0")
+        if shapeTrialRequestedForProcess,
+           (selectedAPIContext != 16_384 || !selectedModelIsPTQ1) {
+            Phase2DPrefillBatchLaunchLatch.scheduleNext(.baseline8)
+            ptq1B16ShapeOnlyNextLaunch = false
+            status = "PTQ1_0 B16 形状隔离条件不满足"
+            detail = "此实验仅允许 PTQ1_0 模型 + 16K Context；已取消候选并保留安全 B8。"
+            return
+        }
+        let shapeTrialForThisStart =
+            shapeTrialRequestedForProcess
+            && Phase2DPrefillBatchLaunchLatch.beginTrialIfPending()
+        ptq1B16ShapeOnlyNextLaunch =
+            Phase2DPrefillBatchLaunchLatch.nextArm == .candidate16
         let allowNAXCandidateForModel =
             Phase2CMetalTensorLaunchLatch.arm == .candidate
             && selectedModelURL.lastPathComponent
@@ -3796,7 +3851,10 @@ applyBuild82LongContextPolicy(
 
                 apiRuntime.kvUnified = true
                 apiRuntime.loadMode = .mmap
-applyBuild82LongContextPolicy(
+                if shapeTrialForThisStart {
+                    Phase2DPrefillBatchLaunchLatch.apply(to: &apiRuntime)
+                }
+                applyBuild82LongContextPolicy(
                     to: &apiRuntime,
                     context: selectedAPIContext,
                     source: "fresh_start",
@@ -4493,6 +4551,16 @@ applyBuild82LongContextPolicy(
 
                     let textGenerationEnd =
                         RC1232PerformanceDiagnostics.now()
+                    if payload.images.isEmpty,
+                       metrics.generatedTokens > 0,
+                       Phase2DPrefillBatchLaunchLatch.arm == .candidate16,
+                       Phase2DPrefillBatchLaunchLatch.trialAttempting {
+                        Phase2DPrefillBatchLaunchLatch.noteInferenceSuccess()
+                        await MainActor.run {
+                            ptq1B16ShapeOnlyNextLaunch = false
+                        }
+                    }
+
                     if selectedAPIContext == 32_768 {
                         M5RuntimeGovernor.noteTextSuccess(
                             promptTokens: metrics.promptTokens
@@ -4585,6 +4653,9 @@ applyBuild82LongContextPolicy(
                     ) ?? ""
                 let candidateTrialBuildSHA =
                     BonsaiCertificationBuildIdentity.sourceGitSHA
+                if shapeTrialForThisStart {
+                    Phase2DPrefillBatchLaunchLatch.noteStartupFailure()
+                }
                 if M5RuntimeGovernor.isCandidateShapeTrialAttempting(
                     buildSHA: candidateTrialBuildSHA
                 ) {
@@ -4602,6 +4673,9 @@ applyBuild82LongContextPolicy(
 
                 await MainActor.run {
                     busy = false
+                    if shapeTrialForThisStart {
+                        ptq1B16ShapeOnlyNextLaunch = false
+                    }
                     status =
                         "OpenAI API 启动失败（Build112 · Context \(selectedAPIContext)）"
                     detail = error.localizedDescription
