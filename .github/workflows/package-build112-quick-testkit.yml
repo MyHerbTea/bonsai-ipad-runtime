@@ -1,4 +1,4 @@
-name: Package Build112 PTQ1 Auth Startup Quick TestKit
+name: Package Build112 PTQ1 Auth Startup Quick TestKit 2.1
 
 on:
   push:
@@ -40,23 +40,23 @@ jobs:
           python3 -m py_compile tools/build112_quick_testkit_contract_tests.py
           python3 tools/build112_quick_testkit_contract_tests.py
           pwsh -File tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1 -SelfTest
-      - name: Package one-click PTQ1_0 Auth Startup Quick TestKit 2.0
+      - name: Package one-click PTQ1_0 Auth Startup Quick TestKit 2.1
         shell: bash
         run: |
           set -euo pipefail
           rm -rf package
           mkdir -p package/Build112-Quick-TestKit
           cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
-          printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Startup TestKit 2.0' > package/Build112-Quick-TestKit/VERSION.txt
+          printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Startup TestKit 2.1' > package/Build112-Quick-TestKit/VERSION.txt
           printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
-          (cd package && zip -qr ../BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip Build112-Quick-TestKit)
-          sha256sum BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip > BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip.sha256
+          (cd package && zip -qr ../BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip Build112-Quick-TestKit)
+          sha256sum BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip > BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip.sha256
       - name: Upload one-click package
         uses: actions/upload-artifact@v4
         with:
-          name: BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0
+          name: BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1
           path: |
-            BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip
-            BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip.sha256
+            BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip
+            BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip.sha256
           if-no-files-found: error
           retention-days: 14

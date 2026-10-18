@@ -5,6 +5,11 @@ Set-Location $scriptRoot
 
 function Get-Field($Object, [string]$Name) {
   if ($null -eq $Object) { return $null }
+  # JSON objects are PSObjects; [ordered]@{} snapshots are IDictionary values.
+  if ($Object -is [System.Collections.IDictionary]) {
+    if ($Object.Contains($Name)) { return $Object[$Name] }
+    return $null
+  }
   $property = $Object.PSObject.Properties[$Name]
   if ($null -eq $property) { return $null }
   return $property.Value
@@ -31,6 +36,7 @@ function Get-HttpStatusCode($Record) {
 function Get-ExitCodeForStatus([string]$Status) {
   switch ($Status) {
     "PASS" { return 0 }
+    "PASS_WITH_WARNINGS" { return 0 }
     "FAIL" { return 1 }
     "INCOMPLETE" { return 2 }
     "BLOCKED" { return 3 }
@@ -43,6 +49,77 @@ function Resolve-AuthRequired($Health) {
     throw "AUTH_MODE_UNDETERMINED"
   }
   return [bool]$value
+}
+function Test-IsUnavailable($Value) {
+  if ($null -eq $Value) { return $true }
+  $text = ([string]$Value).Trim()
+  return [string]::IsNullOrWhiteSpace($text) -or $text -in @("none", "UNAVAILABLE", "unknown", "NOT_RECORDED")
+}
+function Get-StartupHistoryStatus($Startup) {
+  $failureStage = Get-Field $Startup "api_startup_last_failure_stage"
+  $previousIncomplete = Get-Field $Startup "api_startup_previous_incomplete"
+  $failureAttemptID = Get-Field $Startup "api_startup_last_failure_attempt_id"
+  $failureModel = Get-Field $Startup "api_startup_last_failure_model_identity"
+  $recoveredFailureID = Get-Field $Startup "api_startup_last_recovered_failure_attempt_id"
+  $recoveryModel = Get-Field $Startup "api_startup_last_recovery_model_identity"
+  $records = @(Get-Field $Startup "startup_attempt_history")
+
+  if ((Test-IsUnavailable $failureStage) -and (Test-IsUnavailable $previousIncomplete)) {
+    $failedRecords = @($records | Where-Object {
+      (Get-Field $_ "outcome") -in @("FAILED", "INTERRUPTED")
+    })
+    if ($failedRecords.Count -eq 0) { return "NO_HISTORICAL_FAILURE" }
+    $record = $failedRecords[$failedRecords.Count - 1]
+    $failureStage = Get-Field $record "failure_stage"
+    $failureAttemptID = Get-Field $record "startup_attempt_id"
+    $failureModel = Get-Field $record "model_identity_at_attempt"
+    $recovery = @($records | Where-Object {
+      (Get-Field $_ "recovered_failure_attempt_id") -eq $failureAttemptID
+    } | Select-Object -Last 1)
+    if ($recovery.Count -gt 0) {
+      $recoveredFailureID = Get-Field $recovery[0] "recovered_failure_attempt_id"
+      $recoveryModel = Get-Field $recovery[0] "recovery_model_identity"
+    }
+  }
+
+  if ((Test-IsUnavailable $failureStage) -and (Test-IsUnavailable $previousIncomplete)) {
+    return "NO_HISTORICAL_FAILURE"
+  }
+  if ((Test-IsUnavailable $failureAttemptID) -or (Test-IsUnavailable $failureModel)) {
+    return "UNATTRIBUTED_HISTORICAL_FAILURE"
+  }
+  if ($recoveredFailureID -eq $failureAttemptID -and
+      -not (Test-IsUnavailable $recoveryModel) -and
+      ([string]$recoveryModel -eq [string]$failureModel)) {
+    return "RECOVERED_AFTER_STARTUP_FAILURE"
+  }
+  return "MODEL_SPECIFIC_STARTUP_FAILURE"
+}
+function Get-CurrentApiStatus($Health, $Startup, $Prefill, [bool]$SmokeSucceeded) {
+  if ($null -eq $Health) { return "BLOCKED_NEEDS_EVIDENCE" }
+  if ([string](Get-Field $Health "status") -ne "ok") { return "FAIL_API_UNREACHABLE" }
+  if (-not $SmokeSucceeded) { return "FAIL_INFERENCE" }
+  if ($null -eq $Prefill) { return "BLOCKED_NEEDS_EVIDENCE" }
+  $nativeContext = Get-Field $Prefill "native_context_created"
+  $stage = [string](Get-Field $Startup "api_startup_stage")
+  $lastError = Get-Field $Startup "api_startup_last_error"
+  $errorClear = (Test-IsUnavailable $lastError)
+  if ($stage -eq "READY" -and $errorClear -and $nativeContext -is [bool] -and $nativeContext) {
+    return "CURRENT_STARTUP_READY"
+  }
+  # Health + successful inference proves the API is currently functional.
+  # A missing/stale lifecycle field is a diagnostic warning, not proof the
+  # running API failed to start. last_engine_stage is intentionally not a gate.
+  return "CURRENT_API_FUNCTIONAL_DIAGNOSTIC_MISMATCH"
+}
+function Get-OverallStatus([string]$CurrentApiStatus, [string]$HistoryStatus, [string]$NaxStatus) {
+  if ($NaxStatus -like "FAIL_*") { return "FAIL" }
+  if ($NaxStatus -eq "BLOCKED_NEEDS_EVIDENCE") { return "INCOMPLETE" }
+  if ($CurrentApiStatus -like "FAIL_*" -or $CurrentApiStatus -eq "AUTH_FAILED" -or $CurrentApiStatus -eq "AUTH_REQUIRED_KEY_DISABLED") { return "FAIL" }
+  if ($CurrentApiStatus -eq "BLOCKED_NEEDS_EVIDENCE") { return "INCOMPLETE" }
+  if ($CurrentApiStatus -ne "CURRENT_STARTUP_READY") { return "PASS_WITH_WARNINGS" }
+  if ($HistoryStatus -ne "NO_HISTORICAL_FAILURE") { return "PASS_WITH_WARNINGS" }
+  return "PASS"
 }
 function New-RequestHeaders(
   [bool]$AuthRequired,
@@ -128,7 +205,44 @@ if ($args -contains "-SelfTest") {
   if ((Get-ExitCodeForStatus "FAIL") -eq 0) { throw "SelfTest: FAIL exit code must be nonzero." }
   if ((Get-ExitCodeForStatus "INCOMPLETE") -eq 0) { throw "SelfTest: INCOMPLETE exit code must be nonzero." }
   if ((Get-ExitCodeForStatus "BLOCKED") -eq 0) { throw "SelfTest: BLOCKED exit code must be nonzero." }
-  Write-Host "PASS Quick TestKit auth-mode detection, no-key headers and exit-code self-tests"
+  if ((Get-ExitCodeForStatus "PASS_WITH_WARNINGS") -ne 0) { throw "SelfTest: PASS_WITH_WARNINGS exit code must be 0." }
+  $dictionaryProbe = [ordered]@{ api_startup_stage = "READY" }
+  if ((Get-Field $dictionaryProbe "api_startup_stage") -ne "READY") { throw "SelfTest: Get-Field must read OrderedDictionary startup snapshots." }
+  $scenarioStartup = [ordered]@{
+    api_startup_stage = "READY"
+    api_startup_last_error = "none"
+    api_startup_last_failure_stage = "MODEL_LOAD_BEGIN"
+    api_startup_previous_incomplete = "none"
+    api_startup_last_failure_attempt_id = "none"
+    api_startup_last_failure_model_identity = "none"
+    api_startup_last_recovered_failure_attempt_id = "none"
+    api_startup_last_recovery_model_identity = "none"
+    startup_attempt_history = @()
+    last_engine_stage = "TEXT_99_PASS_FULL_PREFILL"
+  }
+  $scenarioHealth = [pscustomobject]@{ status = "ok" }
+  $scenarioPrefill = [pscustomobject]@{ native_context_created = $true; last_engine_stage = "TEXT_99_PASS_FULL_PREFILL" }
+  $current = Get-CurrentApiStatus -Health $scenarioHealth -Startup $scenarioStartup -Prefill $scenarioPrefill -SmokeSucceeded:$true
+  $history = Get-StartupHistoryStatus -Startup $scenarioStartup
+  $overall = Get-OverallStatus -CurrentApiStatus $current -HistoryStatus $history -NaxStatus "NOT_APPLICABLE_PTQ1_0_DEFAULT_PATH"
+  if ($current -ne "CURRENT_STARTUP_READY") { throw "SelfTest: READY + clean error + native context + successful Smoke must be current-ready." }
+  if ($history -ne "UNATTRIBUTED_HISTORICAL_FAILURE") { throw "SelfTest: legacy failure without model/attempt IDs must remain unattributed." }
+  if ($overall -ne "PASS_WITH_WARNINGS" -or (Get-ExitCodeForStatus $overall) -ne 0) { throw "SelfTest: current-ready plus unattributed history must be PASS_WITH_WARNINGS/0." }
+  $recoveredScenario = [ordered]@{
+    api_startup_last_failure_stage = "MODEL_LOAD_BEGIN"
+    api_startup_previous_incomplete = "none"
+    api_startup_last_failure_attempt_id = "failed-attempt"
+    api_startup_last_failure_model_identity = "Ternary-Bonsai-2-27B-PTQ1_0.gguf"
+    api_startup_last_recovered_failure_attempt_id = "failed-attempt"
+    api_startup_last_recovery_model_identity = "Ternary-Bonsai-2-27B-PTQ1_0.gguf"
+    startup_attempt_history = @()
+  }
+  if ((Get-StartupHistoryStatus -Startup $recoveredScenario) -ne "RECOVERED_AFTER_STARTUP_FAILURE") { throw "SelfTest: same-model recovery must be linked to its failure attempt." }
+  $unreachable = Get-CurrentApiStatus -Health $null -Startup $scenarioStartup -Prefill $null -SmokeSucceeded:$false
+  if ($unreachable -ne "BLOCKED_NEEDS_EVIDENCE") { throw "SelfTest: missing health evidence must not be reported as READY." }
+  $failedInference = Get-CurrentApiStatus -Health $scenarioHealth -Startup $scenarioStartup -Prefill $scenarioPrefill -SmokeSucceeded:$false
+  if ($failedInference -ne "FAIL_INFERENCE") { throw "SelfTest: failed Smoke must remain an inference failure." }
+  Write-Host "PASS Quick TestKit auth, IDictionary lifecycle regression, historical attribution and exit-code self-tests"
   exit 0
 }
 
@@ -152,7 +266,7 @@ $deferredFailure = $null
 $summary = [ordered]@{
   schema_version = 3
   testkit = "Bonsai Build112 PTQ1_0 Auth-Aware Quick TestKit"
-  testkit_version = "2.0"
+  testkit_version = "2.1"
   testkit_source_commit = $testkitSourceCommit
   expected_app_source_sha = $expectedAppSHA
   started_at = (Get-Date).ToString("o")
@@ -165,6 +279,10 @@ $summary = [ordered]@{
   runtime = [ordered]@{}
   status = "INCOMPLETE"
   failure_class = "NOT_RUN"
+  current_api_status = "NOT_ASSESSED"
+  historical_startup_status = "NOT_ASSESSED"
+  nax_experiment_status = "NOT_ASSESSED"
+  warnings = @()
   failed_stage = "none"
   failure_detail = "Test did not complete."
   stages = [ordered]@{}
@@ -213,10 +331,31 @@ try {
     api_startup_last_failure_stage = (Get-Field $healthDiagnostics "api_startup_last_failure_stage")
     api_startup_last_failure_error = (Get-Field $healthDiagnostics "api_startup_last_failure_error")
     api_startup_last_failure_time = (Get-Field $healthDiagnostics "api_startup_last_failure_time")
+    startup_attempt_id = (Get-Field $healthDiagnostics "startup_attempt_id")
+    model_identity_at_attempt = (Get-Field $healthDiagnostics "model_identity_at_attempt")
+    model_format_at_attempt = (Get-Field $healthDiagnostics "model_format_at_attempt")
+    startup_attempt_started_at = (Get-Field $healthDiagnostics "startup_attempt_started_at")
+    startup_attempt_failed_at = (Get-Field $healthDiagnostics "startup_attempt_failed_at")
+    startup_failure_stage = (Get-Field $healthDiagnostics "startup_failure_stage")
+    startup_failure_reason = (Get-Field $healthDiagnostics "startup_failure_reason")
+    startup_attempt_outcome = (Get-Field $healthDiagnostics "startup_attempt_outcome")
+    startup_recovery_attempt_id = (Get-Field $healthDiagnostics "startup_recovery_attempt_id")
+    api_startup_last_failure_attempt_id = (Get-Field $healthDiagnostics "api_startup_last_failure_attempt_id")
+    api_startup_last_failure_model_identity = (Get-Field $healthDiagnostics "api_startup_last_failure_model_identity")
+    api_startup_last_failure_model_format = (Get-Field $healthDiagnostics "api_startup_last_failure_model_format")
+    api_startup_last_failure_started_at = (Get-Field $healthDiagnostics "api_startup_last_failure_started_at")
+    api_startup_last_failure_outcome = (Get-Field $healthDiagnostics "api_startup_last_failure_outcome")
+    api_startup_last_recovery_attempt_id = (Get-Field $healthDiagnostics "api_startup_last_recovery_attempt_id")
+    api_startup_last_recovery_model_identity = (Get-Field $healthDiagnostics "api_startup_last_recovery_model_identity")
+    api_startup_last_recovered_failure_attempt_id = (Get-Field $healthDiagnostics "api_startup_last_recovered_failure_attempt_id")
+    api_startup_last_recovery_time = (Get-Field $healthDiagnostics "api_startup_last_recovery_time")
+    startup_attempt_history = (Get-Field $healthDiagnostics "startup_attempt_history")
     last_engine_stage = (Get-Field $healthDiagnostics "last_engine_stage")
     context_switch_state = (Get-Field $healthDiagnostics "context_switch_state")
     collected_at = (Get-Date).ToString("o")
   }
+  $summary.historical_startup_status = Get-StartupHistoryStatus -Startup $startup
+  Save-Json "startup-diagnostics-before.json" $startup
   Save-Json "startup-diagnostics.json" $startup
   if ([string](Get-Field $health "status") -ne "ok") {
     throw "QUICK_RESULT|FAIL|FAIL_HEALTH_CHECK|GET /health did not return status=ok."
@@ -382,12 +521,13 @@ try {
   }
   Save-Json "runtime-diagnostics.json" $summary.runtime
   if ($null -eq $tensorEnabledValue) {
+    $summary.nax_experiment_status = "BLOCKED_NEEDS_EVIDENCE"
     $deferredFailure = "FAIL_NAX_ISOLATION_EVIDENCE_MISSING"
   } elseif ([bool]$tensorEnabledValue) {
+    $summary.nax_experiment_status = "FAIL_NAX_ISOLATION"
     $deferredFailure = "FAIL_NAX_ISOLATION"
-  }
-  if ([string](Get-Field $startup "api_startup_stage") -ne "READY") {
-    if ($null -eq $deferredFailure) { $deferredFailure = "FAIL_STARTUP_LIFECYCLE_NOT_READY" }
+  } else {
+    $summary.nax_experiment_status = "NOT_APPLICABLE_PTQ1_0_DEFAULT_PATH"
   }
   Set-Stage "prefill_before" "PASS" "Captured model identity, API/native context shape, backend and persistent startup diagnostics."
 
@@ -424,14 +564,44 @@ try {
     if ($null -eq $deferredFailure) { $deferredFailure = "INCOMPLETE_DIAGNOSTICS_AFTER_REQUEST" }
   }
   $healthAfterResult = Invoke-ApiJson -Method GET -Path "/health" -AuthRequired:$false
+  $healthAfter = $null
   if ($healthAfterResult.http_status -eq 200) {
-    Save-Json "health-after.json" $healthAfterResult.json
+    $healthAfter = $healthAfterResult.json
+    Save-Json "health-after.json" $healthAfter
+    $healthAfterDiagnostics = Get-Field $healthAfter "diagnostics"
+    $startupFields = @(
+      "api_startup_stage", "api_startup_previous_incomplete", "api_startup_attempt",
+      "api_startup_last_error", "api_startup_last_success_stage",
+      "api_startup_last_failure_stage", "api_startup_last_failure_error",
+      "api_startup_last_failure_time", "startup_attempt_id",
+      "model_identity_at_attempt", "model_format_at_attempt",
+      "startup_attempt_started_at", "startup_attempt_failed_at",
+      "startup_failure_stage", "startup_failure_reason", "startup_attempt_outcome",
+      "startup_recovery_attempt_id", "api_startup_last_failure_attempt_id",
+      "api_startup_last_failure_model_identity", "api_startup_last_failure_model_format",
+      "api_startup_last_failure_started_at", "api_startup_last_failure_outcome",
+      "api_startup_last_recovery_attempt_id", "api_startup_last_recovery_model_identity",
+      "api_startup_last_recovered_failure_attempt_id", "api_startup_last_recovery_time",
+      "startup_attempt_history", "last_engine_stage", "context_switch_state"
+    )
+    foreach ($field in $startupFields) { $startup[$field] = Get-Field $healthAfterDiagnostics $field }
+    $startup.post_smoke_health_status = Get-Field $healthAfter "status"
+    $startup.post_smoke_native_context_created = if ($afterResult.http_status -eq 200) { Get-Field $afterResult.json "native_context_created" } else { $null }
+    $startup.post_smoke_engine_stage = if ($afterResult.http_status -eq 200) { Get-Field $afterResult.json "last_engine_stage" } else { $null }
+    $startup.post_smoke_http_status = $smokeResult.http_status
+    $startup.collected_at = (Get-Date).ToString("o")
+    Save-Json "startup-diagnostics.json" $startup
   } else {
     Save-Json "health-after-error.json" ([ordered]@{ http_status = $healthAfterResult.http_status; error = $healthAfterResult.error })
     if ($null -eq $deferredFailure) { $deferredFailure = "INCOMPLETE_HEALTH_AFTER_REQUEST" }
   }
 
-  if ($smokeResult.http_status -ne 200) { Throw-ApiFailure $smokeResult "POST /v1/chat/completions" "FAIL_INFERENCE" }
+  if ($smokeResult.http_status -ne 200) {
+    if ($smokeResult.http_status -eq 0) { $summary.current_api_status = "FAIL_API_UNREACHABLE" }
+    elseif ($smokeResult.http_status -eq 401 -or $smokeResult.http_status -eq 403) { $summary.current_api_status = "AUTH_FAILED" }
+    else { $summary.current_api_status = "FAIL_INFERENCE" }
+    Throw-ApiFailure $smokeResult "POST /v1/chat/completions" "FAIL_INFERENCE"
+  }
   $choices = @(Get-Field $smokeResult.json "choices")
   $answer = ""
   if ($choices.Count -gt 0) { $answer = [string](Get-Field (Get-Field $choices[0] "message") "content") }
@@ -450,9 +620,24 @@ try {
   }
   Save-Json "smoke-result.json" $summary.smoke_inference
   if (-not $sentinelFound -or $promptTokens -le 0 -or $completionTokens -le 0) {
+    $summary.current_api_status = "FAIL_INFERENCE"
     throw "QUICK_RESULT|FAIL|FAIL_INFERENCE|Smoke request completed without the expected marker or valid usage counts."
   }
   Set-Stage "smoke_inference" "PASS" "PTQ1_0 completed a real non-streaming OpenAI-compatible inference request."
+
+  $postSmokePrefill = if ($afterResult.http_status -eq 200) { $afterResult.json } else { $null }
+  $summary.current_api_status = Get-CurrentApiStatus -Health $healthAfter -Startup $startup -Prefill $postSmokePrefill -SmokeSucceeded:$true
+  $summary.historical_startup_status = Get-StartupHistoryStatus -Startup $startup
+  if ($summary.historical_startup_status -ne "NO_HISTORICAL_FAILURE") {
+    $summary.warnings = @($summary.warnings) + @("Historical startup evidence: " + $summary.historical_startup_status)
+  }
+  if ($summary.current_api_status -eq "CURRENT_API_FUNCTIONAL_DIAGNOSTIC_MISMATCH") {
+    $summary.warnings = @($summary.warnings) + @("Current API health and Smoke succeeded, but lifecycle/native-context evidence is incomplete or inconsistent.")
+  }
+  $startup.current_api_status = $summary.current_api_status
+  $startup.historical_startup_status = $summary.historical_startup_status
+  $startup.nax_experiment_status = $summary.nax_experiment_status
+  Save-Json "startup-diagnostics.json" $startup
 
   if ($null -ne $deferredFailure) {
     if ($deferredFailure -like "INCOMPLETE_*") {
@@ -460,11 +645,22 @@ try {
     }
     throw "QUICK_RESULT|FAIL|$deferredFailure|PTQ1_0 must keep the NAX Tensor experiment isolated and startup must reach READY."
   }
-  $summary.status = "PASS"
-  $summary.failure_class = "PASS_PTQ1_AUTH_AND_STARTUP_SMOKE"
+  $overallStatus = Get-OverallStatus -CurrentApiStatus $summary.current_api_status -HistoryStatus $summary.historical_startup_status -NaxStatus $summary.nax_experiment_status
+  if ($overallStatus -eq "INCOMPLETE") {
+    throw "QUICK_RESULT|INCOMPLETE|BLOCKED_NEEDS_EVIDENCE|Smoke completed but required post-smoke readiness evidence is unavailable."
+  }
+  if ($overallStatus -eq "FAIL") {
+    throw "QUICK_RESULT|FAIL|FAIL_NAX_ISOLATION|NAX isolation did not satisfy the PTQ1_0 default-path contract."
+  }
+  $summary.status = $overallStatus
+  $summary.failure_class = if ($overallStatus -eq "PASS_WITH_WARNINGS") { "PASS_WITH_WARNINGS" } else { "PASS_PTQ1_AUTH_AND_STARTUP_SMOKE" }
   $summary.failed_stage = "none"
-  $summary.failure_detail = "Auth behavior, Build112 identity, PTQ1_0 model identity, NAX isolation and real smoke inference passed."
-  Set-Stage "final" "PASS" $summary.failure_detail
+  if ($overallStatus -eq "PASS_WITH_WARNINGS") {
+    $summary.failure_detail = "Current API functionality and PTQ1_0 Smoke passed; historical startup status is $($summary.historical_startup_status), current API status is $($summary.current_api_status). See warnings and startup-diagnostics.json."
+  } else {
+    $summary.failure_detail = "Current API is READY, current error is clear, native context exists, PTQ1_0 Smoke passed, no historical startup failure is recorded, and NAX is not applicable to the default PTQ1_0 path."
+  }
+  Set-Stage "final" $summary.status $summary.failure_detail
 } catch {
   $message = $_.Exception.Message
   if ($message.StartsWith("QUICK_RESULT|")) {
@@ -492,6 +688,18 @@ try {
     $summary.failure_detail = "An unexpected test stage failed; raw exception text is omitted."
   }
   $summary.failed_stage = $currentStage
+  if ($summary.current_api_status -eq "NOT_ASSESSED") {
+    switch ([string]$summary.failure_class) {
+      "INCOMPLETE_API_NOT_REACHABLE" { $summary.current_api_status = "FAIL_API_UNREACHABLE" }
+      "FAIL_HEALTH_CHECK" { $summary.current_api_status = "FAIL_API_UNREACHABLE" }
+      "FAIL_INFERENCE" { $summary.current_api_status = "FAIL_INFERENCE" }
+      "AUTH_FAILED" { $summary.current_api_status = "AUTH_FAILED" }
+      "FAIL_API_KEY_REQUIRED" { $summary.current_api_status = "AUTH_REQUIRED_KEY_DISABLED" }
+      "FAIL_AUTH_MODE_UNDETERMINED" { $summary.current_api_status = "BLOCKED_NEEDS_EVIDENCE" }
+      "FAIL_AUTH_POLICY_MISMATCH" { $summary.current_api_status = "AUTH_POLICY_MISMATCH" }
+      default { $summary.current_api_status = "BLOCKED_NEEDS_EVIDENCE" }
+    }
+  }
   Set-Stage $currentStage $summary.status $summary.failure_detail
   if ($currentStage -eq "health") { Write-StartupDiagnosticsUnavailable $summary.failure_detail }
 } finally {
@@ -502,7 +710,7 @@ try {
   $summary.api_key_saved = $false
   Save-Json "summary.json" $summary
   $readme = @'
-Bonsai Build112 PTQ1_0 Auth-Aware Quick TestKit 2.0
+Bonsai Build112 PTQ1_0 Auth-Aware Quick TestKit 2.1
 - Reads the real IPA auth_required boolean from unauthenticated GET /health.
 - Prompts for an API Key only when auth_required=true; disabled mode sends no Authorization or X-API-Key header.
 - When auth is enabled, missing/wrong keys must receive HTTP 401 on every known protected route, including runtime-profile, launch/control and inference routes.
@@ -521,7 +729,7 @@ Bonsai Build112 PTQ1_0 Auth-Aware Quick TestKit 2.0
     schema_version = 3
     status = $summary.status
     failure_class = $summary.failure_class
-    testkit_version = "2.0"
+    testkit_version = "2.1"
     testkit_source_commit = $testkitSourceCommit
     expected_app_source_sha = $expectedAppSHA
     app_source_git_sha = $summary.app_identity.source_git_sha

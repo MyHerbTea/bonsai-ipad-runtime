@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract checks for the auth-aware Build112 PTQ1_0 Quick TestKit."""
+"""Contract checks for Build112 PTQ1_0 Auth-Aware Quick TestKit 2.1."""
 
 from pathlib import Path
 
@@ -7,10 +7,18 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1"
 README = ROOT / "tools/BUILD112_QUICK_TESTKIT/README.txt"
 WORKFLOW = ROOT / ".github/workflows/package-build112-quick-testkit.yml"
+SERVER = ROOT / "BonsaiLab/LocalOpenAIServer.swift"
+PRODUCTION = ROOT / "BonsaiLab/ProductionView.swift"
+AUTH_POLICY = ROOT / "BonsaiLab/APIKeyAuthenticationPolicy.swift"
+AUTH_TESTS = ROOT / "tools/api_key_authentication_policy_tests.swift"
 
 script = SCRIPT.read_text(encoding="utf-8")
 readme = README.read_text(encoding="utf-8")
 workflow = WORKFLOW.read_text(encoding="utf-8")
+server = SERVER.read_text(encoding="utf-8")
+production = PRODUCTION.read_text(encoding="utf-8")
+auth_policy = AUTH_POLICY.read_text(encoding="utf-8")
+auth_tests = AUTH_TESTS.read_text(encoding="utf-8")
 
 for needle in (
     "Resolve-AuthRequired",
@@ -32,29 +40,63 @@ for needle in (
     "ExitCode:",
     "api_key_saved = $false",
     "auth-route-probes.json",
+    "startup-diagnostics-before.json",
     "startup-diagnostics.json",
-    "runtime-diagnostics.json",
-    "manifest.json",
-    "PASS_PTQ1_AUTH_AND_STARTUP_SMOKE",
+    "startup_attempt_history",
+    "api_startup_last_failure_attempt_id",
+    "Get-StartupHistoryStatus",
+    "Get-CurrentApiStatus",
+    "Get-OverallStatus",
+    "CURRENT_STARTUP_READY",
+    "RECOVERED_AFTER_STARTUP_FAILURE",
+    "UNATTRIBUTED_HISTORICAL_FAILURE",
+    "MODEL_SPECIFIC_STARTUP_FAILURE",
+    "PASS_WITH_WARNINGS",
+    "NOT_APPLICABLE_PTQ1_0_DEFAULT_PATH",
+    "Get-Field must read OrderedDictionary startup snapshots",
 ):
     assert needle in script, f"Quick TestKit missing contract: {needle}"
+
+assert "FAIL_STARTUP_LIFECYCLE_NOT_READY" not in script, \
+    "Old fail-closed lifecycle check must not be used for post-inference engine state."
 
 for needle in (
     "auth_required=true",
     "auth_required=false",
     "without Authorization or X-API-Key",
-    "Exit codes: PASS=0, FAIL=1, INCOMPLETE=2, BLOCKED=3",
+    "PASS_WITH_WARNINGS: exit code 0",
+    "API Key values and request headers are never written",
+    "UNATTRIBUTED_HISTORICAL_FAILURE",
+    "RECOVERED_AFTER_STARTUP_FAILURE",
     "PTQ1_0",
-    "API Key is held only in process memory for the test",
-    "never written to reports, request artifacts, manifests or the ZIP",
+    "2.1",
 ):
     assert needle in readme, f"Quick TestKit README missing: {needle}"
 
 for needle in (
     "build112_quick_testkit_contract_tests.py",
     "pwsh -File tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1 -SelfTest",
-    "BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_0.zip",
+    "BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip",
 ):
     assert needle in workflow, f"Quick TestKit workflow missing: {needle}"
 
-print("BUILD112_PTQ1_AUTH_STARTUP_TESTKIT_CONTRACT: PASS")
+# Source-level contract: the UI toggle persists the policy used by /health and
+# by the real request guard. Behavior tests cover both modes and persistence.
+assert "API Key 鉴权" in production
+assert "apiServer.setAPIKeyAuthenticationEnabled($0)" in production
+assert "LocalAPIAuthenticationPolicy.setRequired(enabled)" in server
+assert '"auth_required": apiKeyAuthenticationEnabled' in server
+assert "guard authorized(request) else" in server
+assert "LocalAPIAuthenticationPolicy.isAuthorized(" in server
+assert 'static let enabledDefaultsKey = "BonsaiLocalAPIKeyAuthEnabled"' in auth_policy
+for needle in (
+    "new installs must default to authentication enabled",
+    "missing key must be rejected",
+    "wrong key must be rejected",
+    "disabled authentication must allow requests without headers",
+    "disabled preference must persist",
+    "re-enabled preference must persist",
+):
+    assert needle in auth_tests, f"API Key policy regression coverage missing: {needle}"
+
+print("BUILD112_PTQ1_AUTH_STARTUP_TESTKIT_2_1_CONTRACT: PASS")
