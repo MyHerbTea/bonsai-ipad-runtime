@@ -1,16 +1,16 @@
 import Foundation
 
 /// Resolves the process-global Metal Tensor setting before the first backend init.
-/// CANDIDATE may enable TensorOps only for an explicitly eligible PQ2_0 model;
-/// all other models remain Tensor-disabled when the experimental arm is selected.
+/// CANDIDATE may enable TensorOps only for a model/shape explicitly admitted by the caller;
+/// native dispatch retains independent actual GGML type and matrix-shape gates.
 enum Build113MetalTensorPolicy {
     static func effectiveDisabled(
         requestedDisabled: Bool,
         launchArmRawValue: String?,
-        allowNAXCandidate: Bool = false
+        allowMetalTensorCandidate: Bool = false
     ) -> Bool {
         if launchArmRawValue == "CANDIDATE" {
-            return !allowNAXCandidate
+            return !allowMetalTensorCandidate
         }
         return requestedDisabled
     }

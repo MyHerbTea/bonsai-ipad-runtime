@@ -936,6 +936,8 @@ struct ProductionView: View {
     @State private var showAdvanced = false
     @State private var build113NAXCandidateNextLaunch =
         Phase2CMetalTensorLaunchLatch.nextArm == .candidate
+    @State private var ptq1TensorOpsAB16Enabled =
+        UserDefaults.standard.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
     @State private var certification: [CertificationResult] = []
     @State private var warmSessionSummary = ""
     @State private var warmSessionPass: Bool?
@@ -1562,7 +1564,7 @@ struct ProductionView: View {
                         .foregroundStyle(.secondary)
 
                         Toggle(
-                            "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
+                            "实验：Metal TensorOps 候选（下次启动）",
                             isOn: $build113NAXCandidateNextLaunch
                         )
                         .onChange(of: build113NAXCandidateNextLaunch) { _, enabled in
@@ -1572,7 +1574,25 @@ struct ProductionView: View {
                         }
                         .disabled(busy)
                         Text(
-                            "当前进程模式：\(Phase2CMetalTensorLaunchLatch.arm.rawValue)；下次启动：\(build113NAXCandidateNextLaunch ? "CANDIDATE" : "BASELINE")。候选模式会在进程首次 backend init 前启用 Metal Tensor API（包括通用 TensorOps）；必须完全退出并重新打开 App 后生效。默认 BASELINE 保留安全配置。"
+                            "当前进程模式：\(Phase2CMetalTensorLaunchLatch.arm.rawValue)；下次启动：\(build113NAXCandidateNextLaunch ? "CANDIDATE" : "BASELINE")。PQ2_0 仍走原 NAX 门控；PTQ1_0 只有启用下方 16K/B16 A/B 形状后才允许候选 TensorOps。必须完全退出并重新打开 App。默认安全路径不变。"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                        Toggle(
+                            "实验：PTQ1_0 A/B 固定 16K / B16（下次启动）",
+                            isOn: $ptq1TensorOpsAB16Enabled
+                        )
+                        .onChange(of: ptq1TensorOpsAB16Enabled) { _, enabled in
+                            UserDefaults.standard.set(
+                                enabled,
+                                forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled"
+                            )
+                            UserDefaults.standard.synchronize()
+                        }
+                        .disabled(busy)
+                        Text(
+                            "仅对 PTQ1_0 且 API Context=16K 生效；BASELINE 和 CANDIDATE 都使用 Batch/UBatch=16。默认关闭，不修改 Governor 默认策略。测试完成后请关闭此项并将候选设为 BASELINE。"
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -3526,6 +3546,20 @@ struct ProductionView: View {
         defaults.synchronize()
     }
 
+
+    private func applyPTQ1TensorOpsABShape(
+        to apiRuntime: inout RuntimeConfig,
+        modelURL: URL,
+        context: Int
+    ) {
+        let enabled = UserDefaults.standard.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
+        let isPTQ1 = modelURL.lastPathComponent.localizedCaseInsensitiveContains("PTQ1_0")
+        guard enabled, isPTQ1, context == 16_384 else { return }
+        // Experiment-only shape override. The normal Governor remains unchanged.
+        apiRuntime.batch = 16
+        apiRuntime.ubatch = 16
+    }
+
     private func reconfigureAPIRuntimePreservingModel() {
         guard let selectedModelURL = modelURL else {
             status = "请先选择主模型"
@@ -3539,10 +3573,17 @@ struct ProductionView: View {
             selectedAPIContextValue
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
+        let selectedModelFileName = selectedModelURL.lastPathComponent
+        let isPQ2Model = selectedModelFileName.localizedCaseInsensitiveContains("PQ2_0")
+        let isPTQ1Model = selectedModelFileName.localizedCaseInsensitiveContains("PTQ1_0")
+        let ptq1ABShapeEnabled =
+            UserDefaults.standard.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
+            && selectedAPIContext == 16_384
         let allowNAXCandidateForModel =
+            Phase2CMetalTensorLaunchLatch.arm == .candidate && isPQ2Model
+        let allowMetalTensorCandidateForModel =
             Phase2CMetalTensorLaunchLatch.arm == .candidate
-            && selectedModelURL.lastPathComponent
-                .localizedCaseInsensitiveContains("PQ2_0")
+            && (isPQ2Model || (isPTQ1Model && ptq1ABShapeEnabled))
 
         let previouslyLoadedGPULayers =
             UserDefaults.standard.integer(
@@ -3552,7 +3593,7 @@ struct ProductionView: View {
         var apiRuntime = selectedRuntime
         Phase2CMetalTensorLaunchLatch.apply(
             to: &apiRuntime,
-            allowNAXCandidate: allowNAXCandidateForModel
+            allowMetalTensorCandidate: allowMetalTensorCandidateForModel
         )
         apiRuntime.context = selectedAPIContext
         apiRuntime.batch = 8
@@ -3584,6 +3625,11 @@ applyBuild82LongContextPolicy(
             context: selectedAPIContext,
             source: "context_switch",
             allowNAXCandidate: allowNAXCandidateForModel
+        )
+        applyPTQ1TensorOpsABShape(
+            to: &apiRuntime,
+            modelURL: selectedModelURL,
+            context: selectedAPIContext
         )
 
         let requiresModelReload =
@@ -3769,7 +3815,7 @@ applyBuild82LongContextPolicy(
                 // PTQ1_0 remains on the safe Tensor-disabled backend path.
                 Phase2CMetalTensorLaunchLatch.apply(
                     to: &apiRuntime,
-                    allowNAXCandidate: allowNAXCandidateForModel
+                    allowMetalTensorCandidate: allowMetalTensorCandidateForModel
                 )
                 apiRuntime.context = selectedAPIContext
                 apiRuntime.batch = 8
@@ -3802,6 +3848,11 @@ applyBuild82LongContextPolicy(
                     source: "fresh_start",
                     allowNAXCandidate: allowNAXCandidateForModel
                 )
+                applyPTQ1TensorOpsABShape(
+                    to: &apiRuntime,
+                    modelURL: selectedModelURL,
+                    context: selectedAPIContext
+                )
 
                 RC126APIStartupLifecycle.mark(
                     "BACKEND_PREWARM_BEGIN"
@@ -3809,7 +3860,7 @@ applyBuild82LongContextPolicy(
                 try await sharedEngine.prepareAPIColdStart(
                     metalTensorDisabled:
                         apiRuntime.disableMetalTensorAPI,
-                    allowNAXCandidate: allowNAXCandidateForModel
+                    allowMetalTensorCandidate: allowMetalTensorCandidateForModel
                 )
                 RC126APIStartupLifecycle.mark(
                     "BACKEND_PREWARM_DONE"
