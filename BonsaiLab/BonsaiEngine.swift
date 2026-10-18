@@ -515,7 +515,6 @@ actor BonsaiEngine {
         UserDefaults.standard.set(true, forKey: "BonsaiBuild82ModelLoadCompleted")
         UserDefaults.standard.synchronize()
         mark("MODEL_06_LOAD_DONE")
-        let modelFileName = url.lastPathComponent
         UserDefaults.standard.set(
             modelFileName,
             forKey: "BonsaiBuild113ModelFileName"
