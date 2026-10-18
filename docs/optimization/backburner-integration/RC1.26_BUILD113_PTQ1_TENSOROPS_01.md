@@ -17,7 +17,7 @@ Prism already instantiates kernel_mul_mm_ptq1_0_f32 and uses dequantize_ptq1_0 t
 
 ## Candidate engine change
 
-The opt-in kernel_mul_mm_ptq1_tensorops_0_f32 reuses only the 16x128 cooperative-MMA tile and accumulation structure. It replaces the PQ2 packed-bit decoder with Prism's actual dequantize_ptq1_0_t4 helper. This helper decodes the PTQ1_0 base-3 packing order into a half4 register vector, avoiding the custom kernel's decoded-weight threadgroup staging. This is a testable hypothesis, not a claimed speedup.
+The opt-in kernel_mul_mm_ptq1_tensorops_0_f32 reuses only the 16x128 cooperative-MMA tile and accumulation structure. It replaces the PQ2 packed-bit decoder with Prism's actual ptq1_0_lut helper. This lookup-table decoder decodes the PTQ1_0 base-3 packing order into a half4 register vector, avoiding the custom kernel's decoded-weight threadgroup staging. This is a testable hypothesis, not a claimed speedup.
 
 Host dispatch requires M5 TensorOps/SIMD-group-matrix capability, actual src0.type == GGML_TYPE_PTQ1_0, actual src1.type == GGML_TYPE_F32, F32 output, non-transposed contiguous layout, K divisible by 128, M >= 16 and divisible by 16, N >= 128, and singleton batch dimensions. The candidate additionally requires the explicit PTQ1_0 16K/B16 A/B opt-in. Default Governor and default Tensor-disabled behavior are unchanged.
 
