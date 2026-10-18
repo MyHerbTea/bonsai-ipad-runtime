@@ -3811,8 +3811,8 @@ applyBuild82LongContextPolicy(
                 RC126APIStartupLifecycle.mark("VISION_RELEASE_DONE")
 
                 var apiRuntime = selectedRuntime
-                // Enable the experimental Tensor backend only for the selected PQ2_0 model.
-                // PTQ1_0 remains on the safe Tensor-disabled backend path.
+                // TensorOps stays disabled by default. PTQ1_0 may use it only when the
+                // explicit 16K/B16 A/B shape is enabled; native dispatch checks actual types.
                 Phase2CMetalTensorLaunchLatch.apply(
                     to: &apiRuntime,
                     allowMetalTensorCandidate: allowMetalTensorCandidateForModel
