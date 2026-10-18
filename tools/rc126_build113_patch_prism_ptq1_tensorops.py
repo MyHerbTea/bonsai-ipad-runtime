@@ -188,8 +188,8 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_pt
     getter = "\n".join(line.rstrip() for line in getter.splitlines()) + "\n"
     replace_once(
         device_cpp,
-        "ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_nax_pq2(ggml_metal_library_t lib) {\n",
-        getter + "ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_nax_pq2(ggml_metal_library_t lib) {\n",
+        "struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_nax_pq2(ggml_metal_library_t lib) {\n",
+        getter + "struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_nax_pq2(ggml_metal_library_t lib) {\n",
     )
     trace_helper = r'''
 static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
