@@ -63,6 +63,8 @@ actor BonsaiEngine {
     // Prism's Metal device registry is process-lifetime even if
     // llama_backend_free() is called. Never clear this latch in-process.
     private var backendRegistryMetalTensorDisabledAtFirstInit: Bool?
+    private var build84NativeContextTraceURL: URL?
+    private var build84NativeContextTraceActive = false
     private var appliedRuntime = RuntimeConfig.safe
 
     // RC1.23.2 experimental API-only prefix reuse state.
@@ -324,13 +326,17 @@ actor BonsaiEngine {
         allowNAXCandidate: Bool = false
     ) throws {
         allowNAXCandidateForCurrentModel = allowNAXCandidate
+        recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_BEGIN")
         mark("API_COLD_00_BEGIN")
+        recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_UNLOAD_BEGIN")
         unloadAll()
+        recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_UNLOAD_DONE")
         persistSystemDiagnostics(
             prefix: "BonsaiAPIColdBeforeBackend"
         )
         mark("API_COLD_01_RUNTIME_RELEASED")
 
+        recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_BACKEND_INIT_BEGIN")
         try initializeBackendIfNeeded(
             metalTensorDisabled: metalTensorDisabled,
             beginStage:
@@ -338,22 +344,60 @@ actor BonsaiEngine {
             doneStage:
                 "API_COLD_03_BACKEND_INIT_DONE"
         )
+        recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_BACKEND_INIT_DONE")
 
         persistSystemDiagnostics(
             prefix: "BonsaiAPIColdAfterBackend"
         )
         mark("API_COLD_04_BACKEND_READY")
+        recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_DONE")
     }
 
-    // Native trace is enabled only for experimental >=32K context creation.
-    // Prism fsyncs each stage to survive process termination before Swift can catch errors.
+    // Arm crash-persistent tracing at API startup for the explicit 16K/B16
+    // shape-only trial and all >=32K contexts. Re-entering this method within
+    // one startup reuses the same file instead of rotating away early evidence.
+    func beginAPIStartupNativeTrace(
+        contextLength: Int,
+        batch: Int,
+        ubatch: Int
+    ) {
+        beginBuild84NativeContextTrace(
+            contextLength: contextLength,
+            batch: batch,
+            ubatch: ubatch
+        )
+        recordAPIStartupNativeTrace(
+            "SWIFT_API_START_BEGIN context=\(contextLength) batch=\(batch) ubatch=\(ubatch)"
+        )
+    }
+
+    func recordAPIStartupNativeTrace(_ event: String) {
+        appendBuild84NativeContextTraceLine(event)
+    }
+
+    func endAPIStartupNativeTrace(_ event: String) {
+        appendBuild84NativeContextTraceLine(event)
+        endBuild84NativeContextTrace()
+    }
+
     private func beginBuild84NativeContextTrace(
         contextLength: Int,
         batch: Int,
         ubatch: Int
     ) {
-        // Clear a prior NAX trace target before attempting a new context.
         unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
+
+        if build84NativeContextTraceActive,
+           let activeURL = build84NativeContextTraceURL {
+            setenv("BONSAI_BUILD84_TRACE_PATH", activeURL.path, 1)
+            appendBuild84NativeContextTraceLine(
+                "SWIFT_NATIVE_TRACE_REUSED context=\(contextLength) batch=\(batch) ubatch=\(ubatch)"
+            )
+            return
+        }
+
+        // Do not append a normal 16K/B8 run to a stale previous attempt.
+        build84NativeContextTraceURL = nil
         guard M5RuntimeGovernor.shouldEnableNativeContextTrace(
             context: contextLength,
             batch: batch,
@@ -362,6 +406,7 @@ actor BonsaiEngine {
             unsetenv("BONSAI_BUILD84_TRACE_PATH")
             return
         }
+
         let directory = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -376,9 +421,7 @@ actor BonsaiEngine {
             )
             let defaults = UserDefaults.standard
             let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
-            let header = "build=89\napp_build=\(appBuild)\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(batch)\nubatch=\(ubatch)\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
-            // Preserve last attempt even when a new 32K run is started.
-            // The diagnostic UI can export both traces after a crash.
+            let header = "native_trace_build=89\napp_build=\(appBuild)\napp_source_sha=\(BonsaiCertificationBuildIdentity.sourceGitSHA)\ntrace_format=3\nentry=API_START\ncontext=\(contextLength)\nbatch=\(batch)\nubatch=\(ubatch)\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
             let previous = directory.appendingPathComponent(
                 "bonsai_build86_previous_native_trace.txt"
             )
@@ -387,21 +430,98 @@ actor BonsaiEngine {
                 try? FileManager.default.copyItem(at: url, to: previous)
             }
             try header.write(to: url, atomically: true, encoding: .utf8)
+            let headerFD = Darwin.open(url.path, O_WRONLY)
+            guard headerFD >= 0 else {
+                throw NSError(
+                    domain: "BonsaiNativeTrace",
+                    code: Int(errno),
+                    userInfo: [NSLocalizedDescriptionKey: "Unable to open native trace header for fsync"]
+                )
+            }
+            let headerSyncResult = Darwin.fsync(headerFD)
+            let headerSyncError = errno
+            _ = Darwin.close(headerFD)
+            guard headerSyncResult == 0 else {
+                throw NSError(
+                    domain: "BonsaiNativeTrace",
+                    code: Int(headerSyncError),
+                    userInfo: [NSLocalizedDescriptionKey: "Unable to fsync native trace header"]
+                )
+            }
+
+            build84NativeContextTraceURL = url
+            build84NativeContextTraceActive = true
             setenv("BONSAI_BUILD84_TRACE_PATH", url.path, 1)
-            UserDefaults.standard.removeObject(
-                forKey: "BonsaiBuild84TraceSetupError"
+            defaults.removeObject(forKey: "BonsaiBuild84TraceSetupError")
+            defaults.synchronize()
+            appendBuild84NativeContextTraceLine(
+                "SWIFT_NATIVE_TRACE_ARMED context=\(contextLength) batch=\(batch) ubatch=\(ubatch)"
             )
         } catch {
             unsetenv("BONSAI_BUILD84_TRACE_PATH")
+            build84NativeContextTraceURL = nil
+            build84NativeContextTraceActive = false
             UserDefaults.standard.set(
                 error.localizedDescription,
                 forKey: "BonsaiBuild84TraceSetupError"
             )
+            UserDefaults.standard.synchronize()
+        }
+    }
+
+    private func appendBuild84NativeContextTraceLine(_ message: String) {
+        guard let url = build84NativeContextTraceURL else { return }
+        let safeMessage = message.replacingOccurrences(of: "\n", with: " ")
+        let data = Data("\(Date().timeIntervalSince1970) SWIFT \(safeMessage)\n".utf8)
+        let fd = Darwin.open(
+            url.path,
+            O_WRONLY | O_APPEND | O_CREAT,
+            mode_t(S_IRUSR | S_IWUSR)
+        )
+        guard fd >= 0 else {
+            UserDefaults.standard.set(
+                "native_trace_append_open_failed_errno_\(errno)",
+                forKey: "BonsaiBuild84TraceSetupError"
+            )
+            UserDefaults.standard.synchronize()
+            return
+        }
+        let writeSucceeded = data.withUnsafeBytes { buffer -> Bool in
+            guard let baseAddress = buffer.baseAddress else { return true }
+            var offset = 0
+            while offset < buffer.count {
+                let written = Darwin.write(
+                    fd,
+                    baseAddress.advanced(by: offset),
+                    buffer.count - offset
+                )
+                if written <= 0 { return false }
+                offset += written
+            }
+            return true
+        }
+        let syncResult = Darwin.fsync(fd)
+        let syncError = errno
+        _ = Darwin.close(fd)
+        if !writeSucceeded || syncResult != 0 {
+            UserDefaults.standard.set(
+                "native_trace_append_failed_errno_\(syncError)",
+                forKey: "BonsaiBuild84TraceSetupError"
+            )
+            UserDefaults.standard.synchronize()
         }
     }
 
     private func endBuild84NativeContextTrace() {
+        if build84NativeContextTraceActive {
+            appendBuild84NativeContextTraceLine(
+                "SWIFT_NATIVE_CONTEXT_TRACE_END"
+            )
+        }
         unsetenv("BONSAI_BUILD84_TRACE_PATH")
+        build84NativeContextTraceActive = false
+        // Retain the URL until the startup catch path has had a chance to append
+        // a Swift error marker after the native context scope closes.
     }
 
     // Keep the NAX-only trace available during inference without enabling the
@@ -425,15 +545,23 @@ actor BonsaiEngine {
         allowNAXCandidateForCurrentModel =
             url.lastPathComponent.localizedCaseInsensitiveContains("PQ2_0")
         let config = try runtime.validated()
+        recordAPIStartupNativeTrace(
+            "SWIFT_MODEL_LOAD_ENTER context=\(config.context) batch=\(config.batch) ubatch=\(config.ubatch)"
+        )
         mark("MODEL_00_RESET_BEGIN")
+        recordAPIStartupNativeTrace("SWIFT_MODEL_UNLOAD_BEGIN")
         unloadAll()
+        recordAPIStartupNativeTrace("SWIFT_MODEL_UNLOAD_DONE")
         mark("MODEL_00_RESET_DONE")
 
+        recordAPIStartupNativeTrace("SWIFT_MODEL_METAL_BACKEND_PREPARE_BEGIN")
         try prepareMetalTensorBackend(
             disabled: config.disableMetalTensorAPI
         )
+        recordAPIStartupNativeTrace("SWIFT_MODEL_METAL_BACKEND_PREPARE_DONE")
         mark("MODEL_01_ENV_READY")
 
+        recordAPIStartupNativeTrace("SWIFT_MODEL_BACKEND_INIT_BEGIN")
         try initializeBackendIfNeeded(
             metalTensorDisabled:
                 config.disableMetalTensorAPI,
@@ -442,6 +570,7 @@ actor BonsaiEngine {
             doneStage:
                 "MODEL_03_BACKEND_INIT_DONE"
         )
+        recordAPIStartupNativeTrace("SWIFT_MODEL_BACKEND_INIT_DONE")
 
         let scoped = url.startAccessingSecurityScopedResource()
         modelScopedURL = url
@@ -460,6 +589,7 @@ actor BonsaiEngine {
         persistSystemDiagnostics(
             prefix: "BonsaiBuild79BeforeModelMmap"
         )
+        recordAPIStartupNativeTrace("SWIFT_MODEL_MMAP_BEGIN")
         mark("MODEL_05_LOAD_BEGIN")
         let loadStart = DispatchTime.now().uptimeNanoseconds
         guard let loadedModel = llama_model_load_from_file(url.path, modelParams) else {
@@ -471,6 +601,7 @@ actor BonsaiEngine {
         UserDefaults.standard.set(true, forKey: "BonsaiBuild82ModelLoadCompleted")
         UserDefaults.standard.synchronize()
         mark("MODEL_06_LOAD_DONE")
+        recordAPIStartupNativeTrace("SWIFT_MODEL_MMAP_DONE")
         let modelFileName = url.lastPathComponent
         UserDefaults.standard.set(
             modelFileName,
@@ -603,6 +734,9 @@ actor BonsaiEngine {
             batch: config.batch,
             ubatch: config.ubatch,
             source: "load_model"
+        )
+        recordAPIStartupNativeTrace(
+            "SWIFT_CONTEXT_CREATE_BEGIN context=\(config.context) batch=\(config.batch) ubatch=\(config.ubatch)"
         )
         mark("MODEL_07_CONTEXT_CREATE_BEGIN")
         beginBuild84NativeContextTrace(
