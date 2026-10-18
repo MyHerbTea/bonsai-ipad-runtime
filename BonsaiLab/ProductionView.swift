@@ -1649,13 +1649,43 @@ struct ProductionView: View {
                                     for: .applicationSupportDirectory,
                                     in: .userDomainMask
                                 )[0]
+                                let currentURL = folder.appendingPathComponent(
+                                    "bonsai_build84_native_context_trace.txt"
+                                )
+                                let currentAttributes = try? FileManager.default.attributesOfItem(
+                                    atPath: currentURL.path
+                                )
+                                let currentSize =
+                                    (currentAttributes?[.size] as? NSNumber)?.intValue ?? -1
+                                let currentModified =
+                                    (currentAttributes?[.modificationDate] as? Date)
+                                        .map { ISO8601DateFormatter().string(from: $0) }
+                                        ?? "unknown"
+                                let traceSetupError = (
+                                    UserDefaults.standard.string(
+                                        forKey: "BonsaiBuild84TraceSetupError"
+                                    ) ?? "none"
+                                ).replacingOccurrences(of: "\n", with: " ")
+                                let appBuild =
+                                    Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+                                    ?? "unknown"
                                 let names = [
                                     "bonsai_build84_native_context_trace.txt",
                                     "bonsai_build86_previous_native_trace.txt",
                                 ]
                                 var export = [
-                                    "=== BONSAILAB BUILD 86 COMPLETE NATIVE TRACE ===",
+                                    "=== BONSAILAB BUILD 90 COMPLETE NATIVE TRACE ===",
                                     "privacy=NO_MODEL_DATA_NO_PROMPTS_NO_API_KEYS",
+                                    "app_build=\(appBuild)",
+                                    "app_source_sha=\(BonsaiCertificationBuildIdentity.sourceGitSHA)",
+                                    "trace_setup_error=\(traceSetupError)",
+                                    "configured_api_context=\(selectedAPIContextValue)",
+                                    "configured_api_batch=\(runtime.batch)",
+                                    "configured_api_ubatch=\(runtime.ubatch)",
+                                    "api_runtime_profile=\(selectedAPIRuntimeProfileValue)",
+                                    "current_trace_exists=\(FileManager.default.fileExists(atPath: currentURL.path))",
+                                    "current_trace_bytes=\(currentSize)",
+                                    "current_trace_mtime=\(currentModified)",
                                 ]
                                 for name in names {
                                     let url = folder.appendingPathComponent(name)

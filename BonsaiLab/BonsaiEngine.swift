@@ -65,6 +65,7 @@ actor BonsaiEngine {
     private var backendRegistryMetalTensorDisabledAtFirstInit: Bool?
     private var build84NativeContextTraceURL: URL?
     private var build84NativeContextTraceActive = false
+    private var build84NativeContextTraceNativeEnabled = false
     private var appliedRuntime = RuntimeConfig.safe
 
     // RC1.23.2 experimental API-only prefix reuse state.
@@ -386,26 +387,31 @@ actor BonsaiEngine {
         ubatch: Int
     ) {
         unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
+        let nativeTraceEnabled = M5RuntimeGovernor.shouldEnableNativeContextTrace(
+            context: contextLength,
+            batch: batch,
+            ubatch: ubatch
+        )
 
+        // Always create a crash-persistent Swift startup trace, including SAFE B8
+        // launches. Only expose the path to native GGML tracing for approved
+        // high-risk shapes; trace absence must never be caused by a policy gate.
         if build84NativeContextTraceActive,
            let activeURL = build84NativeContextTraceURL {
-            setenv("BONSAI_BUILD84_TRACE_PATH", activeURL.path, 1)
+            if build84NativeContextTraceNativeEnabled {
+                setenv("BONSAI_BUILD84_TRACE_PATH", activeURL.path, 1)
+            } else {
+                unsetenv("BONSAI_BUILD84_TRACE_PATH")
+            }
             appendBuild84NativeContextTraceLine(
-                "SWIFT_NATIVE_TRACE_REUSED context=\(contextLength) batch=\(batch) ubatch=\(ubatch)"
+                "SWIFT_NATIVE_TRACE_REUSED context=\(contextLength) batch=\(batch) ubatch=\(ubatch) native_trace_enabled=\(build84NativeContextTraceNativeEnabled)"
             )
             return
         }
 
-        // Do not append a normal 16K/B8 run to a stale previous attempt.
+        // Rotate the previous attempt only when beginning a genuinely new trace.
         build84NativeContextTraceURL = nil
-        guard M5RuntimeGovernor.shouldEnableNativeContextTrace(
-            context: contextLength,
-            batch: batch,
-            ubatch: ubatch
-        ) else {
-            unsetenv("BONSAI_BUILD84_TRACE_PATH")
-            return
-        }
+        build84NativeContextTraceNativeEnabled = false
 
         let directory = FileManager.default.urls(
             for: .applicationSupportDirectory,
@@ -421,7 +427,7 @@ actor BonsaiEngine {
             )
             let defaults = UserDefaults.standard
             let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
-            let header = "native_trace_build=89\napp_build=\(appBuild)\napp_source_sha=\(BonsaiCertificationBuildIdentity.sourceGitSHA)\ntrace_format=3\nentry=API_START\ncontext=\(contextLength)\nbatch=\(batch)\nubatch=\(ubatch)\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
+            let header = "native_trace_build=90\napp_build=\(appBuild)\napp_source_sha=\(BonsaiCertificationBuildIdentity.sourceGitSHA)\ntrace_format=4\nentry=API_START\ncontext=\(contextLength)\nbatch=\(batch)\nubatch=\(ubatch)\nnative_trace_enabled=\(nativeTraceEnabled)\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
             let previous = directory.appendingPathComponent(
                 "bonsai_build86_previous_native_trace.txt"
             )
@@ -451,16 +457,22 @@ actor BonsaiEngine {
 
             build84NativeContextTraceURL = url
             build84NativeContextTraceActive = true
-            setenv("BONSAI_BUILD84_TRACE_PATH", url.path, 1)
+            build84NativeContextTraceNativeEnabled = nativeTraceEnabled
+            if nativeTraceEnabled {
+                setenv("BONSAI_BUILD84_TRACE_PATH", url.path, 1)
+            } else {
+                unsetenv("BONSAI_BUILD84_TRACE_PATH")
+            }
             defaults.removeObject(forKey: "BonsaiBuild84TraceSetupError")
             defaults.synchronize()
             appendBuild84NativeContextTraceLine(
-                "SWIFT_NATIVE_TRACE_ARMED context=\(contextLength) batch=\(batch) ubatch=\(ubatch)"
+                "SWIFT_TRACE_FILE_READY context=\(contextLength) batch=\(batch) ubatch=\(ubatch) native_trace_enabled=\(nativeTraceEnabled)"
             )
         } catch {
             unsetenv("BONSAI_BUILD84_TRACE_PATH")
             build84NativeContextTraceURL = nil
             build84NativeContextTraceActive = false
+            build84NativeContextTraceNativeEnabled = false
             UserDefaults.standard.set(
                 error.localizedDescription,
                 forKey: "BonsaiBuild84TraceSetupError"
@@ -520,6 +532,7 @@ actor BonsaiEngine {
         }
         unsetenv("BONSAI_BUILD84_TRACE_PATH")
         build84NativeContextTraceActive = false
+        build84NativeContextTraceNativeEnabled = false
         // Retain the URL until the startup catch path has had a chance to append
         // a Swift error marker after the native context scope closes.
     }

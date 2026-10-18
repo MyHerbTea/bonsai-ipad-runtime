@@ -24,13 +24,25 @@ caught_error = view.index('await sharedEngine.endAPIStartupNativeTrace(\n       
 assert begin < vision_release < prewarm < model_load < caught_error
 
 trace_method = engine.index("private func beginBuild84NativeContextTrace(")
-reuse_guard = engine.index("if build84NativeContextTraceActive", trace_method)
-header_write = engine.index("try header.write(to: url", trace_method)
+trace_method_end = engine.index("private func appendBuild84NativeContextTraceLine(", trace_method)
+trace_body = engine[trace_method:trace_method_end]
+reuse_guard = trace_body.index("if build84NativeContextTraceActive")
+header_write = trace_body.index("try header.write(to: url")
 assert reuse_guard < header_write, "re-entering trace setup must reuse the current attempt, not rotate it"
+assert "let nativeTraceEnabled = M5RuntimeGovernor.shouldEnableNativeContextTrace(" in trace_body
+assert "guard M5RuntimeGovernor.shouldEnableNativeContextTrace(" not in trace_body, "safe B8 starts must also create a Swift trace"
+assert "build84NativeContextTraceNativeEnabled" in trace_body
+assert "SWIFT_TRACE_FILE_READY" in trace_body
+
+trace_export = view[view.index('Button("复制完整原生崩溃追踪（当前及上次）")'):]
+assert "trace_setup_error=\\(traceSetupError)" in trace_export
+assert "app_source_sha=\\(BonsaiCertificationBuildIdentity.sourceGitSHA)" in trace_export
+assert "current_trace_exists=\\(FileManager.default.fileExists(atPath: currentURL.path))" in trace_export
+assert "configured_api_context=\\(selectedAPIContextValue)" in trace_export
 
 end_method = engine.index("private func endBuild84NativeContextTrace()")
 end_method_body = engine[end_method:engine.index("// Keep the NAX-only trace", end_method)]
 assert "build84NativeContextTraceURL = nil" not in end_method_body, "retain URL so caught errors can be appended"
 
 assert "python3 tools/build112_native_trace_startup_contract_tests.py" in workflow
-print("PASS Build112 early startup trace ordering, durable append, and same-attempt reuse")
+print("PASS Build112 always-on Swift startup trace, gated native trace, durable append, export metadata, and same-attempt reuse")
