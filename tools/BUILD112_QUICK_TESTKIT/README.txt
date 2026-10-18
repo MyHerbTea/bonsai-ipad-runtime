@@ -10,14 +10,15 @@ Purpose
 - Create a result ZIP containing before/after startup snapshots, auth-route probes, model/runtime identity, Smoke evidence, summary and per-file SHA-256 manifest.
 
 Run the PTQ1_0 16K/B16 shape-only diagnostic
-1. Install the matching IPA built from the App source SHA pinned in EXPECTED_APP_SOURCE_SHA.txt. The matching IPA for this run is Build112, source SHA f84d1b9ca95b133d5f1303a9d6e21c8b66302f56.
+1. Install the matching IPA built from the App source SHA pinned in EXPECTED_APP_SOURCE_SHA.txt. The matching IPA for this run is Build112, source SHA bc6ed119bc7127a6b0cd73ea9b94b3673e173aaf.
 2. Keep the main model set to Ternary-Bonsai-2-27B-PTQ1_0.gguf. Do not switch to PQ2_0.
 3. In Advanced & Diagnostics, set API Context to 16K with Q4 KV. Do not manually alter other runtime parameters.
 4. Enable the exact one-shot toggle: “实验：PTQ1_0 16K/B16 形状隔离（TensorOps 关闭，单次）”. This automatically keeps the NAX Metal TensorOps candidate disabled. Fully terminate Bonsai and reopen it so the next-launch setting is applied.
 5. Start the API once. The trial pins the following launch to safe B8 before native context creation. Do not repeatedly re-enable the trial.
 6. If the API reaches READY, keep Bonsai in the foreground and run RUN_BUILD112_QUICK_TEST.cmd. Enter the API Base URL. If authentication is enabled, the tool asks for the key only after /health reports auth_required=true. The resulting ZIP should capture the real Smoke inference and the effective API/native batch and ubatch values; the candidate should report B16/UBatch16.
-7. If Bonsai crashes or the API never becomes ready, reopen Bonsai but do NOT immediately start the API again. Open Advanced & Diagnostics and tap “复制完整原生崩溃追踪（当前及上次）”. Paste the entire copied text for analysis. The trace should include the 16K/B16 attempt header and the last native scheduler events. If needed, start the API afterward to verify that the automatic B8 recovery works, then run the Quick TestKit and send its result ZIP.
-8. This is a startup/shape-isolation test, not a performance benchmark. A successful one-shot run or an interrupted run automatically returns the next launch to B8.
+7. If Bonsai crashes or the API never becomes ready, reopen Bonsai but do NOT immediately start the API again. Open Advanced & Diagnostics and tap “复制完整原生崩溃追踪（当前及上次）”. Paste the entire copied text for analysis. The updated IPA arms the trace at API-start entry, before vision release, backend prewarm, and model mmap; it durably records Swift startup stages as well as native scheduler events. The trace header includes the app source SHA and intended context/batch/ubatch. If the current trace is still not_available, also tap “刷新并复制完整诊断” and include trace_setup_error.
+8. The one-shot latch automatically pins the following process launch to B8. After an interrupted B16 attempt, reopening the app classifies the attempt and returns to B8. To repeat the candidate test after installing the diagnostic IPA, re-enable the one-shot toggle and fully restart the app before starting API.
+9. This is a startup/shape-isolation test, not a performance benchmark. A successful one-shot run or an interrupted run automatically returns the next launch to B8.
 
 Standard Quick Test
 - For a normal PTQ1_0 B8 readiness check without the one-shot B16 experiment, install the same matching IPA, leave the shape-only toggle off, start the API, run RUN_BUILD112_QUICK_TEST.cmd and send the result ZIP under RESULTS.
