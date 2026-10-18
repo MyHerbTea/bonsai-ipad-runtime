@@ -33,16 +33,6 @@ jobs:
             $errors | Format-List | Out-String | Write-Error
             exit 1
           }
-          $abErrors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            "$env:GITHUB_WORKSPACE/tools/BUILD112_QUICK_TESTKIT/run_ptq1_metal_ab.ps1",
-            [ref]$null,
-            [ref]$abErrors
-          ) | Out-Null
-          if ($abErrors.Count -gt 0) {
-            $abErrors | Format-List | Out-String | Write-Error
-            exit 1
-          }
       - name: Validate auth-aware TestKit contracts and behavior
         shell: bash
         run: |
@@ -50,17 +40,14 @@ jobs:
           python3 -m py_compile tools/build112_quick_testkit_contract_tests.py
           python3 tools/build112_quick_testkit_contract_tests.py
           pwsh -File tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1 -SelfTest
-          pwsh -File tools/BUILD112_QUICK_TESTKIT/run_ptq1_metal_ab.ps1 -SelfTest
       - name: Package one-click PTQ1_0 Auth Startup Quick TestKit 2.1
         shell: bash
         run: |
           set -euo pipefail
           rm -rf package
           mkdir -p package/Build112-Quick-TestKit
-          test -f tools/BUILD112_QUICK_TESTKIT/PTQ1_METAL_AB_README.txt
-          test -f tools/BUILD112_QUICK_TESTKIT/RUN_PTQ1_METAL_AB.cmd
           cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
-          printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Quick TestKit 2.1 + PTQ1 Metal A/B extension' > package/Build112-Quick-TestKit/VERSION.txt
+          printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Startup TestKit 2.1' > package/Build112-Quick-TestKit/VERSION.txt
           printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
           (cd package && zip -qr ../BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip Build112-Quick-TestKit)
           sha256sum BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip > BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip.sha256

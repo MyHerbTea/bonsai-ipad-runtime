@@ -59,7 +59,7 @@ actor BonsaiEngine {
     private var stagedResidentModelScopedURL: URL?
     private var hasStagedResidentModelScope = false
     private var backendInitialized = false
-    private var allowMetalTensorCandidateForCurrentModel = false
+    private var allowNAXCandidateForCurrentModel = false
     // Prism's Metal device registry is process-lifetime even if
     // llama_backend_free() is called. Never clear this latch in-process.
     private var backendRegistryMetalTensorDisabledAtFirstInit: Bool?
@@ -216,14 +216,14 @@ actor BonsaiEngine {
         return index
     }
 
-    // TensorOps remains disabled by default. The explicit candidate arm is admitted
-    // for PQ2_0 as before, or for the opt-in PTQ1_0 16K/B16 A/B shape. Native
-    // dispatch independently checks actual GGML weight/activation types and shape.
+    // Candidate TensorOps is enabled only when the selected PQ2_0 model is
+    // explicitly eligible. The custom kernel retains independent GGML type
+    // and matrix-shape dispatch gates.
     private func effectiveBuild113MetalTensorDisabled(_ requested: Bool) -> Bool {
         Build113MetalTensorPolicy.effectiveDisabled(
             requestedDisabled: requested,
             launchArmRawValue: Phase2CMetalTensorLaunchLatch.arm.rawValue,
-            allowMetalTensorCandidate: allowMetalTensorCandidateForCurrentModel
+            allowNAXCandidate: allowNAXCandidateForCurrentModel
         )
     }
 
@@ -321,9 +321,9 @@ actor BonsaiEngine {
 
     func prepareAPIColdStart(
         metalTensorDisabled: Bool,
-        allowMetalTensorCandidate: Bool = false
+        allowNAXCandidate: Bool = false
     ) throws {
-        allowMetalTensorCandidateForCurrentModel = allowMetalTensorCandidate
+        allowNAXCandidateForCurrentModel = allowNAXCandidate
         mark("API_COLD_00_BEGIN")
         unloadAll()
         persistSystemDiagnostics(
@@ -345,14 +345,12 @@ actor BonsaiEngine {
         mark("API_COLD_04_BACKEND_READY")
     }
 
-    // Prism fsyncs native allocation stages so evidence survives process termination.
-    // The explicit PTQ1_0 16K/B16 experiment also needs this trace; previously it was disabled below 32K.
-    private func beginBuild84NativeContextTrace(contextLength: Int, modelFileName: String, batch: Int, ubatch: Int) {
+    // Native trace is enabled only for experimental >=32K context creation.
+    // Prism fsyncs each stage to survive process termination before Swift can catch errors.
+    private func beginBuild84NativeContextTrace(contextLength: Int) {
+        // Clear a prior NAX trace target before attempting a new context.
         unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
-        let tracePTQ1AB16 = Build113MetalTensorPolicy.shouldTraceNativeContext(
-            contextLength: contextLength, modelFileName: modelFileName, batch: batch, ubatch: ubatch
-        ) && contextLength == 16_384
-        guard contextLength >= 32_768 || tracePTQ1AB16 else {
+        guard contextLength >= 32_768 else {
             unsetenv("BONSAI_BUILD84_TRACE_PATH")
             return
         }
@@ -370,8 +368,7 @@ actor BonsaiEngine {
             )
             let defaults = UserDefaults.standard
             let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
-            let experiment = tracePTQ1AB16 ? "PTQ1_0_AB16" : "LONG_CONTEXT"
-            let header = "build=89\napp_build=\(appBuild)\ntrace_format=3\nexperiment=\(experiment)\nmodel=\(modelFileName)\ncontext=\(contextLength)\nbatch=\(batch)\nubatch=\(ubatch)\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
+            let header = "build=89\napp_build=\(appBuild)\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"))\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
             // Preserve last attempt even when a new 32K run is started.
             // The diagnostic UI can export both traces after a crash.
             let previous = directory.appendingPathComponent(
@@ -416,62 +413,10 @@ actor BonsaiEngine {
         setenv("BONSAI_M5_NAX_PQ2_TRACE_PATH", url.path, 1)
     }
 
-
-    // PTQ1_0 A/B trace is separate from Build84-89 scheduler tracing and the
-    // PQ2-only NAX trace. It is enabled only for the explicit 16K/B16 candidate.
-    private func enableBuild113PTQ1TensorTrace(
-        contextLength: Int,
-        modelFileName: String,
-        batch: Int,
-        ubatch: Int
-    ) {
-        let isPTQ1 = modelFileName.localizedCaseInsensitiveContains("PTQ1_0")
-        guard isPTQ1, contextLength == 16_384 else {
-            unsetenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH")
-            return
-        }
-        let supportDirectory = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        )[0]
-        try? FileManager.default.createDirectory(
-            at: supportDirectory,
-            withIntermediateDirectories: true
-        )
-        let url = supportDirectory.appendingPathComponent("bonsai_build113_ptq1_tensor_trace.txt")
-        let header = [
-            "schema=ptq1-metal-tensorops-trace-v1",
-            "app_source_sha=\(BonsaiCertificationBuildIdentity.sourceGitSHA)",
-            "context=\(contextLength)",
-            "batch=\(batch)",
-            "ubatch=\(ubatch)",
-            "launch_arm=\(Phase2CMetalTensorLaunchLatch.arm.rawValue)",
-            "started=\(Date().timeIntervalSince1970)"
-        ].joined(separator: "\n") + "\n"
-        try? Data(header.utf8).write(to: url, options: .atomic)
-        // Capture actual PTQ1_0 operand types in both A/B arms. The custom route
-        // still requires CANDIDATE + TensorOps capability + the native type/shape gate.
-        if batch == 16 && ubatch == 16 {
-            setenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH", url.path, 1)
-        } else {
-            unsetenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH")
-        }
-    }
-
     func loadModel(url: URL, runtime: RuntimeConfig) throws -> ModelMetrics {
+        allowNAXCandidateForCurrentModel =
+            url.lastPathComponent.localizedCaseInsensitiveContains("PQ2_0")
         let config = try runtime.validated()
-        let modelFileName = url.lastPathComponent
-        let isPQ2CandidateModel = modelFileName.localizedCaseInsensitiveContains("PQ2_0")
-        let isPTQ1ABShape =
-            modelFileName.localizedCaseInsensitiveContains("PTQ1_0")
-            && UserDefaults.standard.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
-            && config.context == 16_384
-            && config.batch == 16
-            && config.ubatch == 16
-        allowMetalTensorCandidateForCurrentModel =
-            Phase2CMetalTensorLaunchLatch.arm == .candidate
-            && !config.disableMetalTensorAPI
-            && (isPQ2CandidateModel || isPTQ1ABShape)
         mark("MODEL_00_RESET_BEGIN")
         unloadAll()
         mark("MODEL_00_RESET_DONE")
@@ -518,6 +463,7 @@ actor BonsaiEngine {
         UserDefaults.standard.set(true, forKey: "BonsaiBuild82ModelLoadCompleted")
         UserDefaults.standard.synchronize()
         mark("MODEL_06_LOAD_DONE")
+        let modelFileName = url.lastPathComponent
         UserDefaults.standard.set(
             modelFileName,
             forKey: "BonsaiBuild113ModelFileName"
@@ -651,10 +597,7 @@ actor BonsaiEngine {
             source: "load_model"
         )
         mark("MODEL_07_CONTEXT_CREATE_BEGIN")
-        beginBuild84NativeContextTrace(
-            contextLength: config.context, modelFileName: modelFileName,
-            batch: config.batch, ubatch: config.ubatch
-        )
+        beginBuild84NativeContextTrace(contextLength: config.context)
         defer { endBuild84NativeContextTrace() }
         guard let loadedContext = llama_init_from_model(loadedModel, contextParams) else {
             mark("MODEL_07_CONTEXT_CREATE_NULL")
@@ -669,12 +612,6 @@ actor BonsaiEngine {
             source: "load_model"
         )
         enableBuild113NaxRouteTrace(contextLength: config.context)
-        enableBuild113PTQ1TensorTrace(
-            contextLength: config.context,
-            modelFileName: url.lastPathComponent,
-            batch: config.batch,
-            ubatch: config.ubatch
-        )
         mark("MODEL_08_CONTEXT_CREATE_DONE")
         B16RuntimeEvidence.created(parameters: [
             "context": Int(contextParams.n_ctx),
@@ -3126,12 +3063,7 @@ actor BonsaiEngine {
             ubatch: validated.ubatch,
             source: "make_context"
         )
-        beginBuild84NativeContextTrace(
-            contextLength: validated.context,
-            modelFileName: UserDefaults.standard.string(forKey: "BonsaiBuild113ModelFileName") ?? "",
-            batch: validated.batch,
-            ubatch: validated.ubatch
-        )
+        beginBuild84NativeContextTrace(contextLength: validated.context)
         defer { endBuild84NativeContextTrace() }
         guard let created = llama_init_from_model(model, params) else {
             throw LabError.contextCreateFailed

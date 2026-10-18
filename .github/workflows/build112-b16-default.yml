@@ -39,10 +39,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile tools/rc126_build113_patch_prism_m5_nax_pq2.py tools/rc126_build113_patch_prism_ptq1_tensorops.py tools/rc126_build113_ptq1_tensorops_contract_tests.py tools/rc126_build113_ptq1_tensorops_codec_tests.py
+          python3 -m py_compile tools/rc126_build113_patch_prism_m5_nax_pq2.py
           python3 tools/rc126_build113_m5_nax_pq2_contract_tests.py
-          python3 tools/rc126_build113_ptq1_tensorops_contract_tests.py
-          python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py
           xcrun swiftc -swift-version 5 \
             BonsaiLab/Build113MetalTensorPolicy.swift \
             tools/rc126_build113_metal_tensor_policy_tests.swift \
@@ -106,11 +104,6 @@ jobs:
             grep -q 'kernel_mul_mm_nax_pq2_0_f32' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
             grep -q 'ggml_metal_library_get_pipeline_mul_mm_nax_pq2' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-device.cpp"
             grep -q 'use_pq2_nax' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
-            python3 "$GITHUB_WORKSPACE/tools/rc126_build113_patch_prism_ptq1_tensorops.py" "$PRISM_DIR"
-            grep -Fq 'kernel_mul_mm_ptq1_tensorops_0_f32' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
-            grep -Fq 'ptq1_0_lut[b]' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
-            grep -Fq 'GGML_TYPE_PTQ1_0' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
-            grep -Fq 'BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
           fi
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -189,7 +182,6 @@ jobs:
           set -euo pipefail
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
           bash tools/rc126_build113_verify_m5_nax_pq2_binary.sh "$APP/Frameworks/llama.framework/llama" build
-          bash tools/rc126_build113_verify_ptq1_tensorops_binary.sh "$APP/Frameworks/llama.framework/llama" build
 
       - name: Package unsigned IPA
         shell: bash
@@ -197,7 +189,7 @@ jobs:
           set -euo pipefail
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
           if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
-            IPA_NAME="BonsaiLab-v1-RC1.26-build112-ptq1-metal-ab-unsigned.ipa"
+            IPA_NAME="BonsaiLab-v1-RC1.26-build112-ptq1-auth-startup-unsigned.ipa"
           else
             IPA_NAME="BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa"
           fi
@@ -211,10 +203,10 @@ jobs:
           Runtime: existing Build112 context and B16/B8/SAFE4 safety policy retained; no batch/ubatch defaults changed.
           API Key auth: persistent setting defaults on; /health exposes only auth_required; disabled mode permits local development without a key.
           Startup evidence: last successful stage, last failed stage, actual error and previous incomplete stage persist across launches.
-          NAX-PQ2-01 remains experimental and model-gated. PTQ1_0 stays Tensor-disabled by default; only explicit 16K/B16 A/B mode admits the PTQ1_0 candidate, whose native route checks actual weight/activation types and matrix shape.
-          PTQ1 candidate kernel: kernel_mul_mm_ptq1_tensorops_0_f32; packed base-3 trits are decoded with Prism's ptq1_0_lut into half4 registers before cooperative TensorOps MMA.
-          Static reports: M5_NAX_PQ2_BINARY_VERIFICATION.txt and PTQ1_TENSOROPS_BINARY_VERIFICATION.txt. These prove packaged code only, not device execution.
-          Runtime Metal compilation, dispatch completion, numerical correctness and performance remain unverified pending M5 device evidence.
+          NAX-PQ2-01 remains experimental and model-gated; PTQ1_0 forces the safe Tensor-disabled backend even if CANDIDATE was selected.
+          Candidate kernel: kernel_mul_mm_nax_pq2_0_f32; actual route still requires the kernel's GGML weight-type and matrix-shape checks.
+          Candidate binary: static kernel-source and host-dispatch checks recorded in M5_NAX_PQ2_BINARY_VERIFICATION.txt.
+          Runtime Metal compilation, real-device crash-free startup, numerical correctness and performance remain unverified pending M5 device evidence.
           Prism source: $PRISM_COMMIT; inherited patches 83 through 89.
           Experimental branch: $GITHUB_REF_NAME
           Commit: $GITHUB_SHA
@@ -230,13 +222,12 @@ jobs:
         if: github.ref_name == 'lab/m5-nax-pq2-01'
         uses: actions/upload-artifact@v4
         with:
-          name: BonsaiLab-iPad-v1-RC1.26-Build112-PTQ1-Metal-AB
+          name: BonsaiLab-iPad-v1-RC1.26-Build112-PTQ1-Auth-Startup
           path: |
-            build/BonsaiLab-v1-RC1.26-build112-ptq1-metal-ab-unsigned.ipa
-            build/BonsaiLab-v1-RC1.26-build112-ptq1-metal-ab-unsigned.ipa.sha256
+            build/BonsaiLab-v1-RC1.26-build112-ptq1-auth-startup-unsigned.ipa
+            build/BonsaiLab-v1-RC1.26-build112-ptq1-auth-startup-unsigned.ipa.sha256
             build/BUILD_INFO.txt
             build/M5_NAX_PQ2_BINARY_VERIFICATION.txt
-            build/PTQ1_TENSOROPS_BINARY_VERIFICATION.txt
             build/build.log
           if-no-files-found: error
           retention-days: 14

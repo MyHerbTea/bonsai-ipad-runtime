@@ -2,7 +2,7 @@ Bonsai Build112 PTQ1_0 Auth-Aware Startup Quick TestKit 2.1
 
 Purpose
 - Detect the effective IPA authentication mode from unauthenticated GET /health.auth_required.
-- When auth_required=true, verify missing and incorrect keys return HTTP 401 on protected routes before prompting for the real key. auth_required=false means never prompt; test requests run without Authorization or X-API-Key headers.
+- When auth_required=true, verify missing and incorrect keys return HTTP 401 on protected routes before prompting for the real key. auth_required=false means never prompt and send no Authorization or X-API-Key header.
 - Verify Build112/App source identity, the loaded PTQ1_0 model filename, runtime context/batch/ubatch, native-context evidence and one real Smoke inference.
 - Read startup lifecycle evidence after Smoke. A changed last_engine_stage such as TEXT_99_PASS_FULL_PREFILL is a post-inference engine stage, not proof that API startup failed.
 - Keep current API readiness, historical startup failures, and NAX experiment applicability as independent results.
@@ -35,12 +35,3 @@ Security and interpretation
 - API Key values and request headers are never written to result files. The key is held only in process memory during the test.
 - Auth probes record only endpoint, HTTP status and pass/fail.
 - This Quick TestKit is not proof of crash-free behavior on every M5 launch, numerical correctness, or performance improvement. A historical failure without model/attempt IDs cannot be attributed retroactively.
-
-
-## PTQ1_0 Metal TensorOps performance A/B
-
-Use RUN_PTQ1_METAL_AB.cmd for the dedicated PTQ1_0 engine experiment. It is included as an extension to Quick TestKit 2.1 and uses the existing OpenAI-compatible API and /debug/prefill measurements; it does not change authentication or the default Governor.
-
-The script requires the same installed IPA and PTQ1_0 model across BASELINE and CANDIDATE. Enable the experimental 16K/B16 shape for both arms, keep Text KV Reuse disabled, and fully relaunch Bonsai between arms. It calibrates exact 512/2048-token prompts and optionally adds 8192 tokens, runs at least three valid measurements per arm, and packages raw samples and route evidence.
-
-Open PTQ1_METAL_AB_README.txt for the exact one-click procedure and evidence rules. A build or route marker alone is not a performance pass.

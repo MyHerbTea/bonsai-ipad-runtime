@@ -12,11 +12,11 @@ struct Build113MetalTensorPolicyTests {
         precondition(!Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: false, launchArmRawValue: nil),
                      "caller config must be preserved outside candidate mode")
         precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "CANDIDATE"),
-                     "candidate without explicit model/shape eligibility must stay disabled")
-        precondition(!Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "CANDIDATE", allowMetalTensorCandidate: true),
-                     "explicitly eligible model-specific candidate may enable TensorOps")
-        precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: false, launchArmRawValue: "CANDIDATE", allowMetalTensorCandidate: false),
-                     "PTQ1_0 without explicit 16K/B16 A/B eligibility remains Tensor-disabled")
+                     "candidate without explicit PQ2_0 eligibility must stay disabled")
+        precondition(!Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "CANDIDATE", allowNAXCandidate: true),
+                     "eligible PQ2_0 candidate may enable TensorOps")
+        precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: false, launchArmRawValue: "CANDIDATE", allowNAXCandidate: false),
+                     "PTQ1_0 must stay Tensor-disabled even if the experiment arm is selected")
         precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "candidate"),
                      "invalid arm strings must fail safe")
         precondition(Build113MetalTensorPolicy.effectiveDisabled(requestedDisabled: true, launchArmRawValue: "UNKNOWN"),
@@ -29,14 +29,6 @@ struct Build113MetalTensorPolicyTests {
                      "same mode must not require restart")
         precondition(!Build113MetalTensorPolicy.requiresRestart(latchedDisabled: nil, effectiveDisabled: false),
                      "first backend initialization has no previous latch")
-        precondition(Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 16_384, modelFileName: "Ternary-Bonsai-2-27B-PTQ1_0.gguf", batch: 16, ubatch: 16),
-                     "PTQ1 16K/B16 must enable native context tracing before context creation")
-        precondition(!Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 16_384, modelFileName: "Ternary-Bonsai-2-27B-PTQ1_0.gguf", batch: 8, ubatch: 8),
-                     "ordinary PTQ1 16K/B8 must not enable the experimental native trace")
-        precondition(!Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 16_384, modelFileName: "Ternary-Bonsai-2-27B-PQ2_0.gguf", batch: 16, ubatch: 16),
-                     "PTQ1 trace extension must not alter PQ2 behavior")
-        precondition(Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 32_768, modelFileName: "any.gguf", batch: 8, ubatch: 8),
-                     "existing >=32K native context tracing must remain enabled")
-        print("PASS Build113 Metal Tensor policy: default API cold start, model load, explicit CANDIDATE, PTQ1 16K/B16 crash trace, safe fallback, restart latch")
+        print("PASS Build113 Metal Tensor policy: default API cold start, model load, explicit CANDIDATE, safe fallback, restart latch")
     }
 }

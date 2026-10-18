@@ -95,40 +95,6 @@ struct Build112APIStartupDiagnosticsTests {
         expect((recoveryRecord?["outcome"] as? String) == "READY"
             && (recoveryRecord?["recovered_failure_attempt_id"] as? String) == failedAttempt,
             "history must link recovery to the exact prior failure")
-        let crashSuiteName = "BonsaiPTQ1AB16Recovery-\(UUID().uuidString)"
-        guard let crashDefaults = UserDefaults(suiteName: crashSuiteName) else {
-            fatalError("Could not create isolated recovery UserDefaults suite")
-        }
-        defer { crashDefaults.removePersistentDomain(forName: crashSuiteName) }
-        crashDefaults.set(true, forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
-        crashDefaults.set("16384", forKey: "BonsaiRC1235APIContextProfile")
-        crashDefaults.set("CANDIDATE", forKey: "BonsaiRC126Phase2CNextLaunchArm")
-        crashDefaults.set("IN_PROGRESS", forKey: RC126APIStartupLifecycle.outcomeKey)
-        crashDefaults.set("MODEL_LOAD_BEGIN", forKey: RC126APIStartupLifecycle.stateKey)
-        crashDefaults.set("Ternary-Bonsai-2-27B-PTQ1_0.gguf", forKey: RC126APIStartupLifecycle.modelIdentityKey)
-        crashDefaults.set("MODEL_07_CONTEXT_CREATE_BEGIN", forKey: "BonsaiLabLastStage")
-        crashDefaults.set(16_384, forKey: "BonsaiBuild81ContextCreateAttempt")
-        crashDefaults.set(false, forKey: "BonsaiBuild81ContextCreateCompleted")
-        crashDefaults.set(16, forKey: "BonsaiBuild82EngineContextBatch")
-        crashDefaults.set(16, forKey: "BonsaiBuild82EngineContextUBatch")
-        crashDefaults.set("MODEL_07_CONTEXT_CREATE_BEGIN", forKey: RC126APIStartupLifecycle.lastFailureStageKey)
-        expect(RC126APIStartupLifecycle.recoverInterruptedPTQ1AB16IfNeeded(defaults: crashDefaults),
-               "interrupted PTQ1 16K/B16 native context creation must auto-recover")
-        expect(!crashDefaults.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled"),
-               "recovery must turn off the PTQ1 experimental shape")
-        expect(crashDefaults.string(forKey: "BonsaiRC1235APIContextProfile") == "8192",
-               "recovery must restore the last known 8K context selection")
-        expect(crashDefaults.string(forKey: "BonsaiRC126Phase2CNextLaunchArm") == "BASELINE",
-               "recovery must prevent an experimental TensorOps candidate retry")
-        expect(crashDefaults.string(forKey: RC126APIStartupLifecycle.lastFailureStageKey) == "MODEL_07_CONTEXT_CREATE_BEGIN",
-               "recovery must preserve the original failure stage")
-        expect((crashDefaults.string(forKey: RC126APIStartupLifecycle.ptq1AB16RecoveryNoticeKey) ?? "").contains("8192/B8"),
-               "recovery must leave a user-visible explanation")
-        crashDefaults.set("FAILED", forKey: RC126APIStartupLifecycle.outcomeKey)
-        crashDefaults.set(true, forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
-        crashDefaults.set("16384", forKey: "BonsaiRC1235APIContextProfile")
-        expect(!RC126APIStartupLifecycle.recoverInterruptedPTQ1AB16IfNeeded(defaults: crashDefaults),
-               "terminal failures must not be mistaken for an unhandled native crash")
-        print("PASS Build112 startup evidence and PTQ1 16K/B16 interrupted-startup recovery")
+        print("PASS Build112 startup evidence: per-attempt model identity, interruption, failure and recovery history")
     }
 }

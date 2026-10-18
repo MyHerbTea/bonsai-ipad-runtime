@@ -51,9 +51,9 @@ require(
     "rc126_build113_patch_prism_m5_nax_pq2.py",
     "build-xcframework.sh ios-device",
     "M5-NAX-PQ2-01",
-    "PTQ1_0 stays Tensor-disabled by default; only explicit 16K/B16 A/B mode admits the PTQ1_0 candidate, whose native route checks actual weight/activation types and matrix shape.",
+    "PTQ1_0 forces the safe Tensor-disabled backend even if CANDIDATE was selected.",
     "API Key auth: persistent setting defaults on; /health exposes only auth_required; disabled mode permits local development without a key.",
-    "NAX-PQ2-01 remains experimental and model-gated. PTQ1_0 stays Tensor-disabled by default; only explicit 16K/B16 A/B mode admits the PTQ1_0 candidate, whose native route checks actual weight/activation types and matrix shape.",
+    "NAX-PQ2-01 remains experimental and model-gated; PTQ1_0 forces the safe Tensor-disabled backend even if CANDIDATE was selected.",
     "rc126_build113_metal_tensor_policy_tests.swift",
     "build113_metal_tensor_policy_tests",
     "rc126_build113_verify_m5_nax_pq2_binary.sh",
@@ -148,7 +148,7 @@ require(
     "beginCandidateShapeTrialIfPending",
     "noteCandidateShapeTrialTextSuccess",
     "noteCandidateShapeTrialStartupFailure",
-    "实验：Metal TensorOps 候选（下次启动）",
+    "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
     "Phase2CMetalTensorLaunchLatch.scheduleNext",
 )
 

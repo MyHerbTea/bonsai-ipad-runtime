@@ -33,8 +33,6 @@ enum RC126APIStartupLifecycle {
     static let lastRecoveryModelIdentityKey = "BonsaiRC126APILastRecoveryModelIdentity"
     static let lastRecoveredFailureAttemptIDKey = "BonsaiRC126APILastRecoveredFailureAttemptID"
     static let lastRecoveryTimeKey = "BonsaiRC126APILastRecoveryTime"
-    static let ptq1AB16RecoveryNoticeKey = "BonsaiBuild113PTQ1AB16RecoveryNotice"
-    static let ptq1AB16RecoveryTimeKey = "BonsaiBuild113PTQ1AB16RecoveryTime"
 
     private static let terminalStates: Set<String> = ["READY", "FAILED"]
     private static let historyLimit = 12
@@ -212,39 +210,6 @@ enum RC126APIStartupLifecycle {
             defaults: defaults
         )
         mark("FAILED", defaults: defaults)
-    }
-
-    /// Recover only a proven interrupted PTQ1_0 16K/B16 native context attempt.
-    /// Preserve the original failure stage and restore the last known working 8K/B8 profile.
-    @discardableResult
-    static func recoverInterruptedPTQ1AB16IfNeeded(defaults: UserDefaults = .standard) -> Bool {
-        let experimentEnabled = defaults.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
-        let model = defaults.string(forKey: modelIdentityKey) ?? ""
-        let outcome = defaults.string(forKey: outcomeKey) ?? ""
-        let startupStage = defaults.string(forKey: stateKey) ?? ""
-        let engineStage = defaults.string(forKey: "BonsaiLabLastStage") ?? ""
-        let contextProfile = defaults.string(forKey: "BonsaiRC1235APIContextProfile") ?? ""
-        let attemptedContext = defaults.integer(forKey: "BonsaiBuild81ContextCreateAttempt")
-        let contextCreated = defaults.bool(forKey: "BonsaiBuild81ContextCreateCompleted")
-        let attemptedBatch = defaults.integer(forKey: "BonsaiBuild82EngineContextBatch")
-        let attemptedUBatch = defaults.integer(forKey: "BonsaiBuild82EngineContextUBatch")
-        guard experimentEnabled,
-              model.localizedCaseInsensitiveContains("PTQ1_0"),
-              outcome == "IN_PROGRESS", startupStage == "MODEL_LOAD_BEGIN",
-              contextProfile == "16384", attemptedContext == 16_384,
-              !contextCreated, attemptedBatch == 16, attemptedUBatch == 16,
-              engineStage == "MODEL_07_CONTEXT_CREATE_BEGIN"
-        else { return false }
-        defaults.set(false, forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
-        defaults.set("8192", forKey: "BonsaiRC1235APIContextProfile")
-        defaults.set("BASELINE", forKey: "BonsaiRC126Phase2CNextLaunchArm")
-        defaults.set(
-            "PTQ1_0 16K/B16 启动在原生 Context 创建阶段中断（最后阶段：MODEL_07_CONTEXT_CREATE_BEGIN）。已自动关闭实验并恢复 8192/B8；原始失败证据已保留。请先确认默认 API 可启动，再决定是否重试实验。",
-            forKey: ptq1AB16RecoveryNoticeKey
-        )
-        defaults.set(Date().timeIntervalSince1970, forKey: ptq1AB16RecoveryTimeKey)
-        defaults.synchronize()
-        return true
     }
 
     static func attemptHistory(defaults: UserDefaults = .standard) -> [[String: Any]] {

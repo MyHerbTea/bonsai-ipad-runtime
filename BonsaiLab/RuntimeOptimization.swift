@@ -44,10 +44,10 @@ struct Phase2CMetalTensorLaunchLatch {
 
     static func apply(
         to runtime: inout RuntimeConfig,
-        allowMetalTensorCandidate: Bool = false
+        allowNAXCandidate: Bool = false
     ) {
         runtime.disableMetalTensorAPI =
-            !(arm == .candidate && allowMetalTensorCandidate)
+            !(arm == .candidate && allowNAXCandidate)
     }
 }
 
