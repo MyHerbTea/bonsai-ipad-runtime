@@ -34,7 +34,7 @@ function Get-Sha256([string]$Text) {
   $sha = [Security.Cryptography.SHA256]::Create()
   try {
     $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
-    return ([Convert]::ToHexString($sha.ComputeHash($bytes))).ToLowerInvariant()
+    return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
   } finally { $sha.Dispose() }
 }
 function Get-Median([double[]]$Values) {
@@ -342,7 +342,7 @@ function Write-Manifest([string]$Directory) {
   $lines = @()
   Get-ChildItem -LiteralPath $Directory -Recurse -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | Sort-Object FullName | ForEach-Object {
     $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    $relative = $_.FullName.Substring($Directory.TrimEnd('\\').Length + 1).Replace('\\', '/')
+    $relative = $_.FullName.Substring($Directory.TrimEnd([char]92).Length + 1).Replace([string][char]92, '/')
     $lines += "$hash  $relative"
   }
   $lines | Set-Content -LiteralPath (Join-Path $Directory "SHA256SUMS.txt") -Encoding UTF8
