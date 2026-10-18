@@ -1390,6 +1390,102 @@ final class LocalOpenAIServer: ObservableObject {
         ]
     }
 
+    // Read only allowlisted PTQ1_0 route markers. A queued dispatch is not GPU
+    // completion; the harness also requires the corresponding inference HTTP 200.
+    private func debugM5PTQ1TensorOpsTraceEvidence() -> [String: Any] {
+        let tensorState = debugM5NaxPQ2TraceEvidence()
+        let tensorAPIEnabled = tensorState["tensor_api_enabled"] as? Bool ?? false
+        let launchArm = Phase2CMetalTensorLaunchLatch.arm.rawValue
+        let url = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("bonsai_build113_ptq1_tensor_trace.txt")
+
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            return [
+                "schema": "ptq1-metal-tensorops-trace-v1",
+                "trace_file_present": false,
+                "launch_arm": launchArm,
+                "tensor_api_enabled": tensorAPIEnabled,
+                "input_type_observed": false,
+                "route_selected": false,
+                "pipeline_ready": false,
+                "dispatch_enqueued": false,
+                "fallback_observed": false,
+                "state": "TRACE_FILE_UNAVAILABLE",
+                "trace_header": [String: String](),
+                "markers": [String]()
+            ]
+        }
+
+        let lines = raw.components(separatedBy: .newlines)
+        let prefixes = [
+            "BUILD113_PTQ1_TENSOROPS_INPUT_TYPE_OBSERVED",
+            "BUILD113_PTQ1_TENSOROPS_ROUTE_SELECTED",
+            "BUILD113_PTQ1_TENSOROPS_PIPELINE_READY",
+            "BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED",
+            "BUILD113_PTQ1_TENSOROPS_FALLBACK_TO_PRISM"
+        ]
+        let markers = lines.filter { line in prefixes.contains { line.hasPrefix($0) } }
+        let inputTypeLine = markers.first { $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_INPUT_TYPE_OBSERVED") }
+        let routeLine = markers.first { $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_ROUTE_SELECTED") }
+        let pipelineLine = markers.first { $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_PIPELINE_READY") }
+        let dispatchLine = markers.first { $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED") }
+        let fallbackLine = markers.first { $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_FALLBACK_TO_PRISM") }
+        let inputTypeObserved = inputTypeLine != nil
+        let routeSelected = routeLine != nil
+        let pipelineReady = pipelineLine?.contains("ok=1") ?? false
+        let dispatchEnqueued = dispatchLine != nil
+        let fallbackObserved = fallbackLine != nil
+
+        let allowedHeaderKeys: Set<String> = [
+            "schema", "app_source_sha", "context", "batch", "ubatch", "launch_arm", "started"
+        ]
+        var traceHeader = [String: String]()
+        for line in lines.prefix(10) {
+            let parts = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else { continue }
+            let key = String(parts[0])
+            if allowedHeaderKeys.contains(key) { traceHeader[key] = String(parts[1]) }
+        }
+
+        let state: String
+        if fallbackObserved {
+            state = "CANDIDATE_PIPELINE_FALLBACK"
+        } else if launchArm == "BASELINE" {
+            state = inputTypeObserved ? "BASELINE_ACTUAL_TYPES_OBSERVED" : "BASELINE_AWAITING_TYPE_OBSERVATION"
+        } else if !tensorAPIEnabled {
+            state = "TENSOR_API_NOT_ENABLED"
+        } else if !inputTypeObserved {
+            state = "ACTUAL_TYPES_NOT_OBSERVED"
+        } else if !routeSelected {
+            state = "ROUTE_NOT_OBSERVED"
+        } else if !pipelineReady {
+            state = "PIPELINE_NOT_READY"
+        } else if !dispatchEnqueued {
+            state = "DISPATCH_NOT_OBSERVED"
+        } else {
+            state = "DISPATCH_ENQUEUED_NEEDS_COMPLETED_REQUEST"
+        }
+
+        return [
+            "schema": "ptq1-metal-tensorops-trace-v1",
+            "trace_file_present": true,
+            "launch_arm": launchArm,
+            "tensor_api_enabled": tensorAPIEnabled,
+            "input_type_observed": inputTypeObserved,
+            "input_type_line": inputTypeLine ?? "",
+            "route_selected": routeSelected,
+            "pipeline_ready": pipelineReady,
+            "dispatch_enqueued": dispatchEnqueued,
+            "fallback_observed": fallbackObserved,
+            "state": state,
+            "route_line": routeLine ?? "",
+            "trace_header": traceHeader,
+            "markers": Array(markers.suffix(5))
+        ]
+    }
+
     private func debugPrefillObject() -> [String: Any] {
         let defaults = UserDefaults.standard
         prefillObservationLock.lock()
@@ -1397,6 +1493,17 @@ final class LocalOpenAIServer: ObservableObject {
         prefillObservationLock.unlock()
 
         let device = MTLCreateSystemDefaultDevice()
+        let metalAllocatedBytes = device?.currentAllocatedSize ?? 0
+        let metalRecommendedBytes = device?.recommendedMaxWorkingSetSize ?? 0
+        let metalHeadroomBytes = max(0, Int64(metalRecommendedBytes) - Int64(metalAllocatedBytes))
+        let thermalState: String
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: thermalState = "nominal"
+        case .fair: thermalState = "fair"
+        case .serious: thermalState = "serious"
+        case .critical: thermalState = "critical"
+        @unknown default: thermalState = "unknown"
+        }
         let tensorDisable = getenv(
             "GGML_METAL_TENSOR_DISABLE"
         ).map { String(cString: $0) }
@@ -1404,6 +1511,7 @@ final class LocalOpenAIServer: ObservableObject {
         let launchArm = Phase2CMetalTensorLaunchLatch.arm
         let requested = launchArm == .candidate
         let m5NaxTrace = debugM5NaxPQ2TraceEvidence()
+        let ptq1TensorTrace = debugM5PTQ1TensorOpsTraceEvidence()
         let tensorAPIEnabled = m5NaxTrace["tensor_api_enabled"] as? Bool ?? false
         let routeSelected = m5NaxTrace["route_selected"] as? Bool ?? false
         let pipelineReady = m5NaxTrace["pipeline_ready"] as? Bool ?? false
@@ -1513,8 +1621,10 @@ final class LocalOpenAIServer: ObservableObject {
             "metal_device": device?.name ?? "unavailable",
             "metal_has_unified_memory":
                 device?.hasUnifiedMemory ?? false,
-            "metal_recommended_working_set_bytes":
-                Int64(device?.recommendedMaxWorkingSetSize ?? 0),
+            "metal_recommended_working_set_bytes": Int64(metalRecommendedBytes),
+            "metal_current_allocated_bytes": Int64(metalAllocatedBytes),
+            "metal_working_set_headroom_bytes": metalHeadroomBytes,
+            "thermal_state": thermalState,
             "build79_requested_context":
                 defaults.integer(
                     forKey: "BonsaiBuild79RequestedContext"
@@ -1695,6 +1805,8 @@ final class LocalOpenAIServer: ObservableObject {
             "m5_nax_pq2_prefill_effective": tensorPrefillEffective,
             "m5_nax_pq2_prefill_state": m5NaxTrace["state"] as? String ?? "UNKNOWN",
             "m5_nax_pq2_tensor_api_enabled": tensorAPIEnabled,
+            "metal_tensor_api_enabled": tensorAPIEnabled,
+            "ptq1_tensorops_trace": ptq1TensorTrace,
             "fallback_reason": fallbackReason,
             "candidate_probe_eligible": candidateProbeEligible,
             "backend_latch": [
