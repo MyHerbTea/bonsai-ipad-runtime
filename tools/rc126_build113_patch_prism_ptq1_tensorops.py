@@ -10,8 +10,11 @@ MARKER = "BONSAI_M5_PTQ1_TENSOROPS_01"
 
 
 def run_git(root: Path, *args: str) -> str:
-    result = subprocess.run(["git", *args], cwd=root, check=True, text=True,
+    result = subprocess.run(["git", *args], cwd=root, check=False, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise SystemExit(f"git {' '.join(args)} failed ({result.returncode}): {detail}")
     return result.stdout.strip()
 
 
