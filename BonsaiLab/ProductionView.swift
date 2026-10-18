@@ -3783,10 +3783,17 @@ applyBuild82LongContextPolicy(
             selectedAPIContextValue
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
+        let selectedModelFileName = selectedModelURL.lastPathComponent
+        let isPQ2Model = selectedModelFileName.localizedCaseInsensitiveContains("PQ2_0")
+        let isPTQ1Model = selectedModelFileName.localizedCaseInsensitiveContains("PTQ1_0")
+        let ptq1ABShapeEnabled =
+            UserDefaults.standard.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
+            && selectedAPIContext == 16_384
         let allowNAXCandidateForModel =
+            Phase2CMetalTensorLaunchLatch.arm == .candidate && isPQ2Model
+        let allowMetalTensorCandidateForModel =
             Phase2CMetalTensorLaunchLatch.arm == .candidate
-            && selectedModelURL.lastPathComponent
-                .localizedCaseInsensitiveContains("PQ2_0")
+            && (isPQ2Model || (isPTQ1Model && ptq1ABShapeEnabled))
 
         RC126APIStartupLifecycle.begin(
             build: "112",
