@@ -162,6 +162,13 @@ enum RC126APIStartupLifecycle {
             )
         }
         defaults.set("READY", forKey: outcomeKey)
+        if !currentAttemptID.isEmpty {
+            updateAttemptHistory(
+                attemptID: currentAttemptID,
+                changes: ["outcome": "READY"],
+                defaults: defaults
+            )
+        }
         mark("READY", defaults: defaults)
     }
 
