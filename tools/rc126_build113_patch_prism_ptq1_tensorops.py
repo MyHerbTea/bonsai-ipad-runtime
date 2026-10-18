@@ -161,6 +161,7 @@ def main() -> None:
         "// BONSAI_M5_PTQ1_TENSOROPS_01: opt-in PTQ1_0 16x128 tile.\n"
         "#define BONSAI_M5_PTQ1_TENSOROPS_BM 16\n"
         "#define BONSAI_M5_PTQ1_TENSOROPS_BN 128\n"
+        "#define BONSAI_M5_PTQ1_TENSOROPS_QK 128\n"
         "#define BONSAI_M5_PTQ1_TENSOROPS_NSG 4\n",
     )
     replace_once(
@@ -248,7 +249,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         op->type == GGML_TYPE_F32 &&
         !ggml_is_transposed(op->src[0]) &&
         !ggml_is_transposed(op->src[1]) &&
-        ne00 % QK_PTQ1_0 == 0 &&
+        ne00 % BONSAI_M5_PTQ1_TENSOROPS_QK == 0 &&
         ne11 >= BONSAI_M5_PTQ1_TENSOROPS_BM &&
         ne11 % BONSAI_M5_PTQ1_TENSOROPS_BM == 0 &&
         ne01 >= BONSAI_M5_PTQ1_TENSOROPS_BN &&
@@ -332,7 +333,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
     mm_metal.write_text(mm_text.rstrip() + kernel, encoding="utf-8")
 
     checks = {
-        impl_h: ["BONSAI_M5_PTQ1_TENSOROPS_BM", "BONSAI_M5_PTQ1_TENSOROPS_BN"],
+        impl_h: ["BONSAI_M5_PTQ1_TENSOROPS_BM", "BONSAI_M5_PTQ1_TENSOROPS_BN", "BONSAI_M5_PTQ1_TENSOROPS_QK"],
         device_h: ["ggml_metal_library_get_pipeline_mul_mm_ptq1_tensorops"],
         device_cpp: ["kernel_mul_mm_ptq1_tensorops_0_f32", "BONSAI_M5_PTQ1_TENSOROPS_BN"],
         ops_cpp: [
