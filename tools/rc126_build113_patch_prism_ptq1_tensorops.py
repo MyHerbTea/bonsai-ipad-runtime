@@ -97,6 +97,7 @@ def derive_ptq1_kernel(mm_text: str) -> str:
         raise SystemExit("PTQ1 kernel does not use Prism's PTQ1_0 lookup table")
     if "kernel_mul_mm_ptq1_tensorops_0_f32" not in block:
         raise SystemExit("PTQ1 kernel host name missing")
+    block = "\n".join(line.rstrip() for line in block.splitlines())
     return "\n\n" + block + "\n"
 
 
@@ -151,6 +152,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_pt
 }
 
 '''
+    getter = "\n".join(line.rstrip() for line in getter.splitlines()) + "\n"
     replace_once(
         device_cpp,
         "ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_nax_pq2(ggml_metal_library_t lib) {\n",
@@ -180,6 +182,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
     ::close(fd);
 }
 '''
+    trace_helper = "\n".join(line.rstrip() for line in trace_helper.splitlines()) + "\n"
     replace_once(
         ops_cpp,
         "int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {\n",
@@ -288,6 +291,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
     }
 
 '''
+    gate = "\n".join(line.rstrip() for line in gate.splitlines()) + "\n"
     replace_once(
         ops_cpp,
         "    if (ggml_metal_op_mul_mat_q1_0_pc_supported(op)) {\n",
