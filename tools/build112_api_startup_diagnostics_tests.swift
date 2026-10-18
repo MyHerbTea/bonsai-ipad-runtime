@@ -70,7 +70,7 @@ struct Build112APIStartupDiagnosticsTests {
         expect(defaults.string(forKey: RC126APIStartupLifecycle.lastFailureStageKey) == "MODEL_LOAD_BEGIN"
             && defaults.string(forKey: RC126APIStartupLifecycle.lastFailureAttemptIDKey) == failedAttempt
             && defaults.string(forKey: RC126APIStartupLifecycle.lastFailureModelIdentityKey) == "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
-            "a new attempt must not overwrite the prior failure evidence")
+            "new attempt must not erase prior failure evidence; preserve the previous failure evidence")
         RC126APIStartupLifecycle.mark("LISTENER_READY", defaults: defaults)
         RC126APIStartupLifecycle.ready(defaults: defaults)
         expect(defaults.string(forKey: RC126APIStartupLifecycle.lastSuccessfulStageKey) == "READY",
