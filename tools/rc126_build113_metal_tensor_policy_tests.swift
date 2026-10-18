@@ -37,6 +37,6 @@ struct Build113MetalTensorPolicyTests {
                      "PTQ1 trace extension must not alter PQ2 behavior")
         precondition(Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 32_768, modelFileName: "any.gguf", batch: 8, ubatch: 8),
                      "existing >=32K native context tracing must remain enabled")
-        print("PASS Build113 Metal Tensor policy: candidate gate, PTQ1 16K/B16 crash trace, safe fallback, restart latch")
+        print("PASS Build113 Metal Tensor policy: default API cold start, model load, explicit CANDIDATE, PTQ1 16K/B16 crash trace, safe fallback, restart latch")
     }
 }
