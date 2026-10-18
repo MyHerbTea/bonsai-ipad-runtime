@@ -2,7 +2,7 @@ Bonsai Build112 PTQ1_0 Auth-Aware Startup Quick TestKit 2.1
 
 Purpose
 - Detect the effective IPA authentication mode from unauthenticated GET /health.auth_required.
-- When auth_required=true, verify missing and incorrect keys return HTTP 401 on protected routes before prompting for the real key. auth_required=false means never prompt and send no Authorization or X-API-Key header.
+- When auth_required=true, verify missing and incorrect keys return HTTP 401 on protected routes before prompting for the real key. auth_required=false means never prompt; send requests without Authorization or X-API-Key.
 - Verify Build112/App source identity, the loaded PTQ1_0 model filename, runtime context/batch/ubatch, native-context evidence and one real Smoke inference.
 - Read startup lifecycle evidence after Smoke. A changed last_engine_stage such as TEXT_99_PASS_FULL_PREFILL is a post-inference engine stage, not proof that API startup failed.
 - Keep current API readiness, historical startup failures, and NAX experiment applicability as independent results.
