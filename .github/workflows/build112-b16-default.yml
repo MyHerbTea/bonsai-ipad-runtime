@@ -73,6 +73,7 @@ jobs:
             tools/rc126_build113_candidate_shape_policy_tests.swift \
             -o "$RUNNER_TEMP/build113_candidate_shape_policy_tests"
           "$RUNNER_TEMP/build113_candidate_shape_policy_tests"
+          python3 tools/build112_native_trace_startup_contract_tests.py
           git diff --check HEAD^ HEAD
 
       - name: Install XcodeGen
