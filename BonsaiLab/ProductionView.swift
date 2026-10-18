@@ -2255,6 +2255,91 @@ struct ProductionView: View {
                 forKey:
                     RC126APIStartupLifecycle.errorKey
             ) ?? "none"
+        let apiStartupAttemptID =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.attemptIDKey
+            ) ?? "none"
+        let apiStartupModelIdentity =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.modelIdentityKey
+            ) ?? "none"
+        let apiStartupModelFormat =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.modelFormatKey
+            ) ?? "none"
+        let apiStartupStartedAt =
+            defaults.double(
+                forKey:
+                    RC126APIStartupLifecycle.startedAtKey
+            )
+        let apiStartupFailedAt =
+            defaults.double(
+                forKey:
+                    RC126APIStartupLifecycle.failedAtKey
+            )
+        let apiStartupOutcome =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.outcomeKey
+            ) ?? "none"
+        let apiStartupFailureStage =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.currentFailureStageKey
+            ) ?? "none"
+        let apiStartupFailureReason =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.currentFailureReasonKey
+            ) ?? "none"
+        let apiStartupRecoveryAttemptID =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.recoveryAttemptIDKey
+            ) ?? "none"
+        let apiStartupLastFailureAttemptID =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.lastFailureAttemptIDKey
+            ) ?? "none"
+        let apiStartupLastFailureModelIdentity =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.lastFailureModelIdentityKey
+            ) ?? "none"
+        let apiStartupLastFailureModelFormat =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.lastFailureModelFormatKey
+            ) ?? "none"
+        let apiStartupLastFailureStartedAt =
+            defaults.double(
+                forKey:
+                    RC126APIStartupLifecycle.lastFailureStartedAtKey
+            )
+        let apiStartupLastFailureOutcome =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.lastFailureOutcomeKey
+            ) ?? "none"
+        let apiStartupLastRecoveryAttemptID =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.lastRecoveryAttemptIDKey
+            ) ?? "none"
+        let apiStartupLastRecoveryModelIdentity =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.lastRecoveryModelIdentityKey
+            ) ?? "none"
+        let apiStartupLastRecoveredFailureAttemptID =
+            defaults.string(
+                forKey:
+                    RC126APIStartupLifecycle.lastRecoveredFailureAttemptIDKey
+            ) ?? "none"
 
         let lastStage =
             defaults.string(
@@ -2384,7 +2469,24 @@ struct ProductionView: View {
             "startup_stage=\(apiStartupStage)",
             "startup_previous_incomplete=\(apiStartupPreviousIncomplete)",
             "startup_attempt=\(apiStartupAttempt)",
+            "startup_attempt_id=\(apiStartupAttemptID)",
+            "startup_model_identity=\(apiStartupModelIdentity)",
+            "startup_model_format=\(apiStartupModelFormat)",
+            "startup_attempt_started_at=\(apiStartupStartedAt)",
+            "startup_attempt_failed_at=\(apiStartupFailedAt)",
+            "startup_attempt_outcome=\(apiStartupOutcome)",
+            "startup_failure_stage=\(apiStartupFailureStage)",
+            "startup_failure_reason=\(apiStartupFailureReason)",
+            "startup_recovery_attempt_id=\(apiStartupRecoveryAttemptID)",
             "startup_last_error=\(apiStartupLastError)",
+            "startup_last_failure_attempt_id=\(apiStartupLastFailureAttemptID)",
+            "startup_last_failure_model_identity=\(apiStartupLastFailureModelIdentity)",
+            "startup_last_failure_model_format=\(apiStartupLastFailureModelFormat)",
+            "startup_last_failure_started_at=\(apiStartupLastFailureStartedAt)",
+            "startup_last_failure_outcome=\(apiStartupLastFailureOutcome)",
+            "startup_last_recovery_attempt_id=\(apiStartupLastRecoveryAttemptID)",
+            "startup_last_recovery_model_identity=\(apiStartupLastRecoveryModelIdentity)",
+            "startup_last_recovered_failure_attempt_id=\(apiStartupLastRecoveredFailureAttemptID)",
             "api_key=[REDACTED]",
             "discovery_context_length=\(effectiveAPIContext)",
             "discovery_max_output_tokens=\(apiMaxOutputTokens)",
@@ -3640,7 +3742,13 @@ applyBuild82LongContextPolicy(
             && selectedModelURL.lastPathComponent
                 .localizedCaseInsensitiveContains("PQ2_0")
 
-        RC126APIStartupLifecycle.begin(build: "112")
+        RC126APIStartupLifecycle.begin(
+            build: "112",
+            modelIdentity: selectedModelURL.lastPathComponent,
+            modelFormat: selectedModelURL.pathExtension.isEmpty
+                ? "UNAVAILABLE"
+                : selectedModelURL.pathExtension.uppercased()
+        )
         busy = true
         status = "正在启动 Build112 B16 默认 API Runtime…"
         detail = """

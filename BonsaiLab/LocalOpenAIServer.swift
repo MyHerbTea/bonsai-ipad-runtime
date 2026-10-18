@@ -633,7 +633,45 @@ final class LocalOpenAIServer: ObservableObject {
         diagnostics["api_startup_last_failure_error"] =
             defaults.string(forKey: "BonsaiRC126APILastFailureError") ?? "none"
         diagnostics["api_startup_last_failure_time"] =
-            defaults.double(forKey: "BonsaiRC126APILastFailureTime")
+            defaults.double(forKey: RC126APIStartupLifecycle.lastFailureTimeKey)
+        diagnostics["startup_attempt_id"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.attemptIDKey) ?? "none"
+        diagnostics["model_identity_at_attempt"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.modelIdentityKey) ?? "none"
+        diagnostics["model_format_at_attempt"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.modelFormatKey) ?? "none"
+        diagnostics["startup_attempt_started_at"] =
+            defaults.double(forKey: RC126APIStartupLifecycle.startedAtKey)
+        diagnostics["startup_attempt_failed_at"] =
+            defaults.double(forKey: RC126APIStartupLifecycle.failedAtKey)
+        diagnostics["startup_failure_stage"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.currentFailureStageKey) ?? "none"
+        diagnostics["startup_failure_reason"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.currentFailureReasonKey) ?? "none"
+        diagnostics["startup_attempt_outcome"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.outcomeKey) ?? "none"
+        diagnostics["startup_recovery_attempt_id"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.recoveryAttemptIDKey) ?? "none"
+        diagnostics["api_startup_last_failure_attempt_id"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.lastFailureAttemptIDKey) ?? "none"
+        diagnostics["api_startup_last_failure_model_identity"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.lastFailureModelIdentityKey) ?? "none"
+        diagnostics["api_startup_last_failure_model_format"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.lastFailureModelFormatKey) ?? "none"
+        diagnostics["api_startup_last_failure_started_at"] =
+            defaults.double(forKey: RC126APIStartupLifecycle.lastFailureStartedAtKey)
+        diagnostics["api_startup_last_failure_outcome"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.lastFailureOutcomeKey) ?? "none"
+        diagnostics["api_startup_last_recovery_attempt_id"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.lastRecoveryAttemptIDKey) ?? "none"
+        diagnostics["api_startup_last_recovery_model_identity"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.lastRecoveryModelIdentityKey) ?? "none"
+        diagnostics["api_startup_last_recovered_failure_attempt_id"] =
+            defaults.string(forKey: RC126APIStartupLifecycle.lastRecoveredFailureAttemptIDKey) ?? "none"
+        diagnostics["api_startup_last_recovery_time"] =
+            defaults.double(forKey: RC126APIStartupLifecycle.lastRecoveryTimeKey)
+        diagnostics["startup_attempt_history"] =
+            RC126APIStartupLifecycle.attemptHistory()
         diagnostics["last_api_image_count"] =
             defaults.integer(forKey: "BonsaiRC1250LastAPIImageCount")
         diagnostics["last_multi_image_layout"] =
