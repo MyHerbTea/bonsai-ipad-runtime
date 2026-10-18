@@ -93,6 +93,29 @@ struct Build112M5GovernorPolicyTests {
         precondition(state["mid_request_batch_switch_supported"] as? Bool == false)
         precondition(state["sequence_max"] as? Int == 1)
 
+        // Native crash tracing is armed for 16K/B16 only, and all >=32K.
+        precondition(
+            M5RuntimeGovernor.shouldEnableNativeContextTrace(
+                context: 16_384,
+                batch: 16,
+                ubatch: 16
+            )
+        )
+        precondition(
+            !M5RuntimeGovernor.shouldEnableNativeContextTrace(
+                context: 16_384,
+                batch: 8,
+                ubatch: 8
+            )
+        )
+        precondition(
+            M5RuntimeGovernor.shouldEnableNativeContextTrace(
+                context: 32_768,
+                batch: 8,
+                ubatch: 8
+            )
+        )
+
         // Non-32K behavior remains unchanged.
         precondition(
             M5RuntimeGovernor.decide(
