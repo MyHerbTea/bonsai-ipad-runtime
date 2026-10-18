@@ -3126,7 +3126,12 @@ actor BonsaiEngine {
             ubatch: validated.ubatch,
             source: "make_context"
         )
-        beginBuild84NativeContextTrace(contextLength: validated.context)
+        beginBuild84NativeContextTrace(
+            contextLength: validated.context,
+            modelFileName: UserDefaults.standard.string(forKey: "BonsaiBuild113ModelFileName") ?? "",
+            batch: validated.batch,
+            ubatch: validated.ubatch
+        )
         defer { endBuild84NativeContextTrace() }
         guard let created = llama_init_from_model(model, params) else {
             throw LabError.contextCreateFailed
