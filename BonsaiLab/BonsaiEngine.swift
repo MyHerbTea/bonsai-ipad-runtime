@@ -446,9 +446,9 @@ actor BonsaiEngine {
             "started=\(Date().timeIntervalSince1970)"
         ].joined(separator: "\n") + "\n"
         try? Data(header.utf8).write(to: url, options: .atomic)
-        if allowMetalTensorCandidateForCurrentModel
-            && Phase2CMetalTensorLaunchLatch.arm == .candidate
-            && batch == 16 && ubatch == 16 {
+        // Capture actual PTQ1_0 operand types in both A/B arms. The custom route
+        // still requires CANDIDATE + TensorOps capability + the native type/shape gate.
+        if batch == 16 && ubatch == 16 {
             setenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH", url.path, 1)
         } else {
             unsetenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH")
