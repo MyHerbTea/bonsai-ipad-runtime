@@ -3822,10 +3822,36 @@ applyBuild82LongContextPolicy(
         """
 
         Task {
+            let startupTraceBatch: Int
+            if shapeTrialForThisStart {
+                startupTraceBatch = 16
+            } else if selectedAPIContext >= 65_536 {
+                startupTraceBatch = 2
+            } else if selectedAPIContext == 32_768 {
+                startupTraceBatch = M5RuntimeGovernor.decide(
+                    context: selectedAPIContext
+                ).profile.batch
+            } else {
+                startupTraceBatch = 8
+            }
+            await sharedEngine.beginAPIStartupNativeTrace(
+                contextLength: selectedAPIContext,
+                batch: startupTraceBatch,
+                ubatch: startupTraceBatch
+            )
+            await sharedEngine.recordAPIStartupNativeTrace(
+                "SWIFT_API_START_BEGIN shape_trial=\(shapeTrialForThisStart)"
+            )
             do {
+                await sharedEngine.recordAPIStartupNativeTrace(
+                    "SWIFT_VISION_RELEASE_BEGIN"
+                )
                 RC126APIStartupLifecycle.mark("VISION_RELEASE_BEGIN")
                 await sharedVisionSidecar
                     .releaseResidentStateForContextSwitch()
+                await sharedEngine.recordAPIStartupNativeTrace(
+                    "SWIFT_VISION_RELEASE_DONE"
+                )
                 RC126APIStartupLifecycle.mark("VISION_RELEASE_DONE")
 
                 var apiRuntime = selectedRuntime
@@ -3869,6 +3895,12 @@ applyBuild82LongContextPolicy(
                     source: "fresh_start",
                     allowNAXCandidate: allowNAXCandidateForModel
                 )
+                await sharedEngine.recordAPIStartupNativeTrace(
+                    "SWIFT_RUNTIME_SELECTED context=\(apiRuntime.context) batch=\(apiRuntime.batch) ubatch=\(apiRuntime.ubatch) metal_tensor_disabled=\(apiRuntime.disableMetalTensorAPI)"
+                )
+                await sharedEngine.recordAPIStartupNativeTrace(
+                    "SWIFT_BACKEND_PREWARM_BEGIN"
+                )
 
                 RC126APIStartupLifecycle.mark(
                     "BACKEND_PREWARM_BEGIN"
@@ -3877,6 +3909,9 @@ applyBuild82LongContextPolicy(
                     metalTensorDisabled:
                         apiRuntime.disableMetalTensorAPI,
                     allowNAXCandidate: allowNAXCandidateForModel
+                )
+                await sharedEngine.recordAPIStartupNativeTrace(
+                    "SWIFT_BACKEND_PREWARM_DONE"
                 )
                 RC126APIStartupLifecycle.mark(
                     "BACKEND_PREWARM_DONE"
@@ -3893,12 +3928,18 @@ applyBuild82LongContextPolicy(
                     "BACKEND_SETTLE_DONE"
                 )
 
+                await sharedEngine.recordAPIStartupNativeTrace(
+                    "SWIFT_MODEL_LOAD_CALL_BEGIN"
+                )
                 RC126APIStartupLifecycle.mark(
                     "MODEL_LOAD_BEGIN"
                 )
                 _ = try await sharedEngine.loadModel(
                     url: selectedModelURL,
                     runtime: apiRuntime
+                )
+                await sharedEngine.recordAPIStartupNativeTrace(
+                    "SWIFT_MODEL_LOAD_CALL_DONE"
                 )
                 B16RuntimeEvidence.registerVisionAsset(selectedMLXVisionWeightsURL)
                 RC126APIStartupLifecycle.mark("MODEL_READY")
@@ -4676,6 +4717,9 @@ applyBuild82LongContextPolicy(
                           lastStage != "MODEL_09_READY" {
                     M5RuntimeGovernor.noteStartupFailure()
                 }
+                await sharedEngine.endAPIStartupNativeTrace(
+                    "SWIFT_API_START_CAUGHT_ERROR"
+                )
                 RC126APIStartupLifecycle.fail(error)
                 apiServer.stop()
                 await sharedEngine.unloadAll()
