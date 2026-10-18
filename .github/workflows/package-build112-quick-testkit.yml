@@ -57,6 +57,8 @@ jobs:
           set -euo pipefail
           rm -rf package
           mkdir -p package/Build112-Quick-TestKit
+          test -f tools/BUILD112_QUICK_TESTKIT/PTQ1_METAL_AB_README.txt
+          test -f tools/BUILD112_QUICK_TESTKIT/RUN_PTQ1_METAL_AB.cmd
           cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
           printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Quick TestKit 2.1 + PTQ1 Metal A/B extension' > package/Build112-Quick-TestKit/VERSION.txt
           printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
