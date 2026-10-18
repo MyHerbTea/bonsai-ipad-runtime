@@ -61,21 +61,37 @@ def derive_ptq1_kernel(mm_text: str) -> str:
         int kpos) {
     const int block_index = kpos / QK_PTQ1_0;
     const int in_block = kpos - block_index * QK_PTQ1_0;
+    device const block_ptq1_0 * block = row_blocks + block_index;
+    const float d = block->d;
     half4 decoded;
-    // Exact Prism PTQ1_0 codec: qs[24], qh[2], fp16 scale, 128 weights.
-    // The helper preserves the CPU codec's 16/8-byte staging order and base-3 trits.
-    dequantize_ptq1_0_t4(
-        row_blocks + block_index,
-        (short)(in_block / 4),
-        decoded
-    );
+
+    // Match Prism dequantize_ptq1_0 exactly using its real base-3 lookup table.
+    for (short i = 0; i < 4; ++i) {
+        const int e = in_block + i;
+        uchar b;
+        short n;
+        if (e < 80) {
+            b = block->qs[e & 15];
+            n = e >> 4;
+        } else if (e < 120) {
+            const int t = e - 80;
+            b = block->qs[16 + (t & 7)];
+            n = t >> 3;
+        } else {
+            const int t = e - 120;
+            b = block->qh[t & 1];
+            n = t >> 1;
+        }
+        const int trit = (int)((ptq1_0_lut[b] >> (2 * n)) & 3) - 1;
+        decoded[i] = half((float)trit * d);
+    }
     return decoded;
 }'''
     block = block[:decoder_start] + decoder + block[decoder_end:]
     if "block_pq2_0" in block or "QK_PQ2_0" in block:
         raise SystemExit("PTQ1 kernel still contains PQ2 layout references")
-    if "dequantize_ptq1_0_t4" not in block:
-        raise SystemExit("PTQ1 kernel does not use the pinned PTQ1 codec helper")
+    if "ptq1_0_lut[b]" not in block:
+        raise SystemExit("PTQ1 kernel does not use Prism's PTQ1_0 lookup table")
     if "kernel_mul_mm_ptq1_tensorops_0_f32" not in block:
         raise SystemExit("PTQ1 kernel host name missing")
     return "\n\n" + block + "\n"
@@ -168,7 +184,17 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
     )
     gate = r'''
     // BONSAI_M5_PTQ1_TENSOROPS_01:
-    // Actual-type-gated PTQ1_0 trit decode fused with cooperative TensorOps MMA.
+    // Record actual operand types in both A/B arms; candidate markers are separate.
+    if (std::getenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH") != nullptr &&
+        op->src[0]->type == GGML_TYPE_PTQ1_0 && op->src[1]->type == GGML_TYPE_F32) {
+        static std::atomic_flag ptq1_input_type_trace_once = ATOMIC_FLAG_INIT;
+        if (!ptq1_input_type_trace_once.test_and_set(std::memory_order_relaxed)) {
+            bonsai_m5_ptq1_tensor_trace(
+                "BUILD113_PTQ1_TENSOROPS_INPUT_TYPE_OBSERVED weight_type=%d activation_type=%d output_type=%d K=%d M=%d N=%d",
+                (int) op->src[0]->type, (int) op->src[1]->type, (int) op->type,
+                ne00, ne11, ne01);
+        }
+    }
     // Candidate pipeline failure is traced and falls back to inherited Prism dispatch.
     static const bool ptq1_tensorops_disabled =
         std::getenv("GGML_METAL_PTQ1_TENSOROPS_DISABLE") != nullptr;
@@ -273,12 +299,13 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         ops_cpp: [
             "GGML_TYPE_PTQ1_0", "op->src[1]->type == GGML_TYPE_F32",
             "GGML_METAL_PTQ1_TENSOROPS_DISABLE",
+            "BUILD113_PTQ1_TENSOROPS_INPUT_TYPE_OBSERVED",
             "BUILD113_PTQ1_TENSOROPS_ROUTE_SELECTED",
             "BUILD113_PTQ1_TENSOROPS_PIPELINE_READY",
             "BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED",
             "BUILD113_PTQ1_TENSOROPS_FALLBACK_TO_PRISM",
         ],
-        mm_metal: [MARKER, "dequantize_ptq1_0_t4",
+        mm_metal: [MARKER, "ptq1_0_lut[b]", "block_ptq1_0",
                    "kernel_mul_mm_ptq1_tensorops_0_f32",
                    "get_left_input_cooperative_tensor"],
     }
@@ -291,7 +318,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
     print(f"{MARKER}: PASS")
     print(f"Prism base: {BASE_SHA}")
     print("PTQ1 route: actual weight type + F32 activation + M5 + K%128 + M%16")
-    print("Decode: Prism dequantize_ptq1_0_t4 -> half4 registers -> cooperative TensorOps MMA")
+    print("Decode: Prism ptq1_0_lut trits -> half4 registers -> cooperative TensorOps MMA")
     print("Pipeline compile failure is traced and falls back to inherited Prism dispatch")
 
 
