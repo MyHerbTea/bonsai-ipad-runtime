@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import argparse
+import re
 import subprocess
 
 BASE_SHA = "adfffbe41b2cabcd51fff326ab045662265062bb"
@@ -17,6 +18,37 @@ def run_git(root: Path, *args: str) -> str:
         raise SystemExit(f"git {' '.join(args)} failed ({result.returncode}): {detail}")
     return result.stdout.strip()
 
+
+
+def run_diff_check(root: Path) -> None:
+    result = subprocess.run(
+        ["git", "diff", "--check"], cwd=root, check=False, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    )
+    if result.returncode == 0:
+        return
+
+    repaired = []
+    for message in result.stdout.splitlines():
+        match = re.match(r"^(.+?):(\d+): trailing whitespace\.$", message.strip())
+        if not match:
+            continue
+        target = root / match.group(1)
+        line_number = int(match.group(2))
+        lines = target.read_text(encoding="utf-8").splitlines()
+        if 1 <= line_number <= len(lines) and lines[line_number - 1].rstrip() != lines[line_number - 1]:
+            lines[line_number - 1] = lines[line_number - 1].rstrip()
+            target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            repaired.append(f"{match.group(1)}:{line_number}")
+
+    result = subprocess.run(
+        ["git", "diff", "--check"], cwd=root, check=False, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"git diff --check failed ({result.returncode}): {result.stdout.strip()}")
+    if repaired:
+        print("Whitespace-only patch artifacts normalized: " + ", ".join(repaired))
 
 def replace_once(path: Path, old: str, new: str) -> None:
     text = path.read_text(encoding="utf-8")
@@ -321,7 +353,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         for needle in needles:
             if needle not in text:
                 raise SystemExit(f"missing PTQ1 patch marker {needle!r} in {path}")
-    run_git(root, "diff", "--check")
+    run_diff_check(root)
     print(f"{MARKER}: PASS")
     print(f"Prism base: {BASE_SHA}")
     print("PTQ1 route: actual weight type + F32 activation + M5 + K%128 + M%16")
