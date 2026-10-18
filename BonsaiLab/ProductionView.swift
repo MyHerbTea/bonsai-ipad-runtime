@@ -1592,7 +1592,16 @@ struct ProductionView: View {
                                 Phase2CMetalTensorLaunchLatch.scheduleNext(.baseline)
                                 build113NAXCandidateNextLaunch = false
                                 Phase2DPrefillBatchLaunchLatch.scheduleNext(.candidate16)
-                            } else {
+                            } else if !Phase2DPrefillBatchLaunchLatch.trialAttempting
+                                && ![
+                                    "COMPLETED_SUCCESS",
+                                    "STARTUP_FAILED",
+                                    "INFERENCE_FAILED",
+                                    "RECOVERED_AFTER_INTERRUPTED_STARTUP",
+                                    "COMPLETED_RETURNED_TO_BASELINE8",
+                                    "STARTUP_FAILED_RETURNED_TO_BASELINE8",
+                                    "INFERENCE_FAILED_RETURNED_TO_BASELINE8"
+                                ].contains(Phase2DPrefillBatchLaunchLatch.trialState) {
                                 Phase2DPrefillBatchLaunchLatch.scheduleNext(.baseline8)
                             }
                         }
