@@ -345,12 +345,14 @@ actor BonsaiEngine {
         mark("API_COLD_04_BACKEND_READY")
     }
 
-    // Native trace is enabled only for experimental >=32K context creation.
-    // Prism fsyncs each stage to survive process termination before Swift can catch errors.
-    private func beginBuild84NativeContextTrace(contextLength: Int) {
-        // Clear a prior NAX trace target before attempting a new context.
+    // Prism fsyncs native allocation stages so evidence survives process termination.
+    // The explicit PTQ1_0 16K/B16 experiment also needs this trace; previously it was disabled below 32K.
+    private func beginBuild84NativeContextTrace(contextLength: Int, modelFileName: String, batch: Int, ubatch: Int) {
         unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
-        guard contextLength >= 32_768 else {
+        let tracePTQ1AB16 = Build113MetalTensorPolicy.shouldTraceNativeContext(
+            contextLength: contextLength, modelFileName: modelFileName, batch: batch, ubatch: ubatch
+        ) && contextLength == 16_384
+        guard contextLength >= 32_768 || tracePTQ1AB16 else {
             unsetenv("BONSAI_BUILD84_TRACE_PATH")
             return
         }
@@ -368,7 +370,8 @@ actor BonsaiEngine {
             )
             let defaults = UserDefaults.standard
             let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
-            let header = "build=89\napp_build=\(appBuild)\ntrace_format=2\ncontext=\(contextLength)\nbatch=\(defaults.integer(forKey: "BonsaiBuild82EngineContextBatch"))\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
+            let experiment = tracePTQ1AB16 ? "PTQ1_0_AB16" : "LONG_CONTEXT"
+            let header = "build=89\napp_build=\(appBuild)\ntrace_format=3\nexperiment=\(experiment)\nmodel=\(modelFileName)\ncontext=\(contextLength)\nbatch=\(batch)\nubatch=\(ubatch)\nseq_max=\(defaults.integer(forKey: "BonsaiBuild104EffectiveSeqMax"))\nkv_checkpoint=QUARANTINED\nstarted=\(Date().timeIntervalSince1970)\n"
             // Preserve last attempt even when a new 32K run is started.
             // The diagnostic UI can export both traces after a crash.
             let previous = directory.appendingPathComponent(
@@ -648,7 +651,10 @@ actor BonsaiEngine {
             source: "load_model"
         )
         mark("MODEL_07_CONTEXT_CREATE_BEGIN")
-        beginBuild84NativeContextTrace(contextLength: config.context)
+        beginBuild84NativeContextTrace(
+            contextLength: config.context, modelFileName: modelFileName,
+            batch: config.batch, ubatch: config.ubatch
+        )
         defer { endBuild84NativeContextTrace() }
         guard let loadedContext = llama_init_from_model(loadedModel, contextParams) else {
             mark("MODEL_07_CONTEXT_CREATE_NULL")

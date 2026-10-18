@@ -938,6 +938,8 @@ struct ProductionView: View {
         Phase2CMetalTensorLaunchLatch.nextArm == .candidate
     @State private var ptq1TensorOpsAB16Enabled =
         UserDefaults.standard.bool(forKey: "BonsaiBuild113PTQ1TensorOpsAB16Enabled")
+    @State private var ptq1AB16RecoveryNotice =
+        UserDefaults.standard.string(forKey: RC126APIStartupLifecycle.ptq1AB16RecoveryNoticeKey) ?? ""
     @State private var certification: [CertificationResult] = []
     @State private var warmSessionSummary = ""
     @State private var warmSessionPass: Bool?
@@ -1596,6 +1598,12 @@ struct ProductionView: View {
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        if !ptq1AB16RecoveryNotice.isEmpty {
+                            Text(ptq1AB16RecoveryNotice)
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(.orange)
+                                .textSelection(.enabled)
+                        }
 
                         Toggle(
                             "实验：Vision Prefix KV Reuse",

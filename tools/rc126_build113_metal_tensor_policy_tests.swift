@@ -29,6 +29,14 @@ struct Build113MetalTensorPolicyTests {
                      "same mode must not require restart")
         precondition(!Build113MetalTensorPolicy.requiresRestart(latchedDisabled: nil, effectiveDisabled: false),
                      "first backend initialization has no previous latch")
-        print("PASS Build113 Metal Tensor policy: default API cold start, model load, explicit CANDIDATE, safe fallback, restart latch")
+        precondition(Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 16_384, modelFileName: "Ternary-Bonsai-2-27B-PTQ1_0.gguf", batch: 16, ubatch: 16),
+                     "PTQ1 16K/B16 must enable native context tracing before context creation")
+        precondition(!Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 16_384, modelFileName: "Ternary-Bonsai-2-27B-PTQ1_0.gguf", batch: 8, ubatch: 8),
+                     "ordinary PTQ1 16K/B8 must not enable the experimental native trace")
+        precondition(!Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 16_384, modelFileName: "Ternary-Bonsai-2-27B-PQ2_0.gguf", batch: 16, ubatch: 16),
+                     "PTQ1 trace extension must not alter PQ2 behavior")
+        precondition(Build113MetalTensorPolicy.shouldTraceNativeContext(contextLength: 32_768, modelFileName: "any.gguf", batch: 8, ubatch: 8),
+                     "existing >=32K native context tracing must remain enabled")
+        print("PASS Build113 Metal Tensor policy: candidate gate, PTQ1 16K/B16 crash trace, safe fallback, restart latch")
     }
 }

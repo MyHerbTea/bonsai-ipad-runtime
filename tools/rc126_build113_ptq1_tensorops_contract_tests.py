@@ -46,6 +46,8 @@ assert "BonsaiBuild113PTQ1TensorOpsAB16Enabled" in engine
 assert "config.context == 16_384" in engine
 assert "config.batch == 16" in engine and "config.ubatch == 16" in engine
 assert "enableBuild113PTQ1TensorTrace" in engine
+assert "shouldTraceNativeContext" in engine and "MODEL_07_CONTEXT_CREATE_BEGIN" in engine
+assert "trace_format=3" in engine and "experiment=\\(experiment)" in engine
 assert "实验：PTQ1_0 A/B 固定 16K / B16（下次启动）" in production
 assert "BonsaiBuild113PTQ1TensorOpsAB16Enabled" in production
 assert "apiRuntime.batch = 16" in production and "apiRuntime.ubatch = 16" in production
