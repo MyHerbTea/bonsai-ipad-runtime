@@ -301,9 +301,9 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_na
 """
     replace_once(
         device_cpp,
-        "ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm(ggml_metal_library_t lib, const ggml_tensor * op) {\n",
+        "struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm(ggml_metal_library_t lib, const ggml_tensor * op) {\n",
         getter
-        + "ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm(ggml_metal_library_t lib, const ggml_tensor * op) {\n",
+        + "struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm(ggml_metal_library_t lib, const ggml_tensor * op) {\n",
     )
 
     gate = """
