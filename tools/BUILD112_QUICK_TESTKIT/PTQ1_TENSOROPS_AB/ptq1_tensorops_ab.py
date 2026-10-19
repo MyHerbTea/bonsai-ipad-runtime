@@ -410,10 +410,10 @@ def main():
         if previous_result.get("arm") == args.arm:
             raise RuntimeError("Previous ZIP uses the same arm; provide the opposite arm")
         prompts_sha=previous_result.get("prompts_sha256")
-        if previous_result.get("identity",{}).get("source_git_sha") != identity.get("source_git_sha"):
-            raise RuntimeError("Previous ZIP App source SHA differs; refuse cross-build A/B")
-        if previous_result.get("identity",{}).get("model_file") != identity.get("model_file"):
-            raise RuntimeError("Previous ZIP model differs; refuse cross-model A/B")
+        previous_identity = previous_result.get("identity", {})
+        for field in ("source_git_sha", "model_file", "model_id", "context", "batch", "ubatch", "prism_upstream_sha"):
+            if previous_identity.get(field) != identity.get(field):
+                raise RuntimeError(f"Previous ZIP runtime identity differs ({field}); refuse cross-runtime A/B")
     else:
         targets=list(TARGETS)+([8192] if args.include_8192 else [])
         prompts={}
