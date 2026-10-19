@@ -10,6 +10,7 @@ POLICY = ROOT / "BonsaiLab/Build113MetalTensorPolicy.swift"
 PRODUCTION = ROOT / "BonsaiLab/ProductionView.swift"
 SERVER = ROOT / "BonsaiLab/LocalOpenAIServer.swift"
 BRIDGE = ROOT / "BonsaiLab/MTMDProbeBridge.h"
+BINARY_VERIFY = ROOT / "tools/rc126_build113_verify_ptq1_tensorops_binary.sh"
 AB_RUNNER = ROOT / "tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/ptq1_tensorops_ab.py"
 WORKFLOW = ROOT / ".github/workflows/build112-b16-default.yml"
 DOC = ROOT / "docs/optimization/backburner-integration/RC1.26_BUILD113_PTQ1_TENSOROPS_01.md"
@@ -20,6 +21,7 @@ policy = POLICY.read_text(encoding="utf-8")
 production = PRODUCTION.read_text(encoding="utf-8")
 server = SERVER.read_text(encoding="utf-8")
 bridge = BRIDGE.read_text(encoding="utf-8")
+binary_verify = BINARY_VERIFY.read_text(encoding="utf-8")
 ab_runner = AB_RUNNER.read_text(encoding="utf-8")
 workflow = WORKFLOW.read_text(encoding="utf-8")
 doc = DOC.read_text(encoding="utf-8")
@@ -65,6 +67,7 @@ assert "allowPTQ1TensorOpsCandidate: allowPTQ1TensorOpsCandidateForModel" in pro
 assert "verify_reference_ptq1_lut" in patch
 assert "PINNED_PRISM_PTQ1_0_LUT_PARITY" in patch
 assert "BonsaiReadPTQ1TensorOpsCounters" in patch and "BonsaiReadPTQ1TensorOpsCounters" in bridge
+assert '"_BonsaiReadPTQ1TensorOpsCounters"' in binary_verify
 for counter in ("route_selected_count", "pipeline_ready_count", "dispatch_enqueued_count", "fallback_count"):
     assert counter in server, f"missing native PTQ1 counter in debug evidence: {counter}"
 for evidence in ("route_selected_delta", "pipeline_ready_delta", "dispatch_enqueued_delta", "fallback_delta", "backend_evidence_valid", "target_tokens"):
