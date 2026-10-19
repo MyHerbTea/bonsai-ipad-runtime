@@ -166,6 +166,18 @@ except RuntimeError:
 else:
     raise AssertionError("non-B16 shape arm was accepted")
 
+# Candidate-first is refused so candidate kernel execution can only begin after the
+# baseline prompt bank exists and the fail-fast warmup gate is active.
+assert ab.validate_arm_order("BASELINE", None) is True
+assert ab.validate_arm_order("CANDIDATE", "BASELINE") is True
+for arm, previous_arm in (("CANDIDATE", None), ("BASELINE", "CANDIDATE"), ("BASELINE", "BASELINE")):
+    try:
+        ab.validate_arm_order(arm, previous_arm)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError(f"invalid A/B arm order was accepted: arm={arm}, previous={previous_arm}")
+
 # Warmup smoke gate: candidate route, pipeline, dispatch, inference and fallback must be proven
 # before the benchmark loop is allowed to collect performance samples.
 warmup_response = {"prompt_tokens": 512, "completion_tokens": 128, "finish_reason": "length"}
