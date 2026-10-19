@@ -57,7 +57,7 @@ def fake_arm(arm, targets=(512, 2048), prefill_tps=None, ttft_ms=None, decode_tp
     return result
 
 
-def make_zip(path, tamper_samples=False, omit_samples_manifest=False):
+def make_zip(path, tamper_samples=False, omit_samples_manifest=False, mismatch_result_samples=False):
     prompts = {"512": {"target_tokens": 512, "actual_tokens": 512, "prompt": " apple"}}
     identity = {
         "source_git_sha": "a" * 40,
@@ -72,7 +72,7 @@ def make_zip(path, tamper_samples=False, omit_samples_manifest=False):
         "identity": identity,
         "prompts_sha256": prompt_hash,
         "target_tokens": [512],
-        "samples": [],
+        "samples": [{"fixture_mismatch": True}] if mismatch_result_samples else [],
     }
     members = {
         "result.json": json.dumps(result, sort_keys=True).encode(),
@@ -146,6 +146,12 @@ missing_route = fake_arm("CANDIDATE")
 missing_route["candidate_route_verified"] = False
 assert ab.compare_arms(baseline, missing_route)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
 
+invalid_route_attempt = fake_arm("CANDIDATE")
+invalid_route_attempt["samples"][0]["valid"] = False
+invalid_route_attempt["samples"][0]["fallback_delta"] = 1
+invalid_route_attempt["candidate_route_verified"] = False
+assert ab.compare_arms(baseline, invalid_route_attempt)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
+
 baseline_with_candidate_dispatch = fake_arm("BASELINE")
 baseline_with_candidate_dispatch["samples"][0]["dispatch_enqueued_delta"] = 1
 assert ab.compare_arms(baseline_with_candidate_dispatch, candidate)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
@@ -183,4 +189,13 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         raise AssertionError("ZIP with an unmanifested samples.json was accepted")
 
-print("PTQ1_TENSOROPS_AB_LOGIC: PASS (target completeness, route evidence, hashes, thermal gates, manifest integrity)")
+    inconsistent = Path(directory) / "inconsistent_samples.zip"
+    make_zip(inconsistent, mismatch_result_samples=True)
+    try:
+        ab.load_previous(inconsistent)
+    except RuntimeError as exc:
+        assert "result.json samples differ from samples.json" in str(exc)
+    else:
+        raise AssertionError("ZIP with inconsistent result/sample payloads was accepted")
+
+print("PTQ1_TENSOROPS_AB_LOGIC: PASS (target completeness, every-attempt route evidence, hashes, thermal gates, manifest integrity)")
