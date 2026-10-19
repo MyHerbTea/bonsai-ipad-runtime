@@ -133,6 +133,62 @@ def read_snapshot(base, key):
         "phase2d": request_json(base + "/debug/phase2d/launch", key),
     }
 
+PTQ1_COUNTER_NAMES = (
+    "input_type_count",
+    "route_selected_count",
+    "pipeline_ready_count",
+    "dispatch_enqueued_count",
+    "fallback_count",
+)
+
+def trace_counters(snapshot):
+    trace = (snapshot.get("prefill") or {}).get("ptq1_tensorops_trace") or {}
+    result = {}
+    for name in PTQ1_COUNTER_NAMES:
+        try:
+            result[name] = int(trace.get(name, 0) or 0)
+        except (TypeError, ValueError):
+            result[name] = -1
+    return result
+
+def trace_counter_deltas(before, after):
+    before_counts = trace_counters(before)
+    after_counts = trace_counters(after)
+    deltas = {
+        name: after_counts[name] - before_counts[name]
+        if before_counts[name] >= 0 and after_counts[name] >= 0 else -1
+        for name in PTQ1_COUNTER_NAMES
+    }
+    return deltas, before_counts, after_counts
+
+def validate_warmup_evidence(
+    arm, target, response, seq_before, seq_after, deltas, before_counts, after_counts
+):
+    reasons = []
+    if response.get("prompt_tokens") != target:
+        reasons.append(f"prompt_tokens={response.get('prompt_tokens')} expected={target}")
+    if response.get("completion_tokens") != MAX_TOKENS:
+        reasons.append(f"completion_tokens={response.get('completion_tokens')} expected={MAX_TOKENS}")
+    if response.get("finish_reason") not in ("length", "stop"):
+        reasons.append(f"finish_reason={response.get('finish_reason')!r}")
+    if seq_after != seq_before + 1:
+        reasons.append(f"inference_sequence={seq_before}->{seq_after}")
+
+    if arm == "CANDIDATE":
+        if before_counts.get("fallback_count", -1) != 0 or after_counts.get("fallback_count", -1) != 0:
+            reasons.append("PTQ1 candidate fallback was observed before or during warmup")
+        for name in ("route_selected_count", "pipeline_ready_count", "dispatch_enqueued_count"):
+            if deltas.get(name, -1) <= 0:
+                reasons.append(f"{name} did not advance during warmup")
+        if deltas.get("fallback_count", -1) != 0:
+            reasons.append("fallback counter changed during warmup")
+    else:
+        for name in ("route_selected_count", "pipeline_ready_count", "dispatch_enqueued_count", "fallback_count"):
+            if before_counts.get(name, -1) != 0 or after_counts.get(name, -1) != 0:
+                reasons.append(f"BASELINE unexpectedly observed {name}")
+
+    return (not reasons, "PASS" if not reasons else "; ".join(reasons))
+
 def validate_runtime(snapshot, arm, expected_sha):
     build = snapshot["build"]
     prefill = snapshot["prefill"]
@@ -234,7 +290,7 @@ def load_previous(path):
         prompts = read_json("prompts.json")
         samples = read_json("samples.json")
         identity = read_json("identity.json")
-        if result.get("schema") != "bonsai-ptq1-tensorops-ab-v1":
+        if result.get("schema") != "bonsai-ptq1-tensorops-ab-v2":
             raise RuntimeError("Previous ZIP result schema is unsupported")
         if result.get("arm") not in ("BASELINE", "CANDIDATE"):
             raise RuntimeError("Previous ZIP result arm is invalid")
@@ -242,8 +298,13 @@ def load_previous(path):
             raise RuntimeError("Previous ZIP identity.json differs from result.json")
         if identity.get("arm") != result.get("arm"):
             raise RuntimeError("Previous ZIP identity arm differs from result arm")
+        if not isinstance(result.get("preflight_ok"), bool):
+            raise RuntimeError("Previous ZIP preflight_ok evidence is missing")
         if not isinstance(prompts, dict) or not prompts or not isinstance(samples, list):
             raise RuntimeError("Previous ZIP prompt bank or samples payload is invalid")
+        warmups = read_json("warmups.json")
+        if not isinstance(warmups, list) or result.get("warmups") != warmups:
+            raise RuntimeError("Previous ZIP result.json warmups differ from warmups.json")
         if result.get("samples") != samples:
             raise RuntimeError("Previous ZIP result.json samples differ from samples.json")
         actual_prompt_hash = sha(json.dumps(prompts, sort_keys=True, ensure_ascii=False).encode("utf-8"))
@@ -265,6 +326,8 @@ def compare_arms(baseline, candidate):
             return {**result, "reason": f"Runtime identity mismatch: {field}"}
     if baseline.get("prompts_sha256") != candidate.get("prompts_sha256"):
         return {**result, "reason": "Prompt bank differs between arms"}
+    if baseline.get("preflight_ok") is not True or candidate.get("preflight_ok") is not True:
+        return {**result, "reason": "Warmup preflight failed for BASELINE or CANDIDATE; performance comparison is blocked"}
     baseline_targets = baseline.get("target_tokens")
     candidate_targets = candidate.get("target_tokens")
     if not isinstance(baseline_targets, list) or baseline_targets != candidate_targets or not baseline_targets:
