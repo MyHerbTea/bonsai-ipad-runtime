@@ -21,7 +21,7 @@ Measure the current PTQ1_0 BASELINE or opt-in CANDIDATE arm on the M5 iPad. The 
 5. 8192-token input is optional and increases runtime. Use it only if you want the longer test.
 
 ## Evidence and gates
-- The runner fails closed unless TestKitIdentity.json pins the installed app source SHA, the API reports the requested Phase2C arm and matching backend-latched evidence, and Phase2D confirms active B16/UBatch16.
+- The runner fails closed unless TestKitIdentity.json pins the installed app source SHA, the main model is PTQ1_0, the API reports 16K/B16/UBatch16 with Q4_0 KV, the requested Phase2C arm matches the backend latch, and Phase2D confirms the active B16 shape trial.
 - Each measured request snapshots native route counters before and after inference. Candidate samples require positive route-selected, pipeline-ready and dispatch-enqueued counter deltas, zero fallback delta, one new completed inference observation and exactly 128 output tokens. BASELINE samples require zero candidate-route/dispatch deltas.
 - Each sample records actual token counts, TTFT, Prefill ms/tok/s, Decode tok/s, identity, counter deltas, Metal allocation/headroom, thermal state and output hash.
 - Comparison gates: Prefill improvement >=15%, TTFT improvement >=10%, Decode throughput regression <=5%, Metal allocation increase <=1 GiB, deterministic output hashes match, and all samples for each input length have the same stable (nominal/fair) thermal state across both arms. Missing memory telemetry, inconsistent TTFT reconstruction or thermal drift invalidates a sample/comparison.
