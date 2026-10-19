@@ -109,6 +109,11 @@ hash_mismatch = fake_arm("CANDIDATE")
 hash_mismatch["samples"][0]["output_sha256"] = "0" * 64
 assert ab.compare_arms(baseline, hash_mismatch)["status"] != "M5_PERFORMANCE_GAIN_VERIFIED"
 
+thermal_mismatch = fake_arm("CANDIDATE")
+for row in thermal_mismatch["samples"]:
+    row["thermal_state"] = "fair"
+assert ab.compare_arms(baseline, thermal_mismatch)["status"] != "M5_PERFORMANCE_GAIN_VERIFIED"
+
 with tempfile.TemporaryDirectory() as directory:
     good = Path(directory) / "good.zip"
     make_zip(good)
