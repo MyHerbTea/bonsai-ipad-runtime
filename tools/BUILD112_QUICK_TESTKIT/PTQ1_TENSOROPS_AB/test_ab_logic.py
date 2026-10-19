@@ -52,6 +52,7 @@ def fake_arm(arm, targets=(512, 2048), prefill_tps=None, ttft_ms=None, decode_tp
                 "dispatch_enqueued_delta": 1 if candidate else 0,
                 "fallback_delta": 0,
                 "successful_inference_after_dispatch": candidate,
+                "thermal_state": "nominal",
             })
     return result
 
