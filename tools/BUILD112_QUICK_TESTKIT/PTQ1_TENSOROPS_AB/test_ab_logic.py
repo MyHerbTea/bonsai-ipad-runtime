@@ -89,6 +89,46 @@ def make_zip(path, tamper_samples=False):
         zf.writestr("SHA256_MANIFEST.json", json.dumps(manifest).encode())
 
 
+def runtime_snapshot(arm):
+    return {
+        "build": {"source_git_sha": "a" * 40, "build_number": "112", "prism_upstream_sha": "adfffbe41b2cabcd51fff326ab045662265062bb"},
+        "prefill": {
+            "model_file_name": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+            "native_context_context": 16384,
+            "native_context_batch": 16,
+            "native_context_ubatch": 16,
+            "ptq1_tensorops_trace": {
+                "input_type_count": 0, "route_selected_count": 0,
+                "pipeline_ready_count": 0, "dispatch_enqueued_count": 0,
+                "fallback_count": 0,
+            },
+        },
+        "phase2c": {"launch_arm": arm, "backend_latched_arm": arm, "backend_evidence_valid": True},
+        "phase2d": {"launch_arm": "CANDIDATE16", "shape_evidence_valid": True, "active_batch": 16, "active_ubatch": 16},
+    }
+
+
+assert ab.validate_runtime(runtime_snapshot("BASELINE"), "BASELINE", "a" * 40)["backend_evidence_valid"] is True
+assert ab.validate_runtime(runtime_snapshot("CANDIDATE"), "CANDIDATE", "a" * 40)["phase2d_launch_arm"] == "CANDIDATE16"
+for bad_snapshot, arm, expected in (
+    (runtime_snapshot("BASELINE"), "CANDIDATE", "a" * 40),
+    (runtime_snapshot("CANDIDATE"), "CANDIDATE", "c" * 40),
+):
+    try:
+        ab.validate_runtime(bad_snapshot, arm, expected)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("mismatched arm or source identity was accepted")
+wrong_shape = runtime_snapshot("BASELINE")
+wrong_shape["phase2d"]["launch_arm"] = "BASELINE8"
+try:
+    ab.validate_runtime(wrong_shape, "BASELINE", "a" * 40)
+except RuntimeError:
+    pass
+else:
+    raise AssertionError("non-B16 shape arm was accepted")
+
 baseline = fake_arm("BASELINE")
 candidate = fake_arm("CANDIDATE")
 assert ab.compare_arms(baseline, candidate)["status"] == "M5_PERFORMANCE_GAIN_VERIFIED"
