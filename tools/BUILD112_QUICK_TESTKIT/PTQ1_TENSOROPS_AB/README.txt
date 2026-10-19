@@ -7,8 +7,9 @@ Measure the current PTQ1_0 BASELINE or opt-in CANDIDATE arm on the M5 iPad. The 
 - Install the IPA packaged alongside this kit. Do not mix an IPA and kit from different ZIPs.
 - Main model: Ternary-Bonsai-2-27B-PTQ1_0.gguf.
 - API Context 16384, Q4 KV, Batch 16, UBatch 16.
-- For BASELINE: select the PTQ1_0 16K/B16 shape trial with the Metal TensorOps candidate switch OFF.
-- For CANDIDATE: select the model-gated PTQ1_0 A/B 16K/B16 candidate switch ON.
+- Both arms must report an active PTQ1_0 16K/B16/UBatch16 shape trial (Phase2D CANDIDATE16).
+- For BASELINE: leave the Metal TensorOps candidate switch OFF.
+- For CANDIDATE: enable the model-gated PTQ1_0 A/B candidate switch ON. The app must enable this before backend prewarm; otherwise the TestKit blocks on backend-latch evidence.
 - Completely quit and relaunch the iPad app after changing arms, then start API once.
 - Keep the screen awake. Do not change model, KV, context, sampling, or app build between arms.
 
@@ -20,12 +21,13 @@ Measure the current PTQ1_0 BASELINE or opt-in CANDIDATE arm on the M5 iPad. The 
 5. 8192-token input is optional and increases runtime. Use it only if you want the longer test.
 
 ## Evidence and gates
-- The runner verifies app source SHA, PTQ1_0 model identity, Context/Batch/UBatch and the selected arm where exposed by the API.
-- Each valid sample records actual token counts, TTFT, Prefill ms/tok/s, Decode tok/s and derived decode ms, model/source identity, route/pipeline/dispatch markers, Metal allocation/headroom, thermal state, output hash and raw sample data.
-- A candidate sample is rejected unless the PTQ1 route was selected, the pipeline reported ready, dispatch was enqueued, and the API inference completed with exactly 128 output tokens. Dispatch-enqueued alone is not completion proof.
+- The runner fails closed unless TestKitIdentity.json pins the installed app source SHA, the API reports the requested Phase2C arm and matching backend-latched evidence, and Phase2D confirms active B16/UBatch16.
+- Each measured request snapshots native route counters before and after inference. Candidate samples require positive route-selected, pipeline-ready and dispatch-enqueued counter deltas, zero fallback delta, one new completed inference observation and exactly 128 output tokens. BASELINE samples require zero candidate-route/dispatch deltas.
+- Each sample records actual token counts, TTFT, Prefill ms/tok/s, Decode tok/s, identity, counter deltas, Metal allocation/headroom, thermal state and output hash.
 - Comparison gates: Prefill improvement >=15%, TTFT improvement >=10%, Decode throughput regression <=5%, Metal allocation increase <=1 GiB, and deterministic output hashes match.
-- If the route does not execute or there are fewer than three valid samples, the result is blocked/no-gain; it must not be reported as a performance win.
+- A previous-arm ZIP is accepted only if its internal SHA-256 manifest, identity, prompt-bank hash and required target list validate. Missing targets or missing repeat hashes cannot pass comparison.
+- If the route does not execute, the backend/shape arm is unverified, or there are fewer than three valid samples at any required length, the result is blocked/no-gain; it must not be reported as a performance win.
 - Results are written to RESULTS as ZIP files with SHA-256 manifests. The runner stores output hashes, not generated output text or API keys.
 
 ## Limits
-This is a measurement tool, not a GPU correctness proof. The first real M5 candidate run must be inspected for route, pipeline, dispatch, successful inference and numerical/output parity. CI and static linkage do not prove Metal runtime compilation or speedup.
+This is a measurement tool, not a GPU correctness proof. The native counter proves the candidate route/pipeline/dispatch path advanced during the measured request window; the subsequent successful inference is required, but the app does not expose an independent Metal command-buffer completion counter, so dispatch_completion_proof remains false. The first real M5 candidate run must still be inspected for runtime Metal compilation, successful inference, numerical/output parity and performance. CI and static linkage do not prove any of those device-level outcomes.
