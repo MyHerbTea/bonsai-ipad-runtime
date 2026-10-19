@@ -281,6 +281,21 @@ def compare_arms(baseline, candidate):
             result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Candidate per-sample route/dispatch evidence is incomplete"}
             all_pass = False
             continue
+        b_thermal = {str(x.get("thermal_state", "unknown")).lower() for x in b}
+        c_thermal = {str(x.get("thermal_state", "unknown")).lower() for x in c}
+        if (
+            not b_thermal or not c_thermal
+            or not b_thermal.issubset({"nominal", "fair"})
+            or not c_thermal.issubset({"nominal", "fair"})
+            or b_thermal != c_thermal
+            or len(b_thermal) != 1 or len(c_thermal) != 1
+        ):
+            result["targets"][str(target)] = {
+                "status": "BLOCKED",
+                "reason": f"Thermal state is missing, unstable, or differs between arms: baseline={sorted(b_thermal)}, candidate={sorted(c_thermal)}"
+            }
+            all_pass = False
+            continue
 
         median = lambda rows, key: statistics.median(float(x[key]) for x in rows)
         bp, cp = median(b, "prefill_tokens_per_second"), median(c, "prefill_tokens_per_second")
@@ -346,7 +361,10 @@ def main():
         identity=json.loads(identity_file.read_text(encoding="utf-8"))
         expected_sha=identity.get("source_git_sha")
     health=request_json(base+"/health",key)
-    if health.get("status") not in (None,"ok","ready","READY") and health.get("ready") is False:
+    health_status = health.get("status")
+    if health.get("ready") is False or (
+        health_status is not None and str(health_status).lower() not in ("ok", "ready")
+    ):
         raise RuntimeError(f"API not ready: {health}")
     models=request_json(api+"/models",key).get("data") or []
     if not models:
@@ -411,16 +429,25 @@ def main():
             prefill_ms=float(obs.get("prefill_ms",0) or 0)
             ttft_ms=float(obs.get("ttft_ms",0) or 0)
             decode_tps=float(obs.get("tokens_per_second",0) or 0)
-            allocated=int(after["prefill"].get("metal_current_allocated_bytes",0) or 0)
-            headroom=int(after["prefill"].get("metal_working_set_headroom_bytes",0) or 0)
-            thermal=find_key(after["telemetry"],["thermal_state"]) or "unknown"
+            try:
+                ttft_error_ms=float(obs.get("ttft_reconstruction_error_ms"))
+                allocated=int(after["prefill"].get("metal_current_allocated_bytes"))
+                headroom=int(after["prefill"].get("metal_working_set_headroom_bytes"))
+            except (TypeError, ValueError):
+                ttft_error_ms=-1.0
+                allocated=-1
+                headroom=-1
+            thermal=str(find_key(after["telemetry"],["thermal_state"]) or "unknown").lower()
+            thermal_ok=thermal in ("nominal", "fair")
             valid=(
                 prompt_tokens==target
                 and completion_tokens==MAX_TOKENS
                 and response["finish_reason"] in ("length","stop")
                 and seq_after==seq_before+1
                 and prefill_ms>0 and ttft_ms>0 and decode_tps>0
-                and allocated>=0 and headroom>=0
+                and 0 <= ttft_error_ms <= 50.0
+                and allocated>0 and headroom>=0
+                and thermal_ok
             )
             if args.arm=="CANDIDATE":
                 valid=valid and route_delta>0 and pipeline_delta>0 and dispatch_delta>0 and fallback_delta==0
