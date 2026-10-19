@@ -71,7 +71,7 @@ assert "BonsaiReadPTQ1TensorOpsCounters" in patch and "BonsaiReadPTQ1TensorOpsCo
 assert '"_BonsaiReadPTQ1TensorOpsCounters"' in binary_verify
 for counter in ("route_selected_count", "pipeline_ready_count", "dispatch_enqueued_count", "fallback_count"):
     assert counter in server, f"missing native PTQ1 counter in debug evidence: {counter}"
-for evidence in ("route_selected_delta", "pipeline_ready_delta", "dispatch_enqueued_delta", "fallback_delta", "backend_evidence_valid", "target_tokens"):
+for evidence in ("route_selected_delta", "pipeline_ready_delta", "dispatch_enqueued_delta", "fallback_delta", "backend_evidence_valid", "build79_kv_cache_type", 'kv_cache_type != "Q4_0"', "target_tokens"):
     assert evidence in ab_runner, f"missing fail-closed A/B evidence: {evidence}"
 assert "实验：PTQ1_0 A/B 固定 16K / B16（下次启动）" in production
 assert "Phase2CMetalTensorLaunchLatch.scheduleNext(" in production
