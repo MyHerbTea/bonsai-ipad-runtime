@@ -8,7 +8,7 @@ for needle in (
     'source_git_sha','TestKitIdentity.json has no source_git_sha','PTQ1_0',
     'native_context_batch','native_context_ubatch','/debug/b16/evidence',
     'native_context','kv_k','kv_v','actual Q4_0 KV cache','flash_attention',
-    'backend_evidence_valid',
+    'sequence_max','Native context shape disagrees','backend_evidence_valid',
     'phase2d_launch_arm','ptq1_tensorops_trace','route_selected_delta',
     'pipeline_ready_delta','dispatch_enqueued_delta','fallback_delta',
     'dispatch_completion_proof','prompt_tokens==target','completion_tokens==MAX_TOKENS',
