@@ -136,13 +136,13 @@ def derive_ptq1_kernel(mm_text: str) -> str:
 def verify_reference_ptq1_lut(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     match = re.search(
-        r"constant\\s+ushort\\s+ptq1_0_lut\\[256\\]\\s*=\\s*\\{(.*?)\\};",
+        r"constant\s+ushort\s+ptq1_0_lut\[256\]\s*=\s*\{(.*?)\};",
         source,
         re.S,
     )
     if not match:
         raise SystemExit(f"pinned Prism PTQ1_0 LUT missing: {path}")
-    values = [int(value) for value in re.findall(r"\\b\\d+\\b", match.group(1))]
+    values = [int(value) for value in re.findall(r"\b\d+\b", match.group(1))]
     if len(values) != 256:
         raise SystemExit(f"pinned Prism PTQ1_0 LUT has {len(values)} entries, expected 256")
     for byte, observed in enumerate(values):
@@ -178,8 +178,8 @@ def main() -> None:
     verify_reference_ptq1_lut(root / "ggml/src/ggml-metal/kernels/dequantize.h")
     replace_once(
         ops_cpp,
-        "#include <cstdlib>\\n",
-        "#include <cstdlib>\\n#include <atomic>\\n#include <stdint.h>\\n",
+        "#include <cstdlib>\n",
+        "#include <cstdlib>\n#include <atomic>\n#include <stdint.h>\n",
     )
     mm_text = mm_metal.read_text(encoding="utf-8")
     if MARKER in mm_text:
