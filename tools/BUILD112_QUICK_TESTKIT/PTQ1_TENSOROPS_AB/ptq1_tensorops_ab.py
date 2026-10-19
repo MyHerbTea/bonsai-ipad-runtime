@@ -131,6 +131,7 @@ def read_snapshot(base, key):
         "telemetry": request_json(base + "/debug/telemetry", key),
         "phase2c": request_json(base + "/debug/phase2c/launch", key),
         "phase2d": request_json(base + "/debug/phase2d/launch", key),
+        "b16_evidence": request_json(base + "/debug/b16/evidence", key),
     }
 
 PTQ1_COUNTER_NAMES = (
@@ -210,6 +211,33 @@ def validate_runtime(snapshot, arm, expected_sha):
     if (context, batch, ubatch) != (16384, 16, 16):
         raise RuntimeError(f"Expected 16K/B16/UBatch16; observed {context}/{batch}/{ubatch}")
 
+    b16 = snapshot.get("b16_evidence") or {}
+    native = b16.get("native_context")
+    if not isinstance(native, dict):
+        raise RuntimeError("Native context evidence is missing from /debug/b16/evidence")
+    try:
+        native_context = int(native.get("context"))
+        native_batch = int(native.get("batch"))
+        native_ubatch = int(native.get("ubatch"))
+        native_sequence_max = int(native.get("sequence_max"))
+    except (TypeError, ValueError):
+        raise RuntimeError("Native context/shape evidence is incomplete")
+    if (native_context, native_batch, native_ubatch) != (context, batch, ubatch):
+        raise RuntimeError(
+            "Native context shape disagrees with /debug/prefill: "
+            f"native={native_context}/{native_batch}/{native_ubatch}, "
+            f"prefill={context}/{batch}/{ubatch}"
+        )
+    kv_k = str(native.get("kv_k") or "").upper()
+    kv_v = str(native.get("kv_v") or "").upper()
+    if kv_k != "Q4_0" or kv_v != "Q4_0":
+        raise RuntimeError(f"Expected actual Q4_0 KV cache for K and V; observed K={kv_k or 'MISSING'}, V={kv_v or 'MISSING'}")
+    if native.get("flash_attention") is not True:
+        raise RuntimeError("Native context evidence does not confirm Flash Attention is enabled")
+    evidence_sha = str(b16.get("source_git_sha") or "")
+    if evidence_sha != source_sha:
+        raise RuntimeError(f"Native context evidence SHA mismatch: build={source_sha}, native={evidence_sha or 'MISSING'}")
+
     phase2c = snapshot["phase2c"]
     actual_arm = str(phase2c.get("launch_arm") or "").upper()
     if actual_arm != arm:
@@ -244,6 +272,9 @@ def validate_runtime(snapshot, arm, expected_sha):
         "model_file": str(model_file),
         "model_id": "set_from_authenticated_models_response",
         "context": context, "batch": batch, "ubatch": ubatch,
+        "kv_k": kv_k, "kv_v": kv_v,
+        "flash_attention": native.get("flash_attention") is True,
+        "sequence_max": native_sequence_max,
         "arm": arm,
         "backend_latched_arm": backend_arm,
         "backend_evidence_valid": True,
@@ -321,7 +352,7 @@ def compare_arms(baseline, candidate):
         return {**result, "reason": "A/B arms are missing or reversed"}
     if baseline["identity"].get("source_git_sha") != candidate["identity"].get("source_git_sha"):
         return {**result, "reason": "App source SHA differs between arms"}
-    for field in ("model_file", "context", "batch", "ubatch", "model_id", "prism_upstream_sha"):
+    for field in ("model_file", "context", "batch", "ubatch", "kv_k", "kv_v", "flash_attention", "sequence_max", "model_id", "prism_upstream_sha"):
         if baseline["identity"].get(field) != candidate["identity"].get(field):
             return {**result, "reason": f"Runtime identity mismatch: {field}"}
     if baseline.get("prompts_sha256") != candidate.get("prompts_sha256"):
@@ -477,7 +508,7 @@ def main():
             raise RuntimeError("Previous ZIP uses the same arm; provide the opposite arm")
         prompts_sha=previous_result.get("prompts_sha256")
         previous_identity = previous_result.get("identity", {})
-        for field in ("source_git_sha", "model_file", "model_id", "context", "batch", "ubatch", "prism_upstream_sha"):
+        for field in ("source_git_sha", "model_file", "model_id", "context", "batch", "ubatch", "kv_k", "kv_v", "flash_attention", "sequence_max", "prism_upstream_sha"):
             if previous_identity.get(field) != identity.get(field):
                 raise RuntimeError(f"Previous ZIP runtime identity differs ({field}); refuse cross-runtime A/B")
     else:
