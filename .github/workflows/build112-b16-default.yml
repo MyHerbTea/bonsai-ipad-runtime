@@ -212,7 +212,7 @@ jobs:
           Runtime: existing Build112 context and B16/B8/SAFE4 safety policy retained; no batch/ubatch defaults changed.
           API Key auth: persistent setting defaults on; /health exposes only auth_required; disabled mode permits local development without a key.
           Startup evidence: last successful stage, last failed stage, actual error and previous incomplete stage persist across launches.
-          NAX-PQ2-01 remains experimental and model-gated; PTQ1_0 forces the safe Tensor-disabled backend even if CANDIDATE was selected.
+          NAX-PQ2-01 remains experimental and model-gated. PTQ1_0 defaults to the safe Tensor-disabled path; only the explicit PTQ1_0 + 16K/B16/UBatch16 one-shot candidate arm may enable the PTQ1 custom route.
           Candidate kernels: kernel_mul_mm_nax_pq2_0_f32 (PQ2-only) and kernel_mul_mm_ptq1_tensorops_0_f32 (PTQ1_0-only, explicit 16K/B16 candidate arm).
           PTQ1_0 default path remains disabled; custom route requires actual GGML_TYPE_PTQ1_0, F32 activation, M5 tensor capability and strict matrix-shape gates.
           Candidate binaries: static kernel-source and host-dispatch checks recorded in M5_NAX_PQ2_BINARY_VERIFICATION.txt and PTQ1_TENSOROPS_BINARY_VERIFICATION.txt.
@@ -227,6 +227,26 @@ jobs:
           (cd build/ipa && zip -qry "../$IPA_NAME" Payload)
           (cd build && shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256")
           cp build/BUILD_INFO.txt build/"$IPA_NAME".BUILD_INFO.txt
+          IPA_SHA256="$(shasum -a 256 "build/$IPA_NAME" | awk '{print $1}')"
+          DELIVERY_ROOT="$PWD/build/delivery/Bonsai-Build112-PTQ1-TensorOps-AB"
+          mkdir -p "$DELIVERY_ROOT/PTQ1_TENSOROPS_AB"
+          cp "build/$IPA_NAME" "$DELIVERY_ROOT/"
+          cp "build/$IPA_NAME.sha256" "$DELIVERY_ROOT/"
+          cp build/BUILD_INFO.txt build/M5_NAX_PQ2_BINARY_VERIFICATION.txt build/PTQ1_TENSOROPS_BINARY_VERIFICATION.txt "$DELIVERY_ROOT/"
+          cp tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/{README.txt,RUN_PTQ1_TENSOROPS_AB.cmd,run_ptq1_tensorops_ab.ps1,ptq1_tensorops_ab.py,test_contracts.py} "$DELIVERY_ROOT/PTQ1_TENSOROPS_AB/"
+          cat > "$DELIVERY_ROOT/PTQ1_TENSOROPS_AB/TestKitIdentity.json" <<IDENTITY
+          {
+            "schema": "bonsai-ptq1-tensorops-ab-testkit-identity-v1",
+            "source_git_sha": "$GITHUB_SHA",
+            "build_number": "$BUILD_NUMBER",
+            "unsigned_ipa_sha256": "$IPA_SHA256",
+            "prism_upstream_sha": "$PRISM_COMMIT",
+            "testkit_source_sha": "$GITHUB_SHA"
+          }
+          IDENTITY
+          (cd "$DELIVERY_ROOT" && find . -type f ! -name DELIVERY_SHA256SUMS.txt -print0 | sort -z | xargs -0 shasum -a 256 > DELIVERY_SHA256SUMS.txt)
+          (cd build/delivery && zip -qr "$PWD/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip" Bonsai-Build112-PTQ1-TensorOps-AB)
+          shasum -a 256 build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip > build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip.sha256
 
       - name: Upload Build112 PTQ1 Auth/Startup IPA artifact
         if: github.ref_name == 'lab/m5-nax-pq2-01'
@@ -239,6 +259,8 @@ jobs:
             build/BUILD_INFO.txt
             build/M5_NAX_PQ2_BINARY_VERIFICATION.txt
             build/PTQ1_TENSOROPS_BINARY_VERIFICATION.txt
+            build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip
+            build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip.sha256
             build/build.log
           if-no-files-found: error
           retention-days: 14
