@@ -159,7 +159,7 @@ def validate_runtime(snapshot, arm, expected_sha):
         "build_number": build.get("build_number", build.get("build", "unknown")),
         "prism_upstream_sha": build.get("prism_upstream_sha", "unknown"),
         "model_file": str(model_file),
-        "model_id": ((request_json(normalize_base(base) + "/v1/models", None).get("data") or [{}])[0].get("id", "unknown")),
+        "model_id": "set_from_authenticated_models_response",
         "context": context, "batch": batch, "ubatch": ubatch,
         "arm": arm,
         "ptq1_trace_initial": prefill.get("ptq1_tensorops_trace", {}),
