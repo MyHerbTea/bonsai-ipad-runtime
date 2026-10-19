@@ -283,25 +283,28 @@ def compare_arms(baseline, candidate):
             blocked = True
             continue
 
+        baseline_attempts = [x for x in baseline["samples"] if x.get("target_tokens") == target]
+        candidate_attempts = [x for x in candidate["samples"] if x.get("target_tokens") == target]
         if any(
             int(x.get("route_selected_delta", -1)) != 0
             or int(x.get("pipeline_ready_delta", -1)) != 0
             or int(x.get("dispatch_enqueued_delta", -1)) != 0
-            for x in b
+            or int(x.get("fallback_delta", -1)) != 0
+            for x in baseline_attempts
         ):
             result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Baseline unexpectedly used candidate dispatch"}
             all_pass = False
             blocked = True
             continue
-        if any(
+        if not candidate_attempts or any(
             int(x.get("route_selected_delta", 0)) <= 0
             or int(x.get("pipeline_ready_delta", 0)) <= 0
             or int(x.get("dispatch_enqueued_delta", 0)) <= 0
             or int(x.get("fallback_delta", -1)) != 0
             or x.get("successful_inference_after_dispatch") is not True
-            for x in c
+            for x in candidate_attempts
         ):
-            result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Candidate per-sample route/dispatch evidence is incomplete"}
+            result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Candidate attempt route/dispatch evidence is incomplete"}
             all_pass = False
             blocked = True
             continue
@@ -523,14 +526,14 @@ def main():
         str(t):sum(1 for x in sample_rows if x["target_tokens"]==t and x["valid"])
         for t in target_tokens
     }
-    candidate_valid_rows=[x for x in sample_rows if x["arm"]=="CANDIDATE" and x["valid"]]
+    candidate_attempt_rows=[x for x in sample_rows if x["arm"]=="CANDIDATE"]
     candidate_route_verified=(
-        bool(candidate_valid_rows)
+        bool(candidate_attempt_rows)
         and all(
             x["route_selected_delta"]>0 and x["pipeline_ready_delta"]>0
             and x["dispatch_enqueued_delta"]>0 and x["fallback_delta"]==0
             and x["successful_inference_after_dispatch"] is True
-            for x in candidate_valid_rows
+            for x in candidate_attempt_rows
         )
         and all(valid_samples_by_target[str(t)] >= REPEATS for t in target_tokens)
     ) if args.arm=="CANDIDATE" else None
