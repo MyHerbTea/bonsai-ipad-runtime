@@ -29,7 +29,7 @@ BASELINE and CANDIDATE use the same App source SHA, PTQ1_0 model, 16K Context, B
 
 Each raw sample records actual input/output token counts, TTFT, prefill time/tokens per second, decode time/tokens per second, source/model/runtime identity, per-request route/pipeline/dispatch counter deltas, fallback delta, request completion, output hashes, Metal allocation/headroom and thermal state. The prior-arm ZIP manifest, identity, prompt-bank hash and required target list are validated before comparison; a missing target or repeat cannot be silently omitted.
 
-Promotion requires all tested lengths to show at least 15% Prefill improvement and 10% TTFT improvement, no more than 5% Decode throughput regression, no more than 1 GiB Metal allocation increase, matching deterministic output hashes, and complete runtime evidence. Otherwise report CANDIDATE_NO_GAIN or BLOCKED_NEEDS_ENGINE_EVIDENCE.
+Promotion requires all tested lengths to show at least 15% Prefill improvement and 10% TTFT improvement, no more than 5% Decode throughput regression, no more than 1 GiB Metal allocation increase, matching deterministic output hashes, stable nominal/fair thermal state matched across arms, and complete runtime evidence. Missing samples, route evidence, memory/TTFT telemetry, thermal comparability or output parity must report BLOCKED_NEEDS_ENGINE_EVIDENCE; only a complete valid A/B that misses a performance threshold may report CANDIDATE_NO_GAIN.
 
 ## Limits
 
