@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - lab/m5-nax-pq2-01
+      - fix/ptq1-tensorops-preflight-20261020
     paths:
       - 'tools/BUILD112_QUICK_TESTKIT/**'
       - 'tools/build112_quick_testkit_contract_tests.py'
@@ -37,9 +38,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile tools/build112_quick_testkit_contract_tests.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/ptq1_tensorops_ab.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_contracts.py
+          python3 -m py_compile tools/build112_quick_testkit_contract_tests.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/ptq1_tensorops_ab.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_contracts.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_ab_logic.py
           python3 tools/build112_quick_testkit_contract_tests.py
           python3 tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_contracts.py
+          python3 tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_ab_logic.py
           pwsh -File tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1 -SelfTest
           pwsh -NoProfile -Command '$errors=$null; [System.Management.Automation.Language.Parser]::ParseFile("tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/run_ptq1_tensorops_ab.ps1",[ref]$null,[ref]$errors) | Out-Null; if($errors.Count -gt 0){$errors | Format-List | Out-String | Write-Error; exit 1}'
       - name: Package one-click PTQ1_0 Auth Startup Quick TestKit 2.1
@@ -51,6 +53,15 @@ jobs:
           cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
           printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Startup TestKit 2.1' > package/Build112-Quick-TestKit/VERSION.txt
           printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
+          cat > package/Build112-Quick-TestKit/PTQ1_TENSOROPS_AB/TestKitIdentity.json <<IDENTITY
+          {
+            "schema": "bonsai-ptq1-tensorops-ab-testkit-identity-v1",
+            "source_git_sha": "$GITHUB_SHA",
+            "build_number": "112",
+            "prism_upstream_sha": "adfffbe41b2cabcd51fff326ab045662265062bb",
+            "testkit_source_sha": "$GITHUB_SHA"
+          }
+          IDENTITY
           (cd package && zip -qr ../BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip Build112-Quick-TestKit)
           sha256sum BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip > BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip.sha256
       - name: Upload one-click package
