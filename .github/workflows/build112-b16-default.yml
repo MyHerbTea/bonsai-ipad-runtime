@@ -5,6 +5,7 @@ on:
     branches:
       - chatgpt/build112-b16-default
       - lab/m5-nax-pq2-01
+      - fix/ptq1-tensorops-preflight-20261020
     paths-ignore:
       - 'tools/BUILD112_QUICK_TESTKIT/**'
       - 'tools/rc126_build113_m5_nax_pq2_quick_testkit_tests.py'
@@ -35,7 +36,7 @@ jobs:
           fetch-depth: 0
 
       - name: M5-NAX-PQ2-01 candidate contract
-        if: github.ref_name == 'lab/m5-nax-pq2-01'
+        if: github.ref_name == 'lab/m5-nax-pq2-01' || github.ref_name == 'fix/ptq1-tensorops-preflight-20261020'
         shell: bash
         run: |
           set -euo pipefail
@@ -103,7 +104,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/rc126_build88_patch_prism_mmap_recovery.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp" "$PRISM_DIR/src/llama-context.cpp"
           python3 "$GITHUB_WORKSPACE/tools/rc126_build89_patch_prism_compact_scheduler.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD89_COMPACT_ALLOC_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
-          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
+          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ] || [ "$GITHUB_REF_NAME" = "fix/ptq1-tensorops-preflight-20261020" ]; then
             python3 "$GITHUB_WORKSPACE/tools/rc126_build113_patch_prism_m5_nax_pq2.py" "$PRISM_DIR"
             python3 "$GITHUB_WORKSPACE/tools/rc126_build113_patch_prism_ptq1_tensorops.py" "$PRISM_DIR"
             grep -q 'BONSAI_M5_NAX_PQ2_01' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
@@ -235,7 +236,7 @@ jobs:
           cp "build/$IPA_NAME" "$DELIVERY_ROOT/"
           cp "build/$IPA_NAME.sha256" "$DELIVERY_ROOT/"
           cp build/BUILD_INFO.txt build/M5_NAX_PQ2_BINARY_VERIFICATION.txt build/PTQ1_TENSOROPS_BINARY_VERIFICATION.txt "$DELIVERY_ROOT/"
-          cp tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/{README.txt,RUN_PTQ1_TENSOROPS_AB.cmd,run_ptq1_tensorops_ab.ps1,ptq1_tensorops_ab.py,test_contracts.py} "$DELIVERY_ROOT/PTQ1_TENSOROPS_AB/"
+          cp tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/{README.txt,RUN_PTQ1_TENSOROPS_AB.cmd,run_ptq1_tensorops_ab.ps1,ptq1_tensorops_ab.py,test_contracts.py,test_ab_logic.py} "$DELIVERY_ROOT/PTQ1_TENSOROPS_AB/"
           cat > "$DELIVERY_ROOT/PTQ1_TENSOROPS_AB/TestKitIdentity.json" <<IDENTITY
           {
             "schema": "bonsai-ptq1-tensorops-ab-testkit-identity-v1",
