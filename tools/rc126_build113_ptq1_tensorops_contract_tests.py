@@ -30,6 +30,7 @@ for needle in (
     "adfffbe41b2cabcd51fff326ab045662265062bb",
     "GGML_TYPE_PTQ1_0",
     "op->src[1]->type == GGML_TYPE_F32",
+    "op->src[0]->nb[0] == ggml_type_size(GGML_TYPE_PTQ1_0)",
     "props_dev->device_id >= GGML_METAL_DEVICE_M5",
     "ne00 % BONSAI_M5_PTQ1_TENSOROPS_QK == 0",
     "ne11 >= BONSAI_M5_PTQ1_TENSOROPS_BM",

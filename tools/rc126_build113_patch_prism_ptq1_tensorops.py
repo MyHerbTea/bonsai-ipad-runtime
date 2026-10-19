@@ -321,6 +321,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         nb10 == sizeof(float) &&
         op->nb[0] == sizeof(float) &&
         op->nb[1] == op->ne[0] * sizeof(float) &&
+        op->src[0]->nb[0] == ggml_type_size(GGML_TYPE_PTQ1_0) &&
         nb01 % ggml_type_size(GGML_TYPE_PTQ1_0) == 0;
 
     if (use_ptq1_tensorops) {
@@ -405,6 +406,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         device_cpp: ["kernel_mul_mm_ptq1_tensorops_0_f32", "BONSAI_M5_PTQ1_TENSOROPS_BN"],
         ops_cpp: [
             "GGML_TYPE_PTQ1_0", "op->src[1]->type == GGML_TYPE_F32",
+            "op->src[0]->nb[0] == ggml_type_size(GGML_TYPE_PTQ1_0)",
             "GGML_METAL_PTQ1_TENSOROPS_DISABLE",
             "BUILD113_PTQ1_TENSOROPS_INPUT_TYPE_OBSERVED",
             "BUILD113_PTQ1_TENSOROPS_ROUTE_SELECTED",
