@@ -6,7 +6,7 @@ Measure the current PTQ1_0 BASELINE or opt-in CANDIDATE arm on the M5 iPad. The 
 ## Required preconditions
 - Install the IPA packaged alongside this kit. Do not mix an IPA and kit from different ZIPs.
 - Main model: Ternary-Bonsai-2-27B-PTQ1_0.gguf.
-- API Context 16384, Q4 KV, Batch 16, UBatch 16.
+- API Context 16384, Q4 KV, Batch 16, UBatch 16. The TestKit independently checks the native context evidence for K/V = Q4_0, Flash Attention enabled, and actual context/batch/ubatch = 16384/16/16; matching UI labels alone are not sufficient.
 - Both arms must report an active PTQ1_0 16K/B16/UBatch16 shape trial (Phase2D CANDIDATE16). The UI has two related toggles, so use the exact combinations below.
 - For BASELINE: turn OFF the upper “实验：PTQ1_0 A/B 固定 16K / B16” candidate toggle, then turn ON the lower “实验：PTQ1_0 16K/B16 形状隔离” toggle. This keeps Phase2C on BASELINE while running the same B16/UBatch16 shape.
 - For CANDIDATE: turn ON the upper “实验：PTQ1_0 A/B 固定 16K / B16” candidate toggle and leave the lower shape-isolation toggle OFF. This enables the custom route before backend prewarm.
