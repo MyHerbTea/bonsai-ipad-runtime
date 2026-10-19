@@ -1999,7 +1999,7 @@ final class LocalOpenAIServer: ObservableObject {
                 advertisedBatch == expectedBatch
                 && advertisedUBatch == expectedBatch,
             "metal_tensor_forced_baseline":
-                Phase2CMetalTensorLaunchLatch.arm == .baseline,
+                getenv("GGML_METAL_TENSOR_DISABLE") != nil,
             "ggml_metal_tensor_disable":
                 getenv("GGML_METAL_TENSOR_DISABLE")
                     .map { String(cString: $0) }
