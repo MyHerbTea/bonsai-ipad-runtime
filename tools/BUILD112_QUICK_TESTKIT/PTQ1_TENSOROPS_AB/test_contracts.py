@@ -12,7 +12,9 @@ for needle in (
     'dispatch_completion_proof','prompt_tokens==target','completion_tokens==MAX_TOKENS',
     'prefill_tokens_per_second','decode_tokens_per_second','metal_working_set_headroom_bytes',
     'SHA256_MANIFEST.json','Previous ZIP prompt bank hash does not match result.json',
-    'candidate_route_verified','target_tokens','M5_PERFORMANCE_GAIN_VERIFIED',
+    'candidate_route_verified','target_tokens','ttft_reconstruction_error_ms',
+    'thermal_ok','thermal state is missing, unstable, or differs between arms',
+    'allocated>0','M5_PERFORMANCE_GAIN_VERIFIED',
     'CANDIDATE_NO_GAIN','BLOCKED_NEEDS_ENGINE_EVIDENCE','REPEATS = 3','MAX_TOKENS = 128'
 ):
     assert needle in source, f'missing A/B contract: {needle}'
