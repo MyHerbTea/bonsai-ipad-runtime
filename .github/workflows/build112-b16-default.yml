@@ -245,7 +245,7 @@ jobs:
           }
           IDENTITY
           (cd "$DELIVERY_ROOT" && find . -type f ! -name DELIVERY_SHA256SUMS.txt -print0 | sort -z | xargs -0 shasum -a 256 > DELIVERY_SHA256SUMS.txt)
-          (cd build/delivery && zip -qr "$PWD/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip" Bonsai-Build112-PTQ1-TensorOps-AB)
+          (cd build/delivery && zip -qr BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip Bonsai-Build112-PTQ1-TensorOps-AB)
           shasum -a 256 build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip > build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip.sha256
 
       - name: Upload Build112 PTQ1 Auth/Startup IPA artifact
