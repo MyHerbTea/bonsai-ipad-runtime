@@ -151,7 +151,9 @@ struct Phase2DPrefillBatchLaunchLatch {
     static func apply(to runtime: inout RuntimeConfig) {
         runtime.batch = 16
         runtime.ubatch = 16
-        // This trial isolates shape only; TensorOps must remain disabled.
+        // Default this shape trial to TensorOps-disabled. The explicit PTQ1_0
+        // A/B prewarm gate may override the effective backend policy for CANDIDATE;
+        // BASELINE remains disabled, and this runtime value alone never enables it.
         runtime.disableMetalTensorAPI = true
     }
 }
