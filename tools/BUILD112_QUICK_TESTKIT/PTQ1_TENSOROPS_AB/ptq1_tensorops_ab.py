@@ -490,12 +490,88 @@ def main():
         previous_result=None; previous_samples=[]
     prompts_sha=prompts_sha or sha(json.dumps(prompts,sort_keys=True,ensure_ascii=False).encode("utf-8"))
     sample_rows=[]
+    warmup_rows=[]
+    preflight_ok=True
+    target_tokens=sorted(int(k) for k in prompts)
+
+    # First smoke each required input length. No performance sample is collected
+    # until every arm-specific route precondition and successful inference passes.
     for target_text,prompt_info in prompts.items():
         target=int(target_text); prompt=prompt_info["prompt"]
         if prompt_info.get("actual_tokens") != target:
             raise RuntimeError(f"Prompt bank has no exact {target}-token prompt")
-        print(f"[WARMUP] {target} input tokens, 128 output-token cap")
-        chat(api,key,model,prompt,MAX_TOKENS,f"warmup-{target}")
+        before=read_snapshot(base,key)
+        pre_observation=get_last_observation(before["prefill"])
+        deltas,before_counts,after_counts=trace_counter_deltas(before,before)
+        preexisting_reason=None
+        if args.arm=="CANDIDATE" and before_counts.get("fallback_count",-1) != 0:
+            preexisting_reason="PTQ1 candidate fallback was observed during prompt calibration"
+        if args.arm=="BASELINE" and any(
+            before_counts.get(name,-1) != 0
+            for name in ("route_selected_count","pipeline_ready_count","dispatch_enqueued_count","fallback_count")
+        ):
+            preexisting_reason="BASELINE candidate-route counters were nonzero during prompt calibration"
+        if preexisting_reason:
+            warmup_rows.append({
+                "arm":args.arm,"target_tokens":target,"attempted":False,
+                "prompt_tokens":None,"completion_tokens":None,"finish_reason":None,
+                "output_sha256":None,
+                "sequence_before":int(pre_observation.get("sequence",0) or 0),
+                "sequence_after":int(pre_observation.get("sequence",0) or 0),
+                **{name+"_delta":0 for name in PTQ1_COUNTER_NAMES},
+                "counters_before":before_counts,"counters_after":after_counts,
+                "pass":False,"reason":preexisting_reason
+            })
+            preflight_ok=False
+            print(f"[PREFLIGHT BLOCKED] {args.arm} {target}: {preexisting_reason}")
+            break
+        print(f"[PREFLIGHT] {args.arm} {target} tokens: warmup inference and route evidence")
+        try:
+            response=chat(api,key,model,prompt,MAX_TOKENS,f"warmup-{target}")
+            after=read_snapshot(base,key)
+            obs=get_last_observation(after["prefill"])
+            deltas,before_counts,after_counts=trace_counter_deltas(before,after)
+            seq_before=int(pre_observation.get("sequence",0) or 0)
+            seq_after=int(obs.get("sequence",0) or 0)
+            passed,reason=validate_warmup_evidence(
+                args.arm,target,response,seq_before,seq_after,deltas,before_counts,after_counts
+            )
+            trace=(after["prefill"].get("ptq1_tensorops_trace") or {})
+            warmup_row={
+                "arm":args.arm,"target_tokens":target,"attempted":True,
+                "prompt_tokens":response["prompt_tokens"],
+                "completion_tokens":response["completion_tokens"],
+                "finish_reason":response["finish_reason"],
+                "output_sha256":response["output_sha256"],
+                "sequence_before":seq_before,"sequence_after":seq_after,
+                **{name+"_delta":deltas[name] for name in PTQ1_COUNTER_NAMES},
+                "counters_before":before_counts,"counters_after":after_counts,
+                "trace_state":trace.get("state","UNKNOWN"),
+                "pass":passed,"reason":reason
+            }
+        except Exception as exc:
+            warmup_row={
+                "arm":args.arm,"target_tokens":target,"attempted":True,
+                "prompt_tokens":None,"completion_tokens":None,"finish_reason":None,
+                "output_sha256":None,
+                "sequence_before":int(pre_observation.get("sequence",0) or 0),
+                "sequence_after":None,
+                **{name+"_delta":-1 for name in PTQ1_COUNTER_NAMES},
+                "counters_before":before_counts,"counters_after":None,
+                "pass":False,"reason":f"warmup_request_or_snapshot_failed:{type(exc).__name__}"
+            }
+            passed=False
+            reason=warmup_row["reason"]
+        warmup_rows.append(warmup_row)
+        if not passed:
+            preflight_ok=False
+            print(f"[PREFLIGHT BLOCKED] {args.arm} {target}: {reason}")
+            break
+        print(f"[PREFLIGHT PASS] {args.arm} {target}: route/inference evidence verified")
+
+    if preflight_ok:
+        for target_text,prompt_info in prompts.items():
+            target=int(target_text); prompt=prompt_info["prompt"]
         valid_count=0; attempts=0
         while valid_count < REPEATS and attempts < REPEATS*3:
             attempts+=1
@@ -584,6 +660,8 @@ def main():
                 print(f"[REJECT] {args.arm} target={target} attempt={attempts}: prompt={prompt_tokens}, output={completion_tokens}, seq={seq_before}->{seq_after}, trace={trace.get('state','UNKNOWN')}")
         if valid_count < REPEATS:
             print(f"[WARNING] only {valid_count}/{REPEATS} valid samples for target {target}; this arm cannot qualify for performance promotion")
+    else:
+        print("[PREFLIGHT BLOCKED] performance sampling was skipped; a blocked result ZIP will be written.")
     target_tokens=sorted(int(k) for k in prompts)
     valid_samples_by_target={
         str(t):sum(1 for x in sample_rows if x["target_tokens"]==t and x["valid"])
