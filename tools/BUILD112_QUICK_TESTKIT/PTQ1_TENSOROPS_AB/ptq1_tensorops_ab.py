@@ -258,17 +258,25 @@ def compare_arms(baseline, candidate):
         return {**result, "reason": "Candidate route evidence did not pass all per-sample gates"}
 
     all_pass = True
+    blocked = False
     for target in baseline_targets:
         b = [x for x in baseline["samples"] if x.get("target_tokens") == target and x.get("valid") is True]
         c = [x for x in candidate["samples"] if x.get("target_tokens") == target and x.get("valid") is True]
         if len(b) < REPEATS or len(c) < REPEATS:
             result["targets"][str(target)] = {"status": "BLOCKED", "baseline_valid": len(b), "candidate_valid": len(c)}
             all_pass = False
+            blocked = True
             continue
 
-        if any(int(x.get("route_selected_delta", -1)) != 0 or int(x.get("dispatch_enqueued_delta", -1)) != 0 for x in b):
+        if any(
+            int(x.get("route_selected_delta", -1)) != 0
+            or int(x.get("pipeline_ready_delta", -1)) != 0
+            or int(x.get("dispatch_enqueued_delta", -1)) != 0
+            for x in b
+        ):
             result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Baseline unexpectedly used candidate dispatch"}
             all_pass = False
+            blocked = True
             continue
         if any(
             int(x.get("route_selected_delta", 0)) <= 0
@@ -280,6 +288,7 @@ def compare_arms(baseline, candidate):
         ):
             result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Candidate per-sample route/dispatch evidence is incomplete"}
             all_pass = False
+            blocked = True
             continue
         b_thermal = {str(x.get("thermal_state", "unknown")).lower() for x in b}
         c_thermal = {str(x.get("thermal_state", "unknown")).lower() for x in c}
@@ -295,6 +304,7 @@ def compare_arms(baseline, candidate):
                 "reason": f"Thermal state is missing, unstable, or differs between arms: baseline={sorted(b_thermal)}, candidate={sorted(c_thermal)}"
             }
             all_pass = False
+            blocked = True
             continue
 
         median = lambda rows, key: statistics.median(float(x[key]) for x in rows)
@@ -326,15 +336,22 @@ def compare_arms(baseline, candidate):
             "decode_change_pct": dg, "metal_allocation_delta_bytes": memory_delta,
             "deterministic_output_hashes_match": oh, "pass": passed
         }
+        if not oh:
+            blocked = True
         all_pass = all_pass and passed
     result["gate"] = {
         "prefill_improvement_min_pct": 15, "ttft_improvement_min_pct": 10,
         "decode_change_min_pct": -5, "metal_allocation_delta_max_bytes": 1024**3,
         "deterministic_output_hashes_must_match": True
     }
-    result["status"] = "M5_PERFORMANCE_GAIN_VERIFIED" if all_pass and result["targets"] and all(
+    if blocked:
+        result["status"] = "BLOCKED_NEEDS_ENGINE_EVIDENCE"
+    elif all_pass and result["targets"] and all(
         item.get("pass") is True for item in result["targets"].values()
-    ) else "CANDIDATE_NO_GAIN"
+    ):
+        result["status"] = "M5_PERFORMANCE_GAIN_VERIFIED"
+    else:
+        result["status"] = "CANDIDATE_NO_GAIN"
     return result
 
 def write_zip(output_path, members):
