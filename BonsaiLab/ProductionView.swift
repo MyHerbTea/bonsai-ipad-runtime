@@ -3842,10 +3842,19 @@ applyBuild82LongContextPolicy(
             && Phase2DPrefillBatchLaunchLatch.beginTrialIfPending()
         ptq1B16ShapeOnlyNextLaunch =
             Phase2DPrefillBatchLaunchLatch.nextArm == .candidate16
+        // PTQ1_0 must opt into TensorOps before backend prewarm, not only at model load.
+        // The B16 shape trial and 16K context are required for the PTQ1_0 candidate.
         let allowNAXCandidateForModel =
             Phase2CMetalTensorLaunchLatch.arm == .candidate
-            && selectedModelURL.lastPathComponent
-                .localizedCaseInsensitiveContains("PQ2_0")
+            && (
+                selectedModelURL.lastPathComponent
+                    .localizedCaseInsensitiveContains("PQ2_0")
+                || (
+                    selectedModelIsPTQ1
+                    && selectedAPIContext == 16_384
+                    && shapeTrialForThisStart
+                )
+            )
 
         RC126APIStartupLifecycle.begin(
             build: "112",
