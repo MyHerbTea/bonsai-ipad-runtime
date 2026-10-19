@@ -3843,17 +3843,18 @@ applyBuild82LongContextPolicy(
         ptq1B16ShapeOnlyNextLaunch =
             Phase2DPrefillBatchLaunchLatch.nextArm == .candidate16
         // PTQ1_0 must opt into TensorOps before backend prewarm, not only at model load.
-        // The B16 shape trial and 16K context are required for the PTQ1_0 candidate.
+        // Keep its eligibility separate from the legacy PQ2_0 NAX candidate.
+        let allowPTQ1TensorOpsCandidateForModel =
+            Phase2CMetalTensorLaunchLatch.arm == .candidate
+            && selectedModelIsPTQ1
+            && selectedAPIContext == 16_384
+            && shapeTrialForThisStart
         let allowNAXCandidateForModel =
             Phase2CMetalTensorLaunchLatch.arm == .candidate
             && (
                 selectedModelURL.lastPathComponent
                     .localizedCaseInsensitiveContains("PQ2_0")
-                || (
-                    selectedModelIsPTQ1
-                    && selectedAPIContext == 16_384
-                    && shapeTrialForThisStart
-                )
+                || allowPTQ1TensorOpsCandidateForModel
             )
 
         RC126APIStartupLifecycle.begin(
@@ -3958,7 +3959,8 @@ applyBuild82LongContextPolicy(
                 try await sharedEngine.prepareAPIColdStart(
                     metalTensorDisabled:
                         apiRuntime.disableMetalTensorAPI,
-                    allowNAXCandidate: allowNAXCandidateForModel
+                    allowNAXCandidate: allowNAXCandidateForModel,
+                    allowPTQ1TensorOpsCandidate: allowPTQ1TensorOpsCandidateForModel
                 )
                 await sharedEngine.recordAPIStartupNativeTrace(
                     "SWIFT_BACKEND_PREWARM_DONE"
