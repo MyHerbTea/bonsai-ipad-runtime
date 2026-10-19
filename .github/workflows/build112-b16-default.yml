@@ -301,6 +301,9 @@ jobs:
               runner = archive.read(prefix + "PTQ1_TENSOROPS_AB/ptq1_tensorops_ab.py").decode("utf-8")
               assert "bonsai-ptq1-tensorops-ab-v2" in runner, "paired TestKit is missing preflight-gated schema v2"
               assert "validate_warmup_evidence" in runner, "paired TestKit is missing warmup route preflight"
+              assert '"/debug/b16/evidence"' in runner, "paired TestKit is missing native context evidence"
+              assert "actual Q4_0 KV cache" in runner, "paired TestKit is missing actual K/V cache validation"
+              assert "Native context shape disagrees" in runner, "paired TestKit is missing native shape cross-check"
           print("PAIRED_IPA_TESTKIT_DELIVERY_INTEGRITY: PASS")
           PY
 
