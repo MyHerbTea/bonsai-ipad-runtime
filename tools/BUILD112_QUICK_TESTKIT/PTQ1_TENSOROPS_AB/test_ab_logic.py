@@ -95,7 +95,7 @@ assert ab.compare_arms(baseline, candidate)["status"] == "M5_PERFORMANCE_GAIN_VE
 
 missing_target = fake_arm("CANDIDATE")
 missing_target["samples"] = [x for x in missing_target["samples"] if x["target_tokens"] == 512]
-assert ab.compare_arms(baseline, missing_target)["status"] != "M5_PERFORMANCE_GAIN_VERIFIED"
+assert ab.compare_arms(baseline, missing_target)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
 
 missing_route = fake_arm("CANDIDATE")
 missing_route["candidate_route_verified"] = False
@@ -103,16 +103,16 @@ assert ab.compare_arms(baseline, missing_route)["status"] == "BLOCKED_NEEDS_ENGI
 
 baseline_with_candidate_dispatch = fake_arm("BASELINE")
 baseline_with_candidate_dispatch["samples"][0]["dispatch_enqueued_delta"] = 1
-assert ab.compare_arms(baseline_with_candidate_dispatch, candidate)["status"] != "M5_PERFORMANCE_GAIN_VERIFIED"
+assert ab.compare_arms(baseline_with_candidate_dispatch, candidate)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
 
 hash_mismatch = fake_arm("CANDIDATE")
 hash_mismatch["samples"][0]["output_sha256"] = "0" * 64
-assert ab.compare_arms(baseline, hash_mismatch)["status"] != "M5_PERFORMANCE_GAIN_VERIFIED"
+assert ab.compare_arms(baseline, hash_mismatch)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
 
 thermal_mismatch = fake_arm("CANDIDATE")
 for row in thermal_mismatch["samples"]:
     row["thermal_state"] = "fair"
-assert ab.compare_arms(baseline, thermal_mismatch)["status"] != "M5_PERFORMANCE_GAIN_VERIFIED"
+assert ab.compare_arms(baseline, thermal_mismatch)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
 
 with tempfile.TemporaryDirectory() as directory:
     good = Path(directory) / "good.zip"
