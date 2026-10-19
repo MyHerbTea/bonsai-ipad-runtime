@@ -201,7 +201,10 @@ def load_previous(path):
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         if zf.testzip() is not None:
             raise RuntimeError("Previous ZIP CRC check failed")
-        names = set(zf.namelist())
+        member_list = zf.namelist()
+        if len(member_list) != len(set(member_list)):
+            raise RuntimeError("Previous ZIP contains duplicate member names")
+        names = set(member_list)
 
         def read_json(name):
             candidates = [n for n in names if n == name or n.endswith("/" + name)]
@@ -212,6 +215,14 @@ def load_previous(path):
         manifest = read_json("SHA256_MANIFEST.json")
         if not isinstance(manifest, dict) or not manifest:
             raise RuntimeError("Previous ZIP has no usable SHA256 manifest")
+        payload_names = names - {"SHA256_MANIFEST.json"}
+        if set(manifest) != payload_names:
+            missing = sorted(payload_names - set(manifest))
+            unexpected = sorted(set(manifest) - payload_names)
+            raise RuntimeError(
+                "Previous ZIP SHA256 manifest coverage mismatch: "
+                f"missing={missing}, unexpected={unexpected}"
+            )
         for name, expected_digest in manifest.items():
             if name not in names:
                 raise RuntimeError(f"Previous ZIP manifest member missing: {name}")
