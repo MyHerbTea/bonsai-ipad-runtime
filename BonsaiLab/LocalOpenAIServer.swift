@@ -1392,6 +1392,19 @@ final class LocalOpenAIServer: ObservableObject {
 
     // Read only allow-listed PTQ1_0 route markers; never expose arbitrary native logs.
     private func debugPTQ1TensorOpsTraceEvidence() -> [String: Any] {
+        var inputTypeCount: UInt64 = 0
+        var routeSelectedCount: UInt64 = 0
+        var pipelineReadyCount: UInt64 = 0
+        var dispatchEnqueuedCount: UInt64 = 0
+        var fallbackCount: UInt64 = 0
+        BonsaiReadPTQ1TensorOpsCounters(
+            &inputTypeCount,
+            &routeSelectedCount,
+            &pipelineReadyCount,
+            &dispatchEnqueuedCount,
+            &fallbackCount
+        )
+
         let url = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -1408,6 +1421,11 @@ final class LocalOpenAIServer: ObservableObject {
                 "pipeline_ready": false,
                 "dispatch_enqueued": false,
                 "dispatch_completion_proof": false,
+                "input_type_count": inputTypeCount,
+                "route_selected_count": routeSelectedCount,
+                "pipeline_ready_count": pipelineReadyCount,
+                "dispatch_enqueued_count": dispatchEnqueuedCount,
+                "fallback_count": fallbackCount,
                 "state": "TRACE_FILE_UNAVAILABLE",
                 "markers": [String]()
             ]
@@ -1461,6 +1479,11 @@ final class LocalOpenAIServer: ObservableObject {
             "pipeline_ready": pipelineReady,
             "dispatch_enqueued": dispatchEnqueued,
             "dispatch_completion_proof": false,
+            "input_type_count": inputTypeCount,
+            "route_selected_count": routeSelectedCount,
+            "pipeline_ready_count": pipelineReadyCount,
+            "dispatch_enqueued_count": dispatchEnqueuedCount,
+            "fallback_count": fallbackCount,
             "fallback_to_prism": fallback,
             "state": state,
             "markers": Array(markers.suffix(8))
@@ -1975,7 +1998,8 @@ final class LocalOpenAIServer: ObservableObject {
             "shape_evidence_valid":
                 advertisedBatch == expectedBatch
                 && advertisedUBatch == expectedBatch,
-            "metal_tensor_forced_baseline": true,
+            "metal_tensor_forced_baseline":
+                Phase2CMetalTensorLaunchLatch.arm == .baseline,
             "ggml_metal_tensor_disable":
                 getenv("GGML_METAL_TENSOR_DISABLE")
                     .map { String(cString: $0) }
