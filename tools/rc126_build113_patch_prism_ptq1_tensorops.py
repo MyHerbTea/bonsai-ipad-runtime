@@ -133,6 +133,32 @@ def derive_ptq1_kernel(mm_text: str) -> str:
     return "\n\n" + block + "\n"
 
 
+def verify_reference_ptq1_lut(path: Path) -> None:
+    source = path.read_text(encoding="utf-8")
+    match = re.search(
+        r"constant\s+ushort\s+ptq1_0_lut\[256\]\s*=\s*\{(.*?)\};",
+        source,
+        re.S,
+    )
+    if not match:
+        raise SystemExit(f"pinned Prism PTQ1_0 LUT missing: {path}")
+    values = [int(value) for value in re.findall(r"\b\d+\b", match.group(1))]
+    if len(values) != 256:
+        raise SystemExit(f"pinned Prism PTQ1_0 LUT has {len(values)} entries, expected 256")
+    for byte, observed in enumerate(values):
+        expected = 0
+        for n in range(5):
+            q = (byte * (3 ** n)) & 0xFF
+            trit = ((q * 3) >> 8) - 1
+            expected |= (trit + 1) << (2 * n)
+        if observed != expected:
+            raise SystemExit(
+                f"pinned Prism PTQ1_0 LUT mismatch at byte {byte}: "
+                f"observed={observed}, expected={expected}"
+            )
+    print("PINNED_PRISM_PTQ1_0_LUT_PARITY: PASS (256 entries x 5 trits)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("prism_dir", type=Path)
@@ -149,6 +175,12 @@ def main() -> None:
     device_cpp = root / "ggml/src/ggml-metal/ggml-metal-device.cpp"
     ops_cpp = root / "ggml/src/ggml-metal/ggml-metal-ops.cpp"
     mm_metal = root / "ggml/src/ggml-metal/kernels/mul_mm.metal"
+    verify_reference_ptq1_lut(root / "ggml/src/ggml-metal/kernels/dequantize.h")
+    replace_once(
+        ops_cpp,
+        "#include <cstdlib>\n",
+        "#include <cstdlib>\n#include <atomic>\n#include <stdint.h>\n",
+    )
     mm_text = mm_metal.read_text(encoding="utf-8")
     if MARKER in mm_text:
         raise SystemExit("PTQ1 TensorOps patch already applied")
@@ -192,6 +224,36 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_pt
         getter + "struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_nax_pq2(ggml_metal_library_t lib) {\n",
     )
     trace_helper = r'''
+static std::atomic<uint64_t> bonsai_ptq1_input_type_count{0};
+static std::atomic<uint64_t> bonsai_ptq1_route_selected_count{0};
+static std::atomic<uint64_t> bonsai_ptq1_pipeline_ready_count{0};
+static std::atomic<uint64_t> bonsai_ptq1_dispatch_enqueued_count{0};
+static std::atomic<uint64_t> bonsai_ptq1_fallback_count{0};
+
+extern "C" __attribute__((visibility("default")))
+void BonsaiReadPTQ1TensorOpsCounters(
+        uint64_t * input_type_count,
+        uint64_t * route_selected_count,
+        uint64_t * pipeline_ready_count,
+        uint64_t * dispatch_enqueued_count,
+        uint64_t * fallback_count) {
+    if (input_type_count) {
+        *input_type_count = bonsai_ptq1_input_type_count.load(std::memory_order_relaxed);
+    }
+    if (route_selected_count) {
+        *route_selected_count = bonsai_ptq1_route_selected_count.load(std::memory_order_relaxed);
+    }
+    if (pipeline_ready_count) {
+        *pipeline_ready_count = bonsai_ptq1_pipeline_ready_count.load(std::memory_order_relaxed);
+    }
+    if (dispatch_enqueued_count) {
+        *dispatch_enqueued_count = bonsai_ptq1_dispatch_enqueued_count.load(std::memory_order_relaxed);
+    }
+    if (fallback_count) {
+        *fallback_count = bonsai_ptq1_fallback_count.load(std::memory_order_relaxed);
+    }
+}
+
 static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
     const char *path = std::getenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH");
     if (!path || !*path) { return; }
@@ -226,6 +288,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
     // Record actual operand types in both A/B arms; candidate markers are separate.
     if (std::getenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH") != nullptr &&
         op->src[0]->type == GGML_TYPE_PTQ1_0 && op->src[1]->type == GGML_TYPE_F32) {
+        bonsai_ptq1_input_type_count.fetch_add(1, std::memory_order_relaxed);
         static std::atomic_flag ptq1_input_type_trace_once = ATOMIC_FLAG_INIT;
         if (!ptq1_input_type_trace_once.test_and_set(std::memory_order_relaxed)) {
             bonsai_m5_ptq1_tensor_trace(
@@ -261,6 +324,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         nb01 % ggml_type_size(GGML_TYPE_PTQ1_0) == 0;
 
     if (use_ptq1_tensorops) {
+        bonsai_ptq1_route_selected_count.fetch_add(1, std::memory_order_relaxed);
         static std::atomic_flag ptq1_trace_once = ATOMIC_FLAG_INIT;
         const bool trace_this_dispatch =
             std::getenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH") != nullptr &&
@@ -273,6 +337,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
 
         const auto pipeline = ggml_metal_library_get_pipeline_mul_mm_ptq1_tensorops(lib);
         if (!pipeline.pipeline) {
+            bonsai_ptq1_fallback_count.fetch_add(1, std::memory_order_relaxed);
             ptq1_tensorops_pipeline_failed.store(true, std::memory_order_relaxed);
             if (trace_this_dispatch) {
                 bonsai_m5_ptq1_tensor_trace("BUILD113_PTQ1_TENSOROPS_PIPELINE_READY ok=0");
@@ -281,6 +346,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
             }
             return 0;
         }
+        bonsai_ptq1_pipeline_ready_count.fetch_add(1, std::memory_order_relaxed);
         if (trace_this_dispatch) {
             bonsai_m5_ptq1_tensor_trace(
                 "BUILD113_PTQ1_TENSOROPS_PIPELINE_READY ok=1 nr0=%d nr1=%d nsg=%d",
@@ -315,6 +381,7 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         const int tg2 = ne12 * ne13;
         ggml_metal_encoder_dispatch_threadgroups(
             enc, tg0, tg1, tg2, 32, pipeline.nsg, 1);
+        bonsai_ptq1_dispatch_enqueued_count.fetch_add(1, std::memory_order_relaxed);
         if (trace_this_dispatch) {
             bonsai_m5_ptq1_tensor_trace(
                 "BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED tg0=%d tg1=%d tg2=%d",
@@ -344,6 +411,11 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
             "BUILD113_PTQ1_TENSOROPS_PIPELINE_READY",
             "BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED",
             "BUILD113_PTQ1_TENSOROPS_FALLBACK_TO_PRISM",
+            "BonsaiReadPTQ1TensorOpsCounters",
+            "bonsai_ptq1_route_selected_count",
+            "bonsai_ptq1_pipeline_ready_count",
+            "bonsai_ptq1_dispatch_enqueued_count",
+            "bonsai_ptq1_fallback_count",
         ],
         mm_metal: [MARKER, "ptq1_0_lut[b]", "block_ptq1_0",
                    "kernel_mul_mm_ptq1_tensorops_0_f32",

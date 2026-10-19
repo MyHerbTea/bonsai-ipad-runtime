@@ -9,6 +9,9 @@ ENGINE = ROOT / "BonsaiLab/BonsaiEngine.swift"
 POLICY = ROOT / "BonsaiLab/Build113MetalTensorPolicy.swift"
 PRODUCTION = ROOT / "BonsaiLab/ProductionView.swift"
 SERVER = ROOT / "BonsaiLab/LocalOpenAIServer.swift"
+BRIDGE = ROOT / "BonsaiLab/MTMDProbeBridge.h"
+BINARY_VERIFY = ROOT / "tools/rc126_build113_verify_ptq1_tensorops_binary.sh"
+AB_RUNNER = ROOT / "tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/ptq1_tensorops_ab.py"
 WORKFLOW = ROOT / ".github/workflows/build112-b16-default.yml"
 DOC = ROOT / "docs/optimization/backburner-integration/RC1.26_BUILD113_PTQ1_TENSOROPS_01.md"
 
@@ -17,6 +20,9 @@ engine = ENGINE.read_text(encoding="utf-8")
 policy = POLICY.read_text(encoding="utf-8")
 production = PRODUCTION.read_text(encoding="utf-8")
 server = SERVER.read_text(encoding="utf-8")
+bridge = BRIDGE.read_text(encoding="utf-8")
+binary_verify = BINARY_VERIFY.read_text(encoding="utf-8")
+ab_runner = AB_RUNNER.read_text(encoding="utf-8")
 workflow = WORKFLOW.read_text(encoding="utf-8")
 doc = DOC.read_text(encoding="utf-8")
 
@@ -48,6 +54,24 @@ assert "config.batch == 16" in engine and "config.ubatch == 16" in engine
 assert "enableBuild113PTQ1TensorTrace" in engine
 assert "allowPTQ1TensorOpsCandidateForCurrentModel" in engine
 assert "GGML_METAL_PTQ1_TENSOROPS_DISABLE" in engine
+assert "allowPTQ1TensorOpsCandidate: Bool = false" in engine
+assert "allowPTQ1TensorOpsCandidate" in engine
+startup_start = production.index("private func startAPIServer()")
+ptq1_gate_start = production.index("let allowPTQ1TensorOpsCandidateForModel =", startup_start)
+ptq1_gate_end = production.index("RC126APIStartupLifecycle.begin(", ptq1_gate_start)
+startup_gate = production[ptq1_gate_start:ptq1_gate_end]
+assert "selectedModelIsPTQ1" in startup_gate
+assert "selectedAPIContext == 16_384" in startup_gate
+assert "shapeTrialForThisStart" in startup_gate
+assert "allowPTQ1TensorOpsCandidate: allowPTQ1TensorOpsCandidateForModel" in production
+assert "verify_reference_ptq1_lut" in patch
+assert "PINNED_PRISM_PTQ1_0_LUT_PARITY" in patch
+assert "BonsaiReadPTQ1TensorOpsCounters" in patch and "BonsaiReadPTQ1TensorOpsCounters" in bridge
+assert '"_BonsaiReadPTQ1TensorOpsCounters"' in binary_verify
+for counter in ("route_selected_count", "pipeline_ready_count", "dispatch_enqueued_count", "fallback_count"):
+    assert counter in server, f"missing native PTQ1 counter in debug evidence: {counter}"
+for evidence in ("route_selected_delta", "pipeline_ready_delta", "dispatch_enqueued_delta", "fallback_delta", "backend_evidence_valid", "target_tokens"):
+    assert evidence in ab_runner, f"missing fail-closed A/B evidence: {evidence}"
 assert "实验：PTQ1_0 A/B 固定 16K / B16（下次启动）" in production
 assert "Phase2CMetalTensorLaunchLatch.scheduleNext(" in production
 assert "Phase2DPrefillBatchLaunchLatch.apply(to: &apiRuntime)" in production
@@ -61,4 +85,5 @@ assert "rc126_build113_patch_prism_ptq1_tensorops.py" in workflow
 assert "rc126_build113_ptq1_tensorops_codec_tests.py" in workflow
 assert "verify_ptq1_tensorops_binary.sh" in workflow
 assert "kernel_mul_mm_ptq1_tensorops_0_f32" in workflow
+assert "test_contracts.py" in workflow and "test_ab_logic.py" in workflow
 print("BUILD113_PTQ1_TENSOROPS_CONTRACT: PASS")

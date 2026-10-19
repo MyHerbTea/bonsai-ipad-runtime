@@ -28,6 +28,7 @@ require_string "BUILD113_PTQ1_TENSOROPS_PIPELINE_READY"
 require_string "BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED"
 require_string "BUILD113_PTQ1_TENSOROPS_FALLBACK_TO_PRISM"
 require_symbol "_ggml_metal_library_get_pipeline_mul_mm_ptq1_tensorops"
+require_symbol "_BonsaiReadPTQ1TensorOpsCounters"
 BIN_SHA256="$(shasum -a 256 "$BIN" | awk '{print $1}')"
 {
   echo "schema=ptq1-metal-tensorops-binary-verification-v1"

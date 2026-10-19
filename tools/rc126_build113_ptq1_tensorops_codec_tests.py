@@ -66,6 +66,14 @@ assert "dequantize_ptq1_0_t4" not in PATCH
 assert "GGML_TYPE_PTQ1_0" in PATCH
 assert "block_ptq1_0" in PATCH
 assert "QK_PTQ1_0" in PATCH
+for needle in (
+    "if (e < 80)",
+    "b = block->qs[e & 15]",
+    "b = block->qs[16 + (t & 7)]",
+    "b = block->qh[t & 1]",
+    "ptq1_0_lut[b]",
+):
+    assert needle in PATCH, f"custom Metal decoder mapping missing: {needle}"
 
 for byte in range(256):
     for n in range(5):

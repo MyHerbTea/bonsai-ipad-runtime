@@ -137,7 +137,9 @@ def validate_runtime(snapshot, arm, expected_sha):
     build = snapshot["build"]
     prefill = snapshot["prefill"]
     source_sha = build.get("source_git_sha") or build.get("product_git_sha")
-    if expected_sha and source_sha != expected_sha:
+    if not expected_sha:
+        raise RuntimeError("TestKitIdentity.json has no source_git_sha; refusing an unpinned run")
+    if source_sha != expected_sha:
         raise RuntimeError(f"Installed App SHA mismatch: expected {expected_sha}, observed {source_sha}")
     model_file = prefill.get("model_file_name") or find_key(prefill, ["model_file_name", "main_model"])
     if not model_file or "PTQ1_0" not in str(model_file).upper():
@@ -151,9 +153,34 @@ def validate_runtime(snapshot, arm, expected_sha):
         raise RuntimeError(f"Could not verify runtime shape from /debug/prefill: context={context}, batch={batch}, ubatch={ubatch}")
     if (context, batch, ubatch) != (16384, 16, 16):
         raise RuntimeError(f"Expected 16K/B16/UBatch16; observed {context}/{batch}/{ubatch}")
-    actual_arm = str(snapshot["phase2c"].get("launch_arm") or snapshot["phase2c"].get("arm") or "").upper()
-    if actual_arm and actual_arm != arm:
-        raise RuntimeError(f"Selected arm mismatch: requested {arm}, app reports {actual_arm}")
+
+    phase2c = snapshot["phase2c"]
+    actual_arm = str(phase2c.get("launch_arm") or "").upper()
+    if actual_arm != arm:
+        raise RuntimeError(f"Selected Metal Tensor arm mismatch: expected {arm}, observed {actual_arm or 'MISSING'}")
+    backend_arm = str(phase2c.get("backend_latched_arm") or "").upper()
+    if backend_arm != arm or phase2c.get("backend_evidence_valid") is not True:
+        raise RuntimeError(
+            f"Backend arm evidence invalid: launch={actual_arm}, latched={backend_arm or 'MISSING'}, "
+            f"evidence_valid={phase2c.get('backend_evidence_valid')!r}"
+        )
+
+    phase2d = snapshot["phase2d"]
+    if str(phase2d.get("launch_arm") or "").upper() != "CANDIDATE16":
+        raise RuntimeError(f"Expected active B16 shape trial for both A/B arms; observed {phase2d.get('launch_arm')!r}")
+    if phase2d.get("shape_evidence_valid") is not True:
+        raise RuntimeError("Phase2D B16/UBatch16 shape evidence is invalid")
+    if int(phase2d.get("active_batch", -1)) != 16 or int(phase2d.get("active_ubatch", -1)) != 16:
+        raise RuntimeError("Phase2D does not report active B16/UBatch16")
+
+    trace = prefill.get("ptq1_tensorops_trace") or {}
+    counters = {
+        "input_type_count": int(trace.get("input_type_count", 0) or 0),
+        "route_selected_count": int(trace.get("route_selected_count", 0) or 0),
+        "pipeline_ready_count": int(trace.get("pipeline_ready_count", 0) or 0),
+        "dispatch_enqueued_count": int(trace.get("dispatch_enqueued_count", 0) or 0),
+        "fallback_count": int(trace.get("fallback_count", 0) or 0),
+    }
     return {
         "source_git_sha": source_sha,
         "build_number": build.get("build_number", build.get("build", "unknown")),
@@ -162,7 +189,11 @@ def validate_runtime(snapshot, arm, expected_sha):
         "model_id": "set_from_authenticated_models_response",
         "context": context, "batch": batch, "ubatch": ubatch,
         "arm": arm,
-        "ptq1_trace_initial": prefill.get("ptq1_tensorops_trace", {}),
+        "backend_latched_arm": backend_arm,
+        "backend_evidence_valid": True,
+        "phase2d_launch_arm": phase2d.get("launch_arm"),
+        "ptq1_trace_initial": trace,
+        "ptq1_tensorops_counters_initial": counters,
     }
 
 def load_previous(path):
@@ -170,39 +201,128 @@ def load_previous(path):
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         if zf.testzip() is not None:
             raise RuntimeError("Previous ZIP CRC check failed")
+        names = set(zf.namelist())
+
         def read_json(name):
-            candidates = [n for n in zf.namelist() if n == name or n.endswith("/" + name)]
-            if not candidates:
-                raise RuntimeError(f"Previous ZIP lacks {name}")
+            candidates = [n for n in names if n == name or n.endswith("/" + name)]
+            if len(candidates) != 1:
+                raise RuntimeError(f"Previous ZIP must contain exactly one {name}; found {len(candidates)}")
             return json.loads(zf.read(candidates[0]).decode("utf-8"))
-        return read_json("result.json"), read_json("prompts.json"), read_json("samples.json")
+
+        manifest = read_json("SHA256_MANIFEST.json")
+        if not isinstance(manifest, dict) or not manifest:
+            raise RuntimeError("Previous ZIP has no usable SHA256 manifest")
+        for name, expected_digest in manifest.items():
+            if name not in names:
+                raise RuntimeError(f"Previous ZIP manifest member missing: {name}")
+            observed_digest = sha(zf.read(name))
+            if observed_digest != expected_digest:
+                raise RuntimeError(f"Previous ZIP SHA256 mismatch for {name}")
+
+        result = read_json("result.json")
+        prompts = read_json("prompts.json")
+        samples = read_json("samples.json")
+        identity = read_json("identity.json")
+        if result.get("schema") != "bonsai-ptq1-tensorops-ab-v1":
+            raise RuntimeError("Previous ZIP result schema is unsupported")
+        if result.get("arm") not in ("BASELINE", "CANDIDATE"):
+            raise RuntimeError("Previous ZIP result arm is invalid")
+        if result.get("identity") != identity:
+            raise RuntimeError("Previous ZIP identity.json differs from result.json")
+        if not isinstance(prompts, dict) or not prompts or not isinstance(samples, list):
+            raise RuntimeError("Previous ZIP prompt bank or samples payload is invalid")
+        actual_prompt_hash = sha(json.dumps(prompts, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        if result.get("prompts_sha256") != actual_prompt_hash:
+            raise RuntimeError("Previous ZIP prompt bank hash does not match result.json")
+        target_tokens = sorted(int(key) for key in prompts)
+        if result.get("target_tokens") != target_tokens:
+            raise RuntimeError("Previous ZIP target-token list does not match its prompt bank")
+        return result, prompts, samples
 
 def compare_arms(baseline, candidate):
-    result = {"status": "CANDIDATE_NO_GAIN", "targets": {}, "gate": {}}
+    result = {"status": "BLOCKED_NEEDS_ENGINE_EVIDENCE", "targets": {}, "gate": {}}
+    if baseline.get("arm") != "BASELINE" or candidate.get("arm") != "CANDIDATE":
+        return {**result, "reason": "A/B arms are missing or reversed"}
     if baseline["identity"].get("source_git_sha") != candidate["identity"].get("source_git_sha"):
-        return {"status": "BLOCKED_NEEDS_ENGINE_EVIDENCE", "reason": "App source SHA differs between arms"}
+        return {**result, "reason": "App source SHA differs between arms"}
     for field in ("model_file", "context", "batch", "ubatch", "model_id", "prism_upstream_sha"):
         if baseline["identity"].get(field) != candidate["identity"].get(field):
-            return {"status": "BLOCKED_NEEDS_ENGINE_EVIDENCE", "reason": f"Runtime identity mismatch: {field}"}
+            return {**result, "reason": f"Runtime identity mismatch: {field}"}
     if baseline.get("prompts_sha256") != candidate.get("prompts_sha256"):
-        return {"status": "BLOCKED_NEEDS_ENGINE_EVIDENCE", "reason": "Prompt bank differs between arms"}
+        return {**result, "reason": "Prompt bank differs between arms"}
+    baseline_targets = baseline.get("target_tokens")
+    candidate_targets = candidate.get("target_tokens")
+    if not isinstance(baseline_targets, list) or baseline_targets != candidate_targets or not baseline_targets:
+        return {**result, "reason": "Required input-token targets differ or are missing"}
+    if candidate.get("candidate_route_verified") is not True:
+        return {**result, "reason": "Candidate route evidence did not pass all per-sample gates"}
+
     all_pass = True
-    for target in sorted(set(x["target_tokens"] for x in baseline["samples"]) & set(x["target_tokens"] for x in candidate["samples"])):
-        b = [x for x in baseline["samples"] if x["target_tokens"] == target and x["valid"]]
-        c = [x for x in candidate["samples"] if x["target_tokens"] == target and x["valid"]]
+    blocked = False
+    for target in baseline_targets:
+        b = [x for x in baseline["samples"] if x.get("target_tokens") == target and x.get("valid") is True]
+        c = [x for x in candidate["samples"] if x.get("target_tokens") == target and x.get("valid") is True]
         if len(b) < REPEATS or len(c) < REPEATS:
-            result["targets"][str(target)] = {"status":"BLOCKED","baseline_valid":len(b),"candidate_valid":len(c)}
+            result["targets"][str(target)] = {"status": "BLOCKED", "baseline_valid": len(b), "candidate_valid": len(c)}
             all_pass = False
+            blocked = True
             continue
+
+        if any(
+            int(x.get("route_selected_delta", -1)) != 0
+            or int(x.get("pipeline_ready_delta", -1)) != 0
+            or int(x.get("dispatch_enqueued_delta", -1)) != 0
+            for x in b
+        ):
+            result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Baseline unexpectedly used candidate dispatch"}
+            all_pass = False
+            blocked = True
+            continue
+        if any(
+            int(x.get("route_selected_delta", 0)) <= 0
+            or int(x.get("pipeline_ready_delta", 0)) <= 0
+            or int(x.get("dispatch_enqueued_delta", 0)) <= 0
+            or int(x.get("fallback_delta", -1)) != 0
+            or x.get("successful_inference_after_dispatch") is not True
+            for x in c
+        ):
+            result["targets"][str(target)] = {"status": "BLOCKED", "reason": "Candidate per-sample route/dispatch evidence is incomplete"}
+            all_pass = False
+            blocked = True
+            continue
+        b_thermal = {str(x.get("thermal_state", "unknown")).lower() for x in b}
+        c_thermal = {str(x.get("thermal_state", "unknown")).lower() for x in c}
+        if (
+            not b_thermal or not c_thermal
+            or not b_thermal.issubset({"nominal", "fair"})
+            or not c_thermal.issubset({"nominal", "fair"})
+            or b_thermal != c_thermal
+            or len(b_thermal) != 1 or len(c_thermal) != 1
+        ):
+            result["targets"][str(target)] = {
+                "status": "BLOCKED",
+                "reason": f"Thermal state is missing, unstable, or differs between arms: baseline={sorted(b_thermal)}, candidate={sorted(c_thermal)}"
+            }
+            all_pass = False
+            blocked = True
+            continue
+
         median = lambda rows, key: statistics.median(float(x[key]) for x in rows)
-        bp, cp = median(b,"prefill_tokens_per_second"), median(c,"prefill_tokens_per_second")
-        bt, ct = median(b,"ttft_ms"), median(c,"ttft_ms")
-        bd, cd = median(b,"decode_tokens_per_second"), median(c,"decode_tokens_per_second")
-        bm, cm = median(b,"metal_current_allocated_bytes"), median(c,"metal_current_allocated_bytes")
+        bp, cp = median(b, "prefill_tokens_per_second"), median(c, "prefill_tokens_per_second")
+        bt, ct = median(b, "ttft_ms"), median(c, "ttft_ms")
+        bd, cd = median(b, "decode_tokens_per_second"), median(c, "decode_tokens_per_second")
+        bm, cm = median(b, "metal_current_allocated_bytes"), median(c, "metal_current_allocated_bytes")
+        b_hashes = {
+            int(x["repeat"]): x.get("output_sha256")
+            for x in b if x.get("repeat") is not None and x.get("output_sha256")
+        }
+        c_hashes = {
+            int(x["repeat"]): x.get("output_sha256")
+            for x in c if x.get("repeat") is not None and x.get("output_sha256")
+        }
         oh = all(
-            next((x["output_sha256"] for x in b if x["repeat"] == i), None)
-            == next((x["output_sha256"] for x in c if x["repeat"] == i), None)
-            for i in range(1, REPEATS+1)
+            i in b_hashes and i in c_hashes and b_hashes[i] == c_hashes[i]
+            for i in range(1, REPEATS + 1)
         )
         pg = (cp / bp - 1.0) * 100.0 if bp else 0.0
         tg = (1.0 - ct / bt) * 100.0 if bt else 0.0
@@ -210,19 +330,28 @@ def compare_arms(baseline, candidate):
         memory_delta = cm - bm
         passed = pg >= 15 and tg >= 10 and dg >= -5 and memory_delta <= 1024**3 and oh
         result["targets"][str(target)] = {
-            "baseline_prefill_tok_s_median":bp, "candidate_prefill_tok_s_median":cp,
-            "prefill_improvement_pct":pg, "baseline_ttft_ms_median":bt, "candidate_ttft_ms_median":ct,
-            "ttft_improvement_pct":tg, "baseline_decode_tok_s_median":bd, "candidate_decode_tok_s_median":cd,
-            "decode_change_pct":dg, "metal_allocation_delta_bytes":memory_delta,
-            "deterministic_output_hashes_match":oh, "pass":passed
+            "baseline_prefill_tok_s_median": bp, "candidate_prefill_tok_s_median": cp,
+            "prefill_improvement_pct": pg, "baseline_ttft_ms_median": bt, "candidate_ttft_ms_median": ct,
+            "ttft_improvement_pct": tg, "baseline_decode_tok_s_median": bd, "candidate_decode_tok_s_median": cd,
+            "decode_change_pct": dg, "metal_allocation_delta_bytes": memory_delta,
+            "deterministic_output_hashes_match": oh, "pass": passed
         }
+        if not oh:
+            blocked = True
         all_pass = all_pass and passed
     result["gate"] = {
-        "prefill_improvement_min_pct":15, "ttft_improvement_min_pct":10,
-        "decode_change_min_pct":-5, "metal_allocation_delta_max_bytes":1024**3,
-        "deterministic_output_hashes_must_match":True
+        "prefill_improvement_min_pct": 15, "ttft_improvement_min_pct": 10,
+        "decode_change_min_pct": -5, "metal_allocation_delta_max_bytes": 1024**3,
+        "deterministic_output_hashes_must_match": True
     }
-    result["status"] = "M5_PERFORMANCE_GAIN_VERIFIED" if all_pass and result["targets"] else "CANDIDATE_NO_GAIN"
+    if blocked:
+        result["status"] = "BLOCKED_NEEDS_ENGINE_EVIDENCE"
+    elif all_pass and result["targets"] and all(
+        item.get("pass") is True for item in result["targets"].values()
+    ):
+        result["status"] = "M5_PERFORMANCE_GAIN_VERIFIED"
+    else:
+        result["status"] = "CANDIDATE_NO_GAIN"
     return result
 
 def write_zip(output_path, members):
@@ -249,7 +378,10 @@ def main():
         identity=json.loads(identity_file.read_text(encoding="utf-8"))
         expected_sha=identity.get("source_git_sha")
     health=request_json(base+"/health",key)
-    if health.get("status") not in (None,"ok","ready","READY") and health.get("ready") is False:
+    health_status = health.get("status")
+    if health.get("ready") is False or (
+        health_status is not None and str(health_status).lower() not in ("ok", "ready")
+    ):
         raise RuntimeError(f"API not ready: {health}")
     models=request_json(api+"/models",key).get("data") or []
     if not models:
@@ -293,7 +425,20 @@ def main():
             wall_ms=(time.perf_counter()-started)*1000.0
             after=read_snapshot(base,key)
             obs=get_last_observation(after["prefill"])
+            trace_before=before["prefill"].get("ptq1_tensorops_trace") or {}
             trace=after["prefill"].get("ptq1_tensorops_trace") or {}
+
+            def counter_delta(name):
+                try:
+                    return int(trace.get(name, 0) or 0) - int(trace_before.get(name, 0) or 0)
+                except (TypeError, ValueError):
+                    return -1
+
+            input_type_delta=counter_delta("input_type_count")
+            route_delta=counter_delta("route_selected_count")
+            pipeline_delta=counter_delta("pipeline_ready_count")
+            dispatch_delta=counter_delta("dispatch_enqueued_count")
+            fallback_delta=counter_delta("fallback_count")
             prompt_tokens=response["prompt_tokens"]
             completion_tokens=response["completion_tokens"]
             seq_before=int(pre_observation.get("sequence",0) or 0)
@@ -301,12 +446,30 @@ def main():
             prefill_ms=float(obs.get("prefill_ms",0) or 0)
             ttft_ms=float(obs.get("ttft_ms",0) or 0)
             decode_tps=float(obs.get("tokens_per_second",0) or 0)
-            allocated=int(after["prefill"].get("metal_current_allocated_bytes",0) or 0)
-            headroom=int(after["prefill"].get("metal_working_set_headroom_bytes",0) or 0)
-            thermal=find_key(after["telemetry"],["thermal_state"]) or "unknown"
-            valid=(prompt_tokens==target and completion_tokens==MAX_TOKENS and seq_after>seq_before and prefill_ms>0 and ttft_ms>0 and decode_tps>0)
+            try:
+                ttft_error_ms=float(obs.get("ttft_reconstruction_error_ms"))
+                allocated=int(after["prefill"].get("metal_current_allocated_bytes"))
+                headroom=int(after["prefill"].get("metal_working_set_headroom_bytes"))
+            except (TypeError, ValueError):
+                ttft_error_ms=-1.0
+                allocated=-1
+                headroom=-1
+            thermal=str(find_key(after["telemetry"],["thermal_state"]) or "unknown").lower()
+            thermal_ok=thermal in ("nominal", "fair")
+            valid=(
+                prompt_tokens==target
+                and completion_tokens==MAX_TOKENS
+                and response["finish_reason"] in ("length","stop")
+                and seq_after==seq_before+1
+                and prefill_ms>0 and ttft_ms>0 and decode_tps>0
+                and 0 <= ttft_error_ms <= 50.0
+                and allocated>0 and headroom>=0
+                and thermal_ok
+            )
             if args.arm=="CANDIDATE":
-                valid=valid and trace.get("route_selected") is True and trace.get("pipeline_ready") is True and trace.get("dispatch_enqueued") is True
+                valid=valid and route_delta>0 and pipeline_delta>0 and dispatch_delta>0 and fallback_delta==0
+            else:
+                valid=valid and route_delta==0 and pipeline_delta==0 and dispatch_delta==0
             row={
                 "arm":args.arm,"target_tokens":target,"repeat":valid_count+1 if valid else None,
                 "attempt":attempts,"prompt_tokens":prompt_tokens,"completion_tokens":completion_tokens,
@@ -318,9 +481,17 @@ def main():
                 "output_sha256":response["output_sha256"],"source_git_sha":identity["source_git_sha"],
                 "model_file":identity["model_file"],"model_id":identity["model_id"],
                 "context":identity["context"],"batch":identity["batch"],"ubatch":identity["ubatch"],
-                "trace_state":trace.get("state","UNKNOWN"),"route_selected":trace.get("route_selected",False),
-                "pipeline_ready":trace.get("pipeline_ready",False),"dispatch_enqueued":trace.get("dispatch_enqueued",False),
-                "dispatch_completion_proof":False,"successful_inference_after_dispatch":bool(response["completion_tokens"]>0 and response["finish_reason"] in ("length","stop")),
+                "trace_state":trace.get("state","UNKNOWN"),
+                "input_type_count_delta":input_type_delta,
+                "route_selected_delta":route_delta,"pipeline_ready_delta":pipeline_delta,
+                "dispatch_enqueued_delta":dispatch_delta,"fallback_delta":fallback_delta,
+                "route_selected":route_delta>0,"pipeline_ready":pipeline_delta>0,
+                "dispatch_enqueued":dispatch_delta>0,
+                "dispatch_completion_proof":False,
+                "successful_inference_after_dispatch":bool(
+                    args.arm=="CANDIDATE" and completion_tokens==MAX_TOKENS
+                    and response["finish_reason"] in ("length","stop") and dispatch_delta>0
+                ),
                 "metal_current_allocated_bytes":allocated,"metal_working_set_headroom_bytes":headroom,
                 "thermal_state":thermal,"valid":valid
             }
@@ -332,15 +503,28 @@ def main():
                 print(f"[REJECT] {args.arm} target={target} attempt={attempts}: prompt={prompt_tokens}, output={completion_tokens}, seq={seq_before}->{seq_after}, trace={trace.get('state','UNKNOWN')}")
         if valid_count < REPEATS:
             print(f"[WARNING] only {valid_count}/{REPEATS} valid samples for target {target}; this arm cannot qualify for performance promotion")
+    target_tokens=sorted(int(k) for k in prompts)
+    valid_samples_by_target={
+        str(t):sum(1 for x in sample_rows if x["target_tokens"]==t and x["valid"])
+        for t in target_tokens
+    }
+    candidate_valid_rows=[x for x in sample_rows if x["arm"]=="CANDIDATE" and x["valid"]]
+    candidate_route_verified=(
+        bool(candidate_valid_rows)
+        and all(
+            x["route_selected_delta"]>0 and x["pipeline_ready_delta"]>0
+            and x["dispatch_enqueued_delta"]>0 and x["fallback_delta"]==0
+            and x["successful_inference_after_dispatch"] is True
+            for x in candidate_valid_rows
+        )
+        and all(valid_samples_by_target[str(t)] >= REPEATS for t in target_tokens)
+    ) if args.arm=="CANDIDATE" else None
     current={
         "schema":"bonsai-ptq1-tensorops-ab-v1","created_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "arm":args.arm,"identity":identity,"prompts_sha256":prompts_sha,"samples":sample_rows,
-        "valid_samples_by_target":{str(t):sum(1 for x in sample_rows if x["target_tokens"]==t and x["valid"]) for t in [int(k) for k in prompts]},
-        "candidate_route_verified": all(
-            x["route_selected"] and x["pipeline_ready"] and x["dispatch_enqueued"]
-            for x in sample_rows if x["arm"]=="CANDIDATE" and x["valid"]
-        ) if args.arm=="CANDIDATE" else None,
-        "note":"Dispatch-enqueued is not GPU-completion proof; a valid sample also requires the corresponding API inference to complete successfully."
+        "arm":args.arm,"identity":identity,"prompts_sha256":prompts_sha,"target_tokens":target_tokens,
+        "samples":sample_rows,"valid_samples_by_target":valid_samples_by_target,
+        "candidate_route_verified":candidate_route_verified,
+        "note":"Per-sample route/pipeline/dispatch counters must advance during the request window. A successful API response is required after enqueue; direct Metal command-buffer completion is not exposed, so dispatch_completion_proof remains false."
     }
     comparison=None
     combined_samples=sample_rows

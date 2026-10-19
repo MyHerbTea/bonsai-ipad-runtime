@@ -39,10 +39,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile tools/rc126_build113_patch_prism_m5_nax_pq2.py tools/rc126_build113_patch_prism_ptq1_tensorops.py tools/rc126_build113_ptq1_tensorops_codec_tests.py tools/rc126_build113_ptq1_tensorops_contract_tests.py
+          python3 -m py_compile tools/rc126_build113_patch_prism_m5_nax_pq2.py tools/rc126_build113_patch_prism_ptq1_tensorops.py tools/rc126_build113_ptq1_tensorops_codec_tests.py tools/rc126_build113_ptq1_tensorops_contract_tests.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/ptq1_tensorops_ab.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_contracts.py tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_ab_logic.py
           python3 tools/rc126_build113_m5_nax_pq2_contract_tests.py
           python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py
           python3 tools/rc126_build113_ptq1_tensorops_contract_tests.py
+          python3 tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_contracts.py
+          python3 tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_ab_logic.py
           xcrun swiftc -swift-version 5 \
             BonsaiLab/Build113MetalTensorPolicy.swift \
             tools/rc126_build113_metal_tensor_policy_tests.swift \
