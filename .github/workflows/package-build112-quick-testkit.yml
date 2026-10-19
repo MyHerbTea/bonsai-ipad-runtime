@@ -51,17 +51,11 @@ jobs:
           rm -rf package
           mkdir -p package/Build112-Quick-TestKit
           cp -R tools/BUILD112_QUICK_TESTKIT/. package/Build112-Quick-TestKit/
+          # TensorOps A/B requires an IPA and TestKit built from the same source SHA.
+          # It is shipped only in the paired app+TestKit artifact from build112-b16-default.yml.
+          rm -rf package/Build112-Quick-TestKit/PTQ1_TENSOROPS_AB
           printf '%s\n' 'Build112 PTQ1_0 Auth-Aware Startup TestKit 2.1' > package/Build112-Quick-TestKit/VERSION.txt
           printf '%s\n' "$GITHUB_SHA" > package/Build112-Quick-TestKit/SOURCE_COMMIT.txt
-          cat > package/Build112-Quick-TestKit/PTQ1_TENSOROPS_AB/TestKitIdentity.json <<IDENTITY
-          {
-            "schema": "bonsai-ptq1-tensorops-ab-testkit-identity-v1",
-            "source_git_sha": "$GITHUB_SHA",
-            "build_number": "112",
-            "prism_upstream_sha": "adfffbe41b2cabcd51fff326ab045662265062bb",
-            "testkit_source_sha": "$GITHUB_SHA"
-          }
-          IDENTITY
           (cd package && zip -qr ../BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip Build112-Quick-TestKit)
           sha256sum BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip > BONSAI_BUILD112_PTQ1_AUTH_STARTUP_QUICK_TESTKIT_2_1.zip.sha256
       - name: Upload one-click package
