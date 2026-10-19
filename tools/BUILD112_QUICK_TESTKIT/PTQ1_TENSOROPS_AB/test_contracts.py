@@ -7,6 +7,7 @@ ast.parse(source)
 for needle in (
     'source_git_sha','TestKitIdentity.json has no source_git_sha','PTQ1_0',
     'native_context_batch','native_context_ubatch','backend_evidence_valid',
+    'build79_kv_cache_type','Expected Q4_0 KV cache','kv_cache_type',
     'phase2d_launch_arm','ptq1_tensorops_trace','route_selected_delta',
     'pipeline_ready_delta','dispatch_enqueued_delta','fallback_delta',
     'dispatch_completion_proof','prompt_tokens==target','completion_tokens==MAX_TOKENS',
