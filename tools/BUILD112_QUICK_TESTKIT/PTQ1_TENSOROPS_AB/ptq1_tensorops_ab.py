@@ -669,7 +669,8 @@ def main():
     }
     candidate_attempt_rows=[x for x in sample_rows if x["arm"]=="CANDIDATE"]
     candidate_route_verified=(
-        bool(candidate_attempt_rows)
+        preflight_ok
+        and bool(candidate_attempt_rows)
         and all(
             x["route_selected_delta"]>0 and x["pipeline_ready_delta"]>0
             and x["dispatch_enqueued_delta"]>0 and x["fallback_delta"]==0
@@ -679,11 +680,12 @@ def main():
         and all(valid_samples_by_target[str(t)] >= REPEATS for t in target_tokens)
     ) if args.arm=="CANDIDATE" else None
     current={
-        "schema":"bonsai-ptq1-tensorops-ab-v1","created_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "schema":"bonsai-ptq1-tensorops-ab-v2","created_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "arm":args.arm,"identity":identity,"prompts_sha256":prompts_sha,"target_tokens":target_tokens,
+        "preflight_ok":preflight_ok,"warmups":warmup_rows,
         "samples":sample_rows,"valid_samples_by_target":valid_samples_by_target,
         "candidate_route_verified":candidate_route_verified,
-        "note":"Per-sample route/pipeline/dispatch counters must advance during the request window. A successful API response is required after enqueue; direct Metal command-buffer completion is not exposed, so dispatch_completion_proof remains false."
+        "note":"Every target must pass a warmup preflight before any performance samples are collected. Per-sample route/pipeline/dispatch counters must advance during candidate requests with zero fallback. A successful API response is required after enqueue; direct Metal command-buffer completion is not exposed, so dispatch_completion_proof remains false."
     }
     comparison=None
     combined_samples=sample_rows
@@ -701,6 +703,7 @@ def main():
         "result.json":json.dumps(current,indent=2,ensure_ascii=False).encode(),
         "prompts.json":json.dumps(prompts,indent=2,ensure_ascii=False).encode(),
         "samples.json":json.dumps(sample_rows,indent=2,ensure_ascii=False).encode(),
+        "warmups.json":json.dumps(warmup_rows,indent=2,ensure_ascii=False).encode(),
         "identity.json":json.dumps(identity,indent=2,ensure_ascii=False).encode(),
     }
     if comparison is not None:
@@ -716,8 +719,12 @@ def main():
     if comparison:
         print("AB_STATUS="+comparison["status"])
         print(json.dumps(comparison,indent=2))
-    else:
+    elif preflight_ok:
+        print("PREFLIGHT_STATUS=PASS")
         print("NEXT: switch to the opposite arm, restart the app, and rerun this same TestKit with --previous pointing to this ZIP.")
+    else:
+        print("PREFLIGHT_STATUS=BLOCKED")
+        print("NEXT: do not switch arms or start performance comparison; inspect warmups.json and fix the preflight failure first.")
     return 0
 
 if __name__=="__main__":
