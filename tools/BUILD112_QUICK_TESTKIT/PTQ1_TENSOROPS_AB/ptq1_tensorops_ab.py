@@ -698,6 +698,10 @@ def main():
         str(t):sum(1 for x in sample_rows if x["target_tokens"]==t and x["valid"])
         for t in target_tokens
     }
+    arm_samples_complete = (
+        preflight_ok
+        and all(valid_samples_by_target[str(t)] >= REPEATS for t in target_tokens)
+    )
     candidate_attempt_rows=[x for x in sample_rows if x["arm"]=="CANDIDATE"]
     candidate_route_verified=(
         preflight_ok
@@ -714,6 +718,7 @@ def main():
         "schema":"bonsai-ptq1-tensorops-ab-v2","created_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "arm":args.arm,"identity":identity,"prompts_sha256":prompts_sha,"target_tokens":target_tokens,
         "preflight_ok":preflight_ok,"warmups":warmup_rows,
+        "arm_samples_complete":arm_samples_complete,
         "samples":sample_rows,"valid_samples_by_target":valid_samples_by_target,
         "candidate_route_verified":candidate_route_verified,
         "note":"Every target must pass a warmup preflight before any performance samples are collected. Per-sample route/pipeline/dispatch counters must advance during candidate requests with zero fallback. A successful API response is required after enqueue; direct Metal command-buffer completion is not exposed, so dispatch_completion_proof remains false."
@@ -750,11 +755,17 @@ def main():
     if comparison:
         print("AB_STATUS="+comparison["status"])
         print(json.dumps(comparison,indent=2))
+    elif preflight_ok and arm_samples_complete:
+        print("PREFLIGHT_STATUS=PASS")
+        print("ARM_STATUS=READY_FOR_SECOND_ARM")
+        print("NEXT: switch to the opposite arm, restart the app, and rerun this same TestKit with --previous pointing to this ZIP.")
     elif preflight_ok:
         print("PREFLIGHT_STATUS=PASS")
-        print("NEXT: switch to the opposite arm, restart the app, and rerun this same TestKit with --previous pointing to this ZIP.")
+        print("ARM_STATUS=INCOMPLETE")
+        print("NEXT: do not switch arms yet. Fix rejected/missing samples and rerun until every target has three valid samples.")
     else:
         print("PREFLIGHT_STATUS=BLOCKED")
+        print("ARM_STATUS=BLOCKED")
         print("NEXT: do not switch arms or start performance comparison; inspect warmups.json and fix the preflight failure first.")
     return 0
 
