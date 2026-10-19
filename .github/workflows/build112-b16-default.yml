@@ -251,6 +251,59 @@ jobs:
           (cd build/delivery && zip -qr BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip Bonsai-Build112-PTQ1-TensorOps-AB)
           shasum -a 256 build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip > build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip.sha256
 
+      - name: Verify paired IPA and PTQ1 A/B TestKit delivery
+        if: github.ref_name == 'lab/m5-nax-pq2-01' || github.ref_name == 'fix/ptq1-tensorops-preflight-20261020'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+
+          delivery_path = Path("build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip")
+          delivery_sha_path = Path(str(delivery_path) + ".sha256")
+          expected_delivery_sha = delivery_sha_path.read_text(encoding="utf-8").split()[0]
+          def sha(data):
+              return hashlib.sha256(data).hexdigest()
+          delivery_bytes = delivery_path.read_bytes()
+          assert sha(delivery_bytes) == expected_delivery_sha, "paired delivery ZIP SHA256 mismatch"
+
+          ipa_name = "BonsaiLab-v1-RC1.26-build112-ptq1-auth-startup-unsigned.ipa"
+          ipa_path = Path("build") / ipa_name
+          ipa_bytes = ipa_path.read_bytes()
+          ipa_sha = sha(ipa_bytes)
+          assert ipa_sha == Path(str(ipa_path) + ".sha256").read_text(encoding="utf-8").split()[0], "standalone IPA SHA256 mismatch"
+
+          with zipfile.ZipFile(delivery_path) as archive:
+              assert archive.testzip() is None, "paired delivery ZIP CRC check failed"
+              prefix = "Bonsai-Build112-PTQ1-TensorOps-AB/"
+              names = set(archive.namelist())
+              manifest_name = prefix + "DELIVERY_SHA256SUMS.txt"
+              manifest_lines = archive.read(manifest_name).decode("utf-8").splitlines()
+              manifest = {}
+              for line in manifest_lines:
+                  digest, rel = line.split("  ", 1)
+                  rel = rel.strip().removeprefix("./")
+                  manifest[rel] = digest
+              payload_names = {
+                  name[len(prefix):] for name in names
+                  if name.startswith(prefix) and not name.endswith("/")
+              } - {"DELIVERY_SHA256SUMS.txt"}
+              assert set(manifest) == payload_names, "delivery manifest coverage mismatch"
+              for rel, digest in manifest.items():
+                  assert sha(archive.read(prefix + rel)) == digest, f"delivery manifest mismatch: {rel}"
+
+              identity = json.loads(archive.read(prefix + "PTQ1_TENSOROPS_AB/TestKitIdentity.json"))
+              assert identity.get("source_git_sha") == os.environ["GITHUB_SHA"], "TestKit source SHA differs from app source SHA"
+              assert identity.get("testkit_source_sha") == os.environ["GITHUB_SHA"], "TestKit source SHA pin mismatch"
+              assert identity.get("unsigned_ipa_sha256") == ipa_sha, "TestKit identity does not match paired IPA"
+              assert archive.read(prefix + ipa_name) == ipa_bytes, "paired IPA differs from uploaded IPA"
+              runner = archive.read(prefix + "PTQ1_TENSOROPS_AB/ptq1_tensorops_ab.py").decode("utf-8")
+              assert "bonsai-ptq1-tensorops-ab-v2" in runner, "paired TestKit is missing preflight-gated schema v2"
+              assert "validate_warmup_evidence" in runner, "paired TestKit is missing warmup route preflight"
+          print("PAIRED_IPA_TESTKIT_DELIVERY_INTEGRITY: PASS")
+          PY
+
       - name: Upload Build112 PTQ1 Auth/Startup IPA artifact
         if: github.ref_name == 'lab/m5-nax-pq2-01' || github.ref_name == 'fix/ptq1-tensorops-preflight-20261020'
         uses: actions/upload-artifact@v4
