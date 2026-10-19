@@ -162,6 +162,17 @@ def trace_counter_deltas(before, after):
     }
     return deltas, before_counts, after_counts
 
+def validate_arm_order(arm, previous_arm):
+    if previous_arm is None:
+        if arm != "BASELINE":
+            raise RuntimeError(
+                "First arm must be BASELINE. Candidate-first prompt calibration can execute the custom kernel before the warmup safety gate."
+            )
+        return True
+    if previous_arm != "BASELINE" or arm != "CANDIDATE":
+        raise RuntimeError("A/B order is fixed: run BASELINE first, then CANDIDATE with the baseline result ZIP.")
+    return True
+
 def validate_warmup_evidence(
     arm, target, response, seq_before, seq_after, deltas, before_counts, after_counts
 ):
@@ -482,6 +493,8 @@ def main():
     ap.add_argument("--include-8192", action="store_true")
     ap.add_argument("--output", default=str(ROOT/"RESULTS"))
     args=ap.parse_args()
+    if not args.previous:
+        validate_arm_order(args.arm, None)
     base=normalize_base(args.base_url); api=base+"/v1"
     key=os.environ.get("BONSAI_API_KEY","").strip() or None
     expected_sha=None
@@ -504,8 +517,7 @@ def main():
     identity["model_id"]=model
     if args.previous:
         previous_result, prompts, previous_samples = load_previous(args.previous)
-        if previous_result.get("arm") == args.arm:
-            raise RuntimeError("Previous ZIP uses the same arm; provide the opposite arm")
+        validate_arm_order(args.arm, previous_result.get("arm"))
         prompts_sha=previous_result.get("prompts_sha256")
         previous_identity = previous_result.get("identity", {})
         for field in ("source_git_sha", "model_file", "model_id", "context", "batch", "ubatch", "kv_k", "kv_v", "flash_attention", "sequence_max", "prism_upstream_sha"):
