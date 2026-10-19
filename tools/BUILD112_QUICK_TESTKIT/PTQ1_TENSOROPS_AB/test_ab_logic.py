@@ -112,6 +112,13 @@ def runtime_snapshot(arm):
         },
         "phase2c": {"launch_arm": arm, "backend_latched_arm": arm, "backend_evidence_valid": True},
         "phase2d": {"launch_arm": "CANDIDATE16", "shape_evidence_valid": True, "active_batch": 16, "active_ubatch": 16},
+        "b16_evidence": {
+            "source_git_sha": "a" * 40,
+            "native_context": {
+                "context": 16384, "batch": 16, "ubatch": 16, "sequence_max": 1,
+                "kv_k": "Q4_0", "kv_v": "Q4_0", "flash_attention": True,
+            },
+        },
     }
 
 
@@ -127,6 +134,24 @@ for bad_snapshot, arm, expected in (
         pass
     else:
         raise AssertionError("mismatched arm or source identity was accepted")
+wrong_kv = runtime_snapshot("BASELINE")
+wrong_kv["b16_evidence"]["native_context"]["kv_v"] = "Q8_0"
+try:
+    ab.validate_runtime(wrong_kv, "BASELINE", "a" * 40)
+except RuntimeError as exc:
+    assert "actual Q4_0 KV cache" in str(exc)
+else:
+    raise AssertionError("non-Q4 KV cache was accepted")
+
+wrong_native_shape = runtime_snapshot("BASELINE")
+wrong_native_shape["b16_evidence"]["native_context"]["batch"] = 8
+try:
+    ab.validate_runtime(wrong_native_shape, "BASELINE", "a" * 40)
+except RuntimeError as exc:
+    assert "Native context shape disagrees" in str(exc)
+else:
+    raise AssertionError("native B8 shape with advertised B16 was accepted")
+
 wrong_shape = runtime_snapshot("BASELINE")
 wrong_shape["phase2d"]["launch_arm"] = "BASELINE8"
 try:
