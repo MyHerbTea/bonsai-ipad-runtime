@@ -1593,6 +1593,8 @@ final class LocalOpenAIServer: ObservableObject {
                 device?.hasUnifiedMemory ?? false,
             "metal_recommended_working_set_bytes":
                 Int64(device?.recommendedMaxWorkingSetSize ?? 0),
+            "metal_current_allocated_bytes":
+                Int64(device?.currentAllocatedSize ?? 0),
             "metal_working_set_headroom_bytes": Int64(max(
                 0,
                 Int64(device?.recommendedMaxWorkingSetSize ?? 0)

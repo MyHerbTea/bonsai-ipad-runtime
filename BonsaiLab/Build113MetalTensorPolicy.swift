@@ -1,8 +1,8 @@
 import Foundation
 
 /// Resolves the process-global Metal Tensor setting before the first backend init.
-/// CANDIDATE may enable TensorOps only for an explicitly eligible PQ2_0 model;
-/// all other models remain Tensor-disabled when the experimental arm is selected.
+/// CANDIDATE may enable TensorOps only for an explicitly eligible model/shape.
+/// PQ2_0 uses the existing NAX gate; PTQ1_0 requires its separate 16K/B16 gate.
 enum Build113MetalTensorPolicy {
     static func effectiveDisabled(
         requestedDisabled: Bool,

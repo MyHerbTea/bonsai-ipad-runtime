@@ -49,7 +49,7 @@ assert "enableBuild113PTQ1TensorTrace" in engine
 assert "allowPTQ1TensorOpsCandidateForCurrentModel" in engine
 assert "GGML_METAL_PTQ1_TENSOROPS_DISABLE" in engine
 assert "实验：PTQ1_0 A/B 固定 16K / B16（下次启动）" in production
-assert "BonsaiBuild113PTQ1TensorOpsAB16Enabled" in production
+assert "Phase2CMetalTensorLaunchLatch.scheduleNext(" in production
 assert "Phase2DPrefillBatchLaunchLatch.apply(to: &apiRuntime)" in production
 optimization = (ROOT / "BonsaiLab/RuntimeOptimization.swift").read_text(encoding="utf-8")
 assert "runtime.batch = 16" in optimization and "runtime.ubatch = 16" in optimization
