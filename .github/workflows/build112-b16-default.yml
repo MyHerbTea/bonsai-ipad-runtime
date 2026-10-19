@@ -187,7 +187,7 @@ jobs:
           grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
 
       - name: Verify M5-NAX-PQ2 and PTQ1 final framework binary
-        if: github.ref_name == 'lab/m5-nax-pq2-01'
+        if: github.ref_name == 'lab/m5-nax-pq2-01' || github.ref_name == 'fix/ptq1-tensorops-preflight-20261020'
         shell: bash
         run: |
           set -euo pipefail
@@ -200,7 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
-          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ]; then
+          if [ "$GITHUB_REF_NAME" = "lab/m5-nax-pq2-01" ] || [ "$GITHUB_REF_NAME" = "fix/ptq1-tensorops-preflight-20261020" ]; then
             IPA_NAME="BonsaiLab-v1-RC1.26-build112-ptq1-auth-startup-unsigned.ipa"
           else
             IPA_NAME="BonsaiLab-v1-RC1.26-build112-b16-default-unsigned.ipa"
@@ -252,7 +252,7 @@ jobs:
           shasum -a 256 build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip > build/delivery/BONSAI_BUILD112_PTQ1_TENSOROPS_AB_APP_AND_TESTKIT.zip.sha256
 
       - name: Upload Build112 PTQ1 Auth/Startup IPA artifact
-        if: github.ref_name == 'lab/m5-nax-pq2-01'
+        if: github.ref_name == 'lab/m5-nax-pq2-01' || github.ref_name == 'fix/ptq1-tensorops-preflight-20261020'
         uses: actions/upload-artifact@v4
         with:
           name: BonsaiLab-iPad-v1-RC1.26-Build112-PTQ1-Auth-Startup
