@@ -23,6 +23,10 @@ def fake_arm(arm, targets=(512, 2048), prefill_tps=None, ttft_ms=None, decode_tp
         "context": 16384,
         "batch": 16,
         "ubatch": 16,
+        "kv_k": "Q4_0",
+        "kv_v": "Q4_0",
+        "flash_attention": True,
+        "sequence_max": 1,
         "arm": arm,
     }
     result = {
@@ -65,6 +69,7 @@ def make_zip(path, tamper_samples=False, omit_samples_manifest=False, mismatch_r
         "source_git_sha": "a" * 40,
         "model_file": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
         "context": 16384, "batch": 16, "ubatch": 16,
+        "kv_k": "Q4_0", "kv_v": "Q4_0", "flash_attention": True, "sequence_max": 1,
         "model_id": "bonsai-2-27b-local", "arm": "BASELINE",
     }
     prompt_hash = ab.sha(json.dumps(prompts, sort_keys=True, ensure_ascii=False).encode("utf-8"))
@@ -225,6 +230,10 @@ thermal_mismatch = fake_arm("CANDIDATE")
 for row in thermal_mismatch["samples"]:
     row["thermal_state"] = "fair"
 assert ab.compare_arms(baseline, thermal_mismatch)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
+
+kv_identity_mismatch = fake_arm("CANDIDATE")
+kv_identity_mismatch["identity"]["kv_v"] = "Q8_0"
+assert ab.compare_arms(baseline, kv_identity_mismatch)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
 
 with tempfile.TemporaryDirectory() as directory:
     good = Path(directory) / "good.zip"
