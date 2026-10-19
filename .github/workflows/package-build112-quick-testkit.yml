@@ -41,7 +41,7 @@ jobs:
           python3 tools/build112_quick_testkit_contract_tests.py
           python3 tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/test_contracts.py
           pwsh -File tools/BUILD112_QUICK_TESTKIT/run_build112_quick_test.ps1 -SelfTest
-          pwsh -NoProfile -Command "$e=$null; [System.Management.Automation.Language.Parser]::ParseFile('tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/run_ptq1_tensorops_ab.ps1',[ref]$null,[ref]$e) | Out-Null; if($e.Count -gt 0){$e | Format-List | Out-String | Write-Error; exit 1}"
+          pwsh -NoProfile -Command '$errors=$null; [System.Management.Automation.Language.Parser]::ParseFile("tools/BUILD112_QUICK_TESTKIT/PTQ1_TENSOROPS_AB/run_ptq1_tensorops_ab.ps1",[ref]$null,[ref]$errors) | Out-Null; if($errors.Count -gt 0){$errors | Format-List | Out-String | Write-Error; exit 1}'
       - name: Package one-click PTQ1_0 Auth Startup Quick TestKit 2.1
         shell: bash
         run: |
