@@ -572,94 +572,94 @@ def main():
     if preflight_ok:
         for target_text,prompt_info in prompts.items():
             target=int(target_text); prompt=prompt_info["prompt"]
-        valid_count=0; attempts=0
-        while valid_count < REPEATS and attempts < REPEATS*3:
-            attempts+=1
-            before=read_snapshot(base,key)
-            pre_observation=get_last_observation(before["prefill"])
-            started=time.perf_counter()
-            response=chat(api,key,model,prompt,MAX_TOKENS,f"measure-{target}-{attempts}")
-            wall_ms=(time.perf_counter()-started)*1000.0
-            after=read_snapshot(base,key)
-            obs=get_last_observation(after["prefill"])
-            trace_before=before["prefill"].get("ptq1_tensorops_trace") or {}
-            trace=after["prefill"].get("ptq1_tensorops_trace") or {}
+            valid_count=0; attempts=0
+            while valid_count < REPEATS and attempts < REPEATS*3:
+                attempts+=1
+                before=read_snapshot(base,key)
+                pre_observation=get_last_observation(before["prefill"])
+                started=time.perf_counter()
+                response=chat(api,key,model,prompt,MAX_TOKENS,f"measure-{target}-{attempts}")
+                wall_ms=(time.perf_counter()-started)*1000.0
+                after=read_snapshot(base,key)
+                obs=get_last_observation(after["prefill"])
+                trace_before=before["prefill"].get("ptq1_tensorops_trace") or {}
+                trace=after["prefill"].get("ptq1_tensorops_trace") or {}
 
-            def counter_delta(name):
+                def counter_delta(name):
+                    try:
+                        return int(trace.get(name, 0) or 0) - int(trace_before.get(name, 0) or 0)
+                    except (TypeError, ValueError):
+                        return -1
+
+                input_type_delta=counter_delta("input_type_count")
+                route_delta=counter_delta("route_selected_count")
+                pipeline_delta=counter_delta("pipeline_ready_count")
+                dispatch_delta=counter_delta("dispatch_enqueued_count")
+                fallback_delta=counter_delta("fallback_count")
+                prompt_tokens=response["prompt_tokens"]
+                completion_tokens=response["completion_tokens"]
+                seq_before=int(pre_observation.get("sequence",0) or 0)
+                seq_after=int(obs.get("sequence",0) or 0)
+                prefill_ms=float(obs.get("prefill_ms",0) or 0)
+                ttft_ms=float(obs.get("ttft_ms",0) or 0)
+                decode_tps=float(obs.get("tokens_per_second",0) or 0)
                 try:
-                    return int(trace.get(name, 0) or 0) - int(trace_before.get(name, 0) or 0)
+                    ttft_error_ms=float(obs.get("ttft_reconstruction_error_ms"))
+                    allocated=int(after["prefill"].get("metal_current_allocated_bytes"))
+                    headroom=int(after["prefill"].get("metal_working_set_headroom_bytes"))
                 except (TypeError, ValueError):
-                    return -1
-
-            input_type_delta=counter_delta("input_type_count")
-            route_delta=counter_delta("route_selected_count")
-            pipeline_delta=counter_delta("pipeline_ready_count")
-            dispatch_delta=counter_delta("dispatch_enqueued_count")
-            fallback_delta=counter_delta("fallback_count")
-            prompt_tokens=response["prompt_tokens"]
-            completion_tokens=response["completion_tokens"]
-            seq_before=int(pre_observation.get("sequence",0) or 0)
-            seq_after=int(obs.get("sequence",0) or 0)
-            prefill_ms=float(obs.get("prefill_ms",0) or 0)
-            ttft_ms=float(obs.get("ttft_ms",0) or 0)
-            decode_tps=float(obs.get("tokens_per_second",0) or 0)
-            try:
-                ttft_error_ms=float(obs.get("ttft_reconstruction_error_ms"))
-                allocated=int(after["prefill"].get("metal_current_allocated_bytes"))
-                headroom=int(after["prefill"].get("metal_working_set_headroom_bytes"))
-            except (TypeError, ValueError):
-                ttft_error_ms=-1.0
-                allocated=-1
-                headroom=-1
-            thermal=str(find_key(after["telemetry"],["thermal_state"]) or "unknown").lower()
-            thermal_ok=thermal in ("nominal", "fair")
-            valid=(
-                prompt_tokens==target
-                and completion_tokens==MAX_TOKENS
-                and response["finish_reason"] in ("length","stop")
-                and seq_after==seq_before+1
-                and prefill_ms>0 and ttft_ms>0 and decode_tps>0
-                and 0 <= ttft_error_ms <= 50.0
-                and allocated>0 and headroom>=0
-                and thermal_ok
-            )
-            if args.arm=="CANDIDATE":
-                valid=valid and route_delta>0 and pipeline_delta>0 and dispatch_delta>0 and fallback_delta==0
-            else:
-                valid=valid and route_delta==0 and pipeline_delta==0 and dispatch_delta==0
-            row={
-                "arm":args.arm,"target_tokens":target,"repeat":valid_count+1 if valid else None,
-                "attempt":attempts,"prompt_tokens":prompt_tokens,"completion_tokens":completion_tokens,
-                "ttft_ms":ttft_ms,"prefill_ms":prefill_ms,
-                "prefill_tokens_per_second":(prompt_tokens/(prefill_ms/1000.0)) if prefill_ms>0 else 0,
-                "decode_tokens_per_second":decode_tps,
-                "decode_ms_derived":(completion_tokens/decode_tps*1000.0) if decode_tps>0 else 0,
-                "wall_ms":wall_ms,"finish_reason":response["finish_reason"],
-                "output_sha256":response["output_sha256"],"source_git_sha":identity["source_git_sha"],
-                "model_file":identity["model_file"],"model_id":identity["model_id"],
-                "context":identity["context"],"batch":identity["batch"],"ubatch":identity["ubatch"],
-                "trace_state":trace.get("state","UNKNOWN"),
-                "input_type_count_delta":input_type_delta,
-                "route_selected_delta":route_delta,"pipeline_ready_delta":pipeline_delta,
-                "dispatch_enqueued_delta":dispatch_delta,"fallback_delta":fallback_delta,
-                "route_selected":route_delta>0,"pipeline_ready":pipeline_delta>0,
-                "dispatch_enqueued":dispatch_delta>0,
-                "dispatch_completion_proof":False,
-                "successful_inference_after_dispatch":bool(
-                    args.arm=="CANDIDATE" and completion_tokens==MAX_TOKENS
-                    and response["finish_reason"] in ("length","stop") and dispatch_delta>0
-                ),
-                "metal_current_allocated_bytes":allocated,"metal_working_set_headroom_bytes":headroom,
-                "thermal_state":thermal,"valid":valid
-            }
-            sample_rows.append(row)
-            if valid:
-                valid_count+=1
-                print(f"[{args.arm}] {target} tokens sample {valid_count}/{REPEATS}: prefill={row['prefill_tokens_per_second']:.2f} tok/s, decode={decode_tps:.2f} tok/s, TTFT={ttft_ms:.1f} ms")
-            else:
-                print(f"[REJECT] {args.arm} target={target} attempt={attempts}: prompt={prompt_tokens}, output={completion_tokens}, seq={seq_before}->{seq_after}, trace={trace.get('state','UNKNOWN')}")
-        if valid_count < REPEATS:
-            print(f"[WARNING] only {valid_count}/{REPEATS} valid samples for target {target}; this arm cannot qualify for performance promotion")
+                    ttft_error_ms=-1.0
+                    allocated=-1
+                    headroom=-1
+                thermal=str(find_key(after["telemetry"],["thermal_state"]) or "unknown").lower()
+                thermal_ok=thermal in ("nominal", "fair")
+                valid=(
+                    prompt_tokens==target
+                    and completion_tokens==MAX_TOKENS
+                    and response["finish_reason"] in ("length","stop")
+                    and seq_after==seq_before+1
+                    and prefill_ms>0 and ttft_ms>0 and decode_tps>0
+                    and 0 <= ttft_error_ms <= 50.0
+                    and allocated>0 and headroom>=0
+                    and thermal_ok
+                )
+                if args.arm=="CANDIDATE":
+                    valid=valid and route_delta>0 and pipeline_delta>0 and dispatch_delta>0 and fallback_delta==0
+                else:
+                    valid=valid and route_delta==0 and pipeline_delta==0 and dispatch_delta==0
+                row={
+                    "arm":args.arm,"target_tokens":target,"repeat":valid_count+1 if valid else None,
+                    "attempt":attempts,"prompt_tokens":prompt_tokens,"completion_tokens":completion_tokens,
+                    "ttft_ms":ttft_ms,"prefill_ms":prefill_ms,
+                    "prefill_tokens_per_second":(prompt_tokens/(prefill_ms/1000.0)) if prefill_ms>0 else 0,
+                    "decode_tokens_per_second":decode_tps,
+                    "decode_ms_derived":(completion_tokens/decode_tps*1000.0) if decode_tps>0 else 0,
+                    "wall_ms":wall_ms,"finish_reason":response["finish_reason"],
+                    "output_sha256":response["output_sha256"],"source_git_sha":identity["source_git_sha"],
+                    "model_file":identity["model_file"],"model_id":identity["model_id"],
+                    "context":identity["context"],"batch":identity["batch"],"ubatch":identity["ubatch"],
+                    "trace_state":trace.get("state","UNKNOWN"),
+                    "input_type_count_delta":input_type_delta,
+                    "route_selected_delta":route_delta,"pipeline_ready_delta":pipeline_delta,
+                    "dispatch_enqueued_delta":dispatch_delta,"fallback_delta":fallback_delta,
+                    "route_selected":route_delta>0,"pipeline_ready":pipeline_delta>0,
+                    "dispatch_enqueued":dispatch_delta>0,
+                    "dispatch_completion_proof":False,
+                    "successful_inference_after_dispatch":bool(
+                        args.arm=="CANDIDATE" and completion_tokens==MAX_TOKENS
+                        and response["finish_reason"] in ("length","stop") and dispatch_delta>0
+                    ),
+                    "metal_current_allocated_bytes":allocated,"metal_working_set_headroom_bytes":headroom,
+                    "thermal_state":thermal,"valid":valid
+                }
+                sample_rows.append(row)
+                if valid:
+                    valid_count+=1
+                    print(f"[{args.arm}] {target} tokens sample {valid_count}/{REPEATS}: prefill={row['prefill_tokens_per_second']:.2f} tok/s, decode={decode_tps:.2f} tok/s, TTFT={ttft_ms:.1f} ms")
+                else:
+                    print(f"[REJECT] {args.arm} target={target} attempt={attempts}: prompt={prompt_tokens}, output={completion_tokens}, seq={seq_before}->{seq_after}, trace={trace.get('state','UNKNOWN')}")
+            if valid_count < REPEATS:
+                print(f"[WARNING] only {valid_count}/{REPEATS} valid samples for target {target}; this arm cannot qualify for performance promotion")
     else:
         print("[PREFLIGHT BLOCKED] performance sampling was skipped; a blocked result ZIP will be written.")
     target_tokens=sorted(int(k) for k in prompts)
