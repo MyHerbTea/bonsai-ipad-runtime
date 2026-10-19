@@ -18,8 +18,8 @@ Measure the current PTQ1_0 BASELINE or opt-in CANDIDATE arm on the M5 iPad. The 
 2. Enter the iPad API URL, choose the arm currently active in the app, and enter an API key only if authentication is enabled.
 3. First run: leave the previous ZIP field blank. It calibrates prompts to exactly 512 and 2048 actual input tokens, then performs a warmup preflight for every required length. Only if each warmup proves a completed 128-token inference and the correct route counters (candidate: route + pipeline + dispatch, zero fallback; baseline: zero candidate dispatch) does it collect at least three valid performance samples per length. Calibration, warmups and failed preflight attempts are excluded from performance statistics.
 4. If preflight fails, the runner stops before performance sampling and still writes a blocked result ZIP with `warmups.json` evidence. Do not switch arms or treat it as an A/B result; fix the indicated startup/route issue first.
-5. After a successful first-arm preflight and run, switch the app to the other arm, fully quit/relaunch, and start the API. Run the same kit again, select the previous first-arm ZIP, and keep the same input-length selection. It reuses the exact prompt bank and creates an A/B comparison ZIP.
 5. 8192-token input is optional and increases runtime. Use it only if you want the longer test.
+6. After a successful first-arm preflight and run, switch the app to the other arm, fully quit/relaunch, and start the API. Run the same kit again, select the previous first-arm ZIP, and keep the same input-length selection. It reuses the exact prompt bank and creates an A/B comparison ZIP.
 
 ## Evidence and gates
 - The runner fails closed unless TestKitIdentity.json pins the installed app source SHA, the API reports the requested Phase2C arm and matching backend-latched evidence, and Phase2D confirms active B16/UBatch16. A warmup route preflight for every target must pass before any performance measurements begin.
