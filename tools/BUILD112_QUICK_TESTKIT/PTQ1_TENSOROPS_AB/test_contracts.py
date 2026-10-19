@@ -15,6 +15,7 @@ for needle in (
     'prefill_tokens_per_second','decode_tokens_per_second','metal_working_set_headroom_bytes',
     'SHA256_MANIFEST.json','manifest coverage mismatch','duplicate member names',
     'bonsai-ptq1-tensorops-ab-v2','validate_warmup_evidence','preflight_ok',
+    'arm_samples_complete','ARM_STATUS=READY_FOR_SECOND_ARM','ARM_STATUS=INCOMPLETE',
     'warmups.json','result.json warmups differ from warmups.json',
     'Previous ZIP result.json samples differ from samples.json',
     'Previous ZIP identity arm differs from result arm','candidate_attempt_rows',
