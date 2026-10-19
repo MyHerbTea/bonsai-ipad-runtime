@@ -1564,13 +1564,21 @@ struct ProductionView: View {
                         .foregroundStyle(.secondary)
 
                         Toggle(
-                            "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
+                            modelName.localizedCaseInsensitiveContains("PTQ1_0")
+                                && selectedAPIContextValue == 16_384
+                                ? "实验：PTQ1_0 A/B 固定 16K / B16（下次启动）"
+                                : "实验：M5 NAX-PQ2 Tensor 候选（下次启动）",
                             isOn: $build113NAXCandidateNextLaunch
                         )
                         .onChange(of: build113NAXCandidateNextLaunch) { _, enabled in
                             if enabled {
+                                let ptq1AB = modelName.localizedCaseInsensitiveContains("PTQ1_0")
+                                    && selectedAPIContextValue == 16_384
+                                Phase2DPrefillBatchLaunchLatch.scheduleNext(
+                                    ptq1AB ? .candidate16 : .baseline8
+                                )
+                            } else {
                                 Phase2DPrefillBatchLaunchLatch.scheduleNext(.baseline8)
-                                ptq1B16ShapeOnlyNextLaunch = false
                             }
                             Phase2CMetalTensorLaunchLatch.scheduleNext(
                                 enabled ? .candidate : .baseline
@@ -1578,13 +1586,16 @@ struct ProductionView: View {
                         }
                         .disabled(busy)
                         Text(
-                            "当前进程模式：\(Phase2CMetalTensorLaunchLatch.arm.rawValue)；下次启动：\(build113NAXCandidateNextLaunch ? "CANDIDATE" : "BASELINE")。候选模式会在进程首次 backend init 前启用 Metal Tensor API（包括通用 TensorOps）；必须完全退出并重新打开 App 后生效。默认 BASELINE 保留安全配置。"
+                            modelName.localizedCaseInsensitiveContains("PTQ1_0")
+                                && selectedAPIContextValue == 16_384
+                                ? "PTQ1_0 候选仅在 16K Context + B16/UBatch16 单次试验中允许；候选路由还要求真实 GGML_TYPE_PTQ1_0、F32 activation、M5 TensorOps 能力和匹配矩阵形状。其他情况保持原始安全路径。必须完全退出 App 后重启。"
+                                : "PQ2_0 使用原有 NAX 专用路由。候选模式会在进程首次 backend init 前启用 Metal Tensor API；必须完全退出并重新打开 App 后生效。默认 BASELINE 保留安全配置。"
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
                         Toggle(
-                            "实验：PTQ1_0 16K/B16 形状隔离（TensorOps 关闭，单次）",
+                            "实验：PTQ1_0 16K/B16 形状隔离（关闭候选时为纯形状测试）",
                             isOn: $ptq1B16ShapeOnlyNextLaunch
                         )
                         .onChange(of: ptq1B16ShapeOnlyNextLaunch) { _, enabled in
@@ -1607,7 +1618,7 @@ struct ProductionView: View {
                         }
                         .disabled(busy)
                         Text(
-                            "只验证 PTQ1_0 在 16K Q4 KV 下的 B16/UBatch16 形状，Metal TensorOps 始终关闭。必须完全退出 App 后再启动 API；成功完成一次文本推理后，下次启动自动回到 B8。若进程中断，下次启动也会自动回退到 B8。此项不是性能 A/B。"
+                            "仅当上方 PTQ1_0 A/B 候选关闭时，本开关才是纯形状测试；候选打开时将与本开关组合成 PTQ1_0 16K/B16 单次候选。必须完全退出 App 后再启动 API；候选试验仍会按现有状态机单次执行并回退到 B8。"
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)

@@ -1390,6 +1390,83 @@ final class LocalOpenAIServer: ObservableObject {
         ]
     }
 
+    // Read only allow-listed PTQ1_0 route markers; never expose arbitrary native logs.
+    private func debugPTQ1TensorOpsTraceEvidence() -> [String: Any] {
+        let url = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent(
+            "bonsai_build113_ptq1_tensorops_trace.txt"
+        )
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+            return [
+                "schema": "ptq1-tensorops-trace-evidence-v1",
+                "trace_file_present": false,
+                "input_type_observed": false,
+                "route_selected": false,
+                "pipeline_observed": false,
+                "pipeline_ready": false,
+                "dispatch_enqueued": false,
+                "dispatch_completion_proof": false,
+                "state": "TRACE_FILE_UNAVAILABLE",
+                "markers": [String]()
+            ]
+        }
+        let prefixes = [
+            "BUILD113_PTQ1_TENSOROPS_INPUT_TYPE_OBSERVED",
+            "BUILD113_PTQ1_TENSOROPS_ROUTE_SELECTED",
+            "BUILD113_PTQ1_TENSOROPS_PIPELINE_READY",
+            "BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED",
+            "BUILD113_PTQ1_TENSOROPS_FALLBACK_TO_PRISM"
+        ]
+        let markers = raw.components(separatedBy: .newlines).filter { line in
+            prefixes.contains { line.hasPrefix($0) }
+        }
+        let inputTypeObserved = markers.contains {
+            $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_INPUT_TYPE_OBSERVED")
+        }
+        let routeSelected = markers.contains {
+            $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_ROUTE_SELECTED")
+        }
+        let pipelineLine = markers.first {
+            $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_PIPELINE_READY")
+        }
+        let pipelineReady = pipelineLine?.contains("ok=1") ?? false
+        let dispatchEnqueued = markers.contains {
+            $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_DISPATCH_ENQUEUED")
+        }
+        let fallback = markers.contains {
+            $0.hasPrefix("BUILD113_PTQ1_TENSOROPS_FALLBACK_TO_PRISM")
+        }
+        let state: String
+        if !inputTypeObserved {
+            state = "PTQ1_INPUT_TYPE_NOT_OBSERVED"
+        } else if fallback {
+            state = "CANDIDATE_FELL_BACK_TO_PRISM"
+        } else if !routeSelected {
+            state = "ROUTE_NOT_SELECTED"
+        } else if !pipelineReady {
+            state = "PIPELINE_NOT_READY_OR_INTERRUPTED"
+        } else if !dispatchEnqueued {
+            state = "DISPATCH_NOT_OBSERVED"
+        } else {
+            state = "DISPATCH_ENQUEUED_NOT_COMPLETION_PROOF"
+        }
+        return [
+            "schema": "ptq1-tensorops-trace-evidence-v1",
+            "trace_file_present": true,
+            "input_type_observed": inputTypeObserved,
+            "route_selected": routeSelected,
+            "pipeline_observed": pipelineLine != nil,
+            "pipeline_ready": pipelineReady,
+            "dispatch_enqueued": dispatchEnqueued,
+            "dispatch_completion_proof": false,
+            "fallback_to_prism": fallback,
+            "state": state,
+            "markers": Array(markers.suffix(8))
+        ]
+    }
+
     private func debugPrefillObject() -> [String: Any] {
         let defaults = UserDefaults.standard
         prefillObservationLock.lock()
@@ -1404,6 +1481,7 @@ final class LocalOpenAIServer: ObservableObject {
         let launchArm = Phase2CMetalTensorLaunchLatch.arm
         let requested = launchArm == .candidate
         let m5NaxTrace = debugM5NaxPQ2TraceEvidence()
+        let ptq1TensorTrace = debugPTQ1TensorOpsTraceEvidence()
         let tensorAPIEnabled = m5NaxTrace["tensor_api_enabled"] as? Bool ?? false
         let routeSelected = m5NaxTrace["route_selected"] as? Bool ?? false
         let pipelineReady = m5NaxTrace["pipeline_ready"] as? Bool ?? false
@@ -1515,6 +1593,11 @@ final class LocalOpenAIServer: ObservableObject {
                 device?.hasUnifiedMemory ?? false,
             "metal_recommended_working_set_bytes":
                 Int64(device?.recommendedMaxWorkingSetSize ?? 0),
+            "metal_working_set_headroom_bytes": Int64(max(
+                0,
+                Int64(device?.recommendedMaxWorkingSetSize ?? 0)
+                    - Int64(device?.currentAllocatedSize ?? 0)
+            )),
             "build79_requested_context":
                 defaults.integer(
                     forKey: "BonsaiBuild79RequestedContext"
@@ -1734,7 +1817,8 @@ final class LocalOpenAIServer: ObservableObject {
             ],
             "last": last,
             "last_observation": last,
-            "m5_nax_pq2_trace": m5NaxTrace
+            "m5_nax_pq2_trace": m5NaxTrace,
+            "ptq1_tensorops_trace": ptq1TensorTrace
         ]
     }
 

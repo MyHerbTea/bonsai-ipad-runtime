@@ -41,16 +41,18 @@ for needle in (
     assert needle in patch, f"PTQ1 candidate contract missing: {needle}"
 assert "dequantize_ptq1_0_t4" not in patch
 assert "block_pq2_0" in patch and "block_ptq1_0" in patch
-assert "allowMetalTensorCandidate" in policy
+assert "allowNAXCandidate" in policy and "launchArmRawValue == \"CANDIDATE\"" in policy
 assert "BonsaiBuild113PTQ1TensorOpsAB16Enabled" in engine
 assert "config.context == 16_384" in engine
 assert "config.batch == 16" in engine and "config.ubatch == 16" in engine
 assert "enableBuild113PTQ1TensorTrace" in engine
-assert "shouldTraceNativeContext" in engine and "MODEL_07_CONTEXT_CREATE_BEGIN" in engine
-assert "trace_format=3" in engine and "experiment=\\(experiment)" in engine
+assert "allowPTQ1TensorOpsCandidateForCurrentModel" in engine
+assert "GGML_METAL_PTQ1_TENSOROPS_DISABLE" in engine
 assert "实验：PTQ1_0 A/B 固定 16K / B16（下次启动）" in production
 assert "BonsaiBuild113PTQ1TensorOpsAB16Enabled" in production
-assert "apiRuntime.batch = 16" in production and "apiRuntime.ubatch = 16" in production
+assert "Phase2DPrefillBatchLaunchLatch.apply(to: &apiRuntime)" in production
+optimization = (ROOT / "BonsaiLab/RuntimeOptimization.swift").read_text(encoding="utf-8")
+assert "runtime.batch = 16" in optimization and "runtime.ubatch = 16" in optimization
 assert "ptq1_tensorops_trace" in server
 assert "metal_current_allocated_bytes" in server
 assert "metal_working_set_headroom_bytes" in server and "thermal_state" in server

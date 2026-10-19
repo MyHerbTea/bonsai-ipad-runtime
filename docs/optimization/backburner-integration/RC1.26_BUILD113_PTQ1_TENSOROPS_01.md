@@ -13,13 +13,13 @@ Status: implementation candidate; runtime Metal compilation, M5 dispatch complet
 
 At the pinned Prism revision, GGML_TYPE_PTQ1_0 is the actual GGML weight-type enum 143. Its block size is 128 values: 24 bytes qs, 2 bytes qh and one fp16 scale (28 bytes total). GGUF general.file_type is a separate model-level metadata field; it cannot replace the runtime tensor-type gate.
 
-Prism already instantiates kernel_mul_mm_ptq1_0_f32 and uses dequantize_ptq1_0 to stage decoded half weights for cooperative TensorOps. The app's default policy disables the Tensor API. The existing NAX route is separately gated to GGML_TYPE_PQ2_0 and cannot route PTQ1_0.
+Prism already instantiates kernel_mul_mm_ptq1_0_f32 and uses dequantize_ptq1_0 to stage decoded half weights for cooperative TensorOps. The app's default policy disables the Tensor API. The existing NAX route remains gated to GGML_TYPE_PQ2_0. The model-gated experimental control selects PTQ1_0 only when the PTQ1_0 model and one-shot 16K/B16/UBatch16 trial are active; all other models and shapes remain on the prior policy.
 
 ## Candidate engine change
 
 The opt-in kernel_mul_mm_ptq1_tensorops_0_f32 reuses only the 16x128 cooperative-MMA tile and accumulation structure. It replaces the PQ2 packed-bit decoder with Prism's actual ptq1_0_lut helper. This lookup-table decoder decodes the PTQ1_0 base-3 packing order into a half4 register vector, avoiding the custom kernel's decoded-weight threadgroup staging. This is a testable hypothesis, not a claimed speedup.
 
-Host dispatch requires M5 TensorOps/SIMD-group-matrix capability, actual src0.type == GGML_TYPE_PTQ1_0, actual src1.type == GGML_TYPE_F32, F32 output, non-transposed contiguous layout, K divisible by 128, M >= 16 and divisible by 16, N >= 128, and singleton batch dimensions. The candidate additionally requires the explicit PTQ1_0 16K/B16 A/B opt-in. Default Governor and default Tensor-disabled behavior are unchanged.
+Host dispatch requires M5 TensorOps/SIMD-group-matrix capability, actual src0.type == GGML_TYPE_PTQ1_0, actual src1.type == GGML_TYPE_F32, F32 output, non-transposed contiguous layout, K divisible by 128, M >= 16 and divisible by 16, N >= 128, and singleton batch dimensions. The candidate additionally requires the explicit model-gated PTQ1_0 16K/B16/UBatch16 A/B opt-in. The runtime exports only allow-listed PTQ1 route/pipeline/dispatch markers through /debug/prefill; dispatch-enqueued is explicitly not reported as GPU completion. Default Governor and default Tensor-disabled behavior are unchanged.
 
 If custom pipeline compilation fails, the failure is traced and the op returns to inherited Prism dispatch. A queued dispatch is not treated as GPU completion; the harness pairs its route/pipeline/dispatch markers with a later successful HTTP inference. Runtime GPU errors are never reported as successful candidate runs.
 

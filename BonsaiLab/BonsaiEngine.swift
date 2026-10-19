@@ -60,6 +60,13 @@ actor BonsaiEngine {
     private var hasStagedResidentModelScope = false
     private var backendInitialized = false
     private var allowNAXCandidateForCurrentModel = false
+    private var allowPTQ1TensorOpsCandidateForCurrentModel = false
+
+    private var BonsaiBuild113PTQ1TensorOpsAB16Enabled: Bool {
+        allowPTQ1TensorOpsCandidateForCurrentModel
+            && Phase2CMetalTensorLaunchLatch.arm == .candidate
+            && Phase2DPrefillBatchLaunchLatch.arm == .candidate16
+    }
     // Prism's Metal device registry is process-lifetime even if
     // llama_backend_free() is called. Never clear this latch in-process.
     private var backendRegistryMetalTensorDisabledAtFirstInit: Bool?
@@ -230,9 +237,26 @@ actor BonsaiEngine {
         )
     }
 
+    private func enableBuild113PTQ1TensorTrace() {
+        let url = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent(
+            "bonsai_build113_ptq1_tensorops_trace.txt"
+        )
+        try? Data().write(to: url, options: .atomic)
+        setenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH", url.path, 1)
+        if BonsaiBuild113PTQ1TensorOpsAB16Enabled {
+            unsetenv("GGML_METAL_PTQ1_TENSOROPS_DISABLE")
+        } else {
+            setenv("GGML_METAL_PTQ1_TENSOROPS_DISABLE", "1", 1)
+        }
+    }
+
     private func prepareMetalTensorBackend(
         disabled: Bool
     ) throws {
+        enableBuild113PTQ1TensorTrace()
         let effectiveDisabled = effectiveBuild113MetalTensorDisabled(disabled)
         if Build113MetalTensorPolicy.requiresRestart(
             latchedDisabled: backendRegistryMetalTensorDisabledAtFirstInit,
@@ -327,6 +351,10 @@ actor BonsaiEngine {
         allowNAXCandidate: Bool = false
     ) throws {
         allowNAXCandidateForCurrentModel = allowNAXCandidate
+        allowPTQ1TensorOpsCandidateForCurrentModel =
+            allowNAXCandidate
+            && Phase2CMetalTensorLaunchLatch.arm == .candidate
+            && Phase2DPrefillBatchLaunchLatch.arm == .candidate16
         recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_BEGIN")
         mark("API_COLD_00_BEGIN")
         recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_UNLOAD_BEGIN")
@@ -555,9 +583,19 @@ actor BonsaiEngine {
     }
 
     func loadModel(url: URL, runtime: RuntimeConfig) throws -> ModelMetrics {
-        allowNAXCandidateForCurrentModel =
-            url.lastPathComponent.localizedCaseInsensitiveContains("PQ2_0")
         let config = try runtime.validated()
+        let modelName = url.lastPathComponent
+        let isPTQ1Model = modelName.localizedCaseInsensitiveContains("PTQ1_0")
+        let isPQ2Model = modelName.localizedCaseInsensitiveContains("PQ2_0")
+        allowPTQ1TensorOpsCandidateForCurrentModel =
+            isPTQ1Model
+            && Phase2CMetalTensorLaunchLatch.arm == .candidate
+            && Phase2DPrefillBatchLaunchLatch.arm == .candidate16
+            && config.context == 16_384
+            && config.batch == 16
+            && config.ubatch == 16
+        allowNAXCandidateForCurrentModel =
+            isPQ2Model || allowPTQ1TensorOpsCandidateForCurrentModel
         recordAPIStartupNativeTrace(
             "SWIFT_MODEL_LOAD_ENTER context=\(config.context) batch=\(config.batch) ubatch=\(config.ubatch)"
         )
