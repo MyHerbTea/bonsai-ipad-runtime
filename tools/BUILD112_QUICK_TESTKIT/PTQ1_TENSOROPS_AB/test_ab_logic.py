@@ -23,6 +23,7 @@ def fake_arm(arm, targets=(512, 2048), prefill_tps=None, ttft_ms=None, decode_tp
         "context": 16384,
         "batch": 16,
         "ubatch": 16,
+        "kv_cache_type": "Q4_0",
         "arm": arm,
     }
     result = {
@@ -97,6 +98,7 @@ def runtime_snapshot(arm):
             "native_context_context": 16384,
             "native_context_batch": 16,
             "native_context_ubatch": 16,
+            "build79_kv_cache_type": "Q4_0",
             "ptq1_tensorops_trace": {
                 "input_type_count": 0, "route_selected_count": 0,
                 "pipeline_ready_count": 0, "dispatch_enqueued_count": 0,
@@ -128,6 +130,15 @@ except RuntimeError:
     pass
 else:
     raise AssertionError("non-B16 shape arm was accepted")
+
+wrong_kv = runtime_snapshot("BASELINE")
+wrong_kv["prefill"]["build79_kv_cache_type"] = "Q8_0"
+try:
+    ab.validate_runtime(wrong_kv, "BASELINE", "a" * 40)
+except RuntimeError:
+    pass
+else:
+    raise AssertionError("non-Q4_0 KV cache was accepted")
 
 baseline = fake_arm("BASELINE")
 candidate = fake_arm("CANDIDATE")

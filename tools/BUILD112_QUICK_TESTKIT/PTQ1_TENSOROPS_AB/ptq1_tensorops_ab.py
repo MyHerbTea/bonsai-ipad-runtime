@@ -153,6 +153,9 @@ def validate_runtime(snapshot, arm, expected_sha):
         raise RuntimeError(f"Could not verify runtime shape from /debug/prefill: context={context}, batch={batch}, ubatch={ubatch}")
     if (context, batch, ubatch) != (16384, 16, 16):
         raise RuntimeError(f"Expected 16K/B16/UBatch16; observed {context}/{batch}/{ubatch}")
+    kv_cache_type = str(prefill.get("build79_kv_cache_type") or "").upper()
+    if kv_cache_type != "Q4_0":
+        raise RuntimeError(f"Expected Q4_0 KV cache; observed {kv_cache_type or 'MISSING'}")
 
     phase2c = snapshot["phase2c"]
     actual_arm = str(phase2c.get("launch_arm") or "").upper()
@@ -188,6 +191,7 @@ def validate_runtime(snapshot, arm, expected_sha):
         "model_file": str(model_file),
         "model_id": "set_from_authenticated_models_response",
         "context": context, "batch": batch, "ubatch": ubatch,
+        "kv_cache_type": kv_cache_type,
         "arm": arm,
         "backend_latched_arm": backend_arm,
         "backend_evidence_valid": True,
@@ -245,7 +249,7 @@ def compare_arms(baseline, candidate):
         return {**result, "reason": "A/B arms are missing or reversed"}
     if baseline["identity"].get("source_git_sha") != candidate["identity"].get("source_git_sha"):
         return {**result, "reason": "App source SHA differs between arms"}
-    for field in ("model_file", "context", "batch", "ubatch", "model_id", "prism_upstream_sha"):
+    for field in ("model_file", "context", "batch", "ubatch", "kv_cache_type", "model_id", "prism_upstream_sha"):
         if baseline["identity"].get(field) != candidate["identity"].get(field):
             return {**result, "reason": f"Runtime identity mismatch: {field}"}
     if baseline.get("prompts_sha256") != candidate.get("prompts_sha256"):
