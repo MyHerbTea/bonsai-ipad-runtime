@@ -390,7 +390,20 @@ def main():
             wall_ms=(time.perf_counter()-started)*1000.0
             after=read_snapshot(base,key)
             obs=get_last_observation(after["prefill"])
+            trace_before=before["prefill"].get("ptq1_tensorops_trace") or {}
             trace=after["prefill"].get("ptq1_tensorops_trace") or {}
+
+            def counter_delta(name):
+                try:
+                    return int(trace.get(name, 0) or 0) - int(trace_before.get(name, 0) or 0)
+                except (TypeError, ValueError):
+                    return -1
+
+            input_type_delta=counter_delta("input_type_count")
+            route_delta=counter_delta("route_selected_count")
+            pipeline_delta=counter_delta("pipeline_ready_count")
+            dispatch_delta=counter_delta("dispatch_enqueued_count")
+            fallback_delta=counter_delta("fallback_count")
             prompt_tokens=response["prompt_tokens"]
             completion_tokens=response["completion_tokens"]
             seq_before=int(pre_observation.get("sequence",0) or 0)
@@ -401,9 +414,18 @@ def main():
             allocated=int(after["prefill"].get("metal_current_allocated_bytes",0) or 0)
             headroom=int(after["prefill"].get("metal_working_set_headroom_bytes",0) or 0)
             thermal=find_key(after["telemetry"],["thermal_state"]) or "unknown"
-            valid=(prompt_tokens==target and completion_tokens==MAX_TOKENS and seq_after>seq_before and prefill_ms>0 and ttft_ms>0 and decode_tps>0)
+            valid=(
+                prompt_tokens==target
+                and completion_tokens==MAX_TOKENS
+                and response["finish_reason"] in ("length","stop")
+                and seq_after==seq_before+1
+                and prefill_ms>0 and ttft_ms>0 and decode_tps>0
+                and allocated>=0 and headroom>=0
+            )
             if args.arm=="CANDIDATE":
-                valid=valid and trace.get("route_selected") is True and trace.get("pipeline_ready") is True and trace.get("dispatch_enqueued") is True
+                valid=valid and route_delta>0 and pipeline_delta>0 and dispatch_delta>0 and fallback_delta==0
+            else:
+                valid=valid and route_delta==0 and pipeline_delta==0 and dispatch_delta==0
             row={
                 "arm":args.arm,"target_tokens":target,"repeat":valid_count+1 if valid else None,
                 "attempt":attempts,"prompt_tokens":prompt_tokens,"completion_tokens":completion_tokens,
@@ -415,9 +437,17 @@ def main():
                 "output_sha256":response["output_sha256"],"source_git_sha":identity["source_git_sha"],
                 "model_file":identity["model_file"],"model_id":identity["model_id"],
                 "context":identity["context"],"batch":identity["batch"],"ubatch":identity["ubatch"],
-                "trace_state":trace.get("state","UNKNOWN"),"route_selected":trace.get("route_selected",False),
-                "pipeline_ready":trace.get("pipeline_ready",False),"dispatch_enqueued":trace.get("dispatch_enqueued",False),
-                "dispatch_completion_proof":False,"successful_inference_after_dispatch":bool(response["completion_tokens"]>0 and response["finish_reason"] in ("length","stop")),
+                "trace_state":trace.get("state","UNKNOWN"),
+                "input_type_count_delta":input_type_delta,
+                "route_selected_delta":route_delta,"pipeline_ready_delta":pipeline_delta,
+                "dispatch_enqueued_delta":dispatch_delta,"fallback_delta":fallback_delta,
+                "route_selected":route_delta>0,"pipeline_ready":pipeline_delta>0,
+                "dispatch_enqueued":dispatch_delta>0,
+                "dispatch_completion_proof":False,
+                "successful_inference_after_dispatch":bool(
+                    args.arm=="CANDIDATE" and completion_tokens==MAX_TOKENS
+                    and response["finish_reason"] in ("length","stop") and dispatch_delta>0
+                ),
                 "metal_current_allocated_bytes":allocated,"metal_working_set_headroom_bytes":headroom,
                 "thermal_state":thermal,"valid":valid
             }
@@ -429,15 +459,28 @@ def main():
                 print(f"[REJECT] {args.arm} target={target} attempt={attempts}: prompt={prompt_tokens}, output={completion_tokens}, seq={seq_before}->{seq_after}, trace={trace.get('state','UNKNOWN')}")
         if valid_count < REPEATS:
             print(f"[WARNING] only {valid_count}/{REPEATS} valid samples for target {target}; this arm cannot qualify for performance promotion")
+    target_tokens=sorted(int(k) for k in prompts)
+    valid_samples_by_target={
+        str(t):sum(1 for x in sample_rows if x["target_tokens"]==t and x["valid"])
+        for t in target_tokens
+    }
+    candidate_valid_rows=[x for x in sample_rows if x["arm"]=="CANDIDATE" and x["valid"]]
+    candidate_route_verified=(
+        bool(candidate_valid_rows)
+        and all(
+            x["route_selected_delta"]>0 and x["pipeline_ready_delta"]>0
+            and x["dispatch_enqueued_delta"]>0 and x["fallback_delta"]==0
+            and x["successful_inference_after_dispatch"] is True
+            for x in candidate_valid_rows
+        )
+        and all(valid_samples_by_target[str(t)] >= REPEATS for t in target_tokens)
+    ) if args.arm=="CANDIDATE" else None
     current={
         "schema":"bonsai-ptq1-tensorops-ab-v1","created_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "arm":args.arm,"identity":identity,"prompts_sha256":prompts_sha,"samples":sample_rows,
-        "valid_samples_by_target":{str(t):sum(1 for x in sample_rows if x["target_tokens"]==t and x["valid"]) for t in [int(k) for k in prompts]},
-        "candidate_route_verified": all(
-            x["route_selected"] and x["pipeline_ready"] and x["dispatch_enqueued"]
-            for x in sample_rows if x["arm"]=="CANDIDATE" and x["valid"]
-        ) if args.arm=="CANDIDATE" else None,
-        "note":"Dispatch-enqueued is not GPU-completion proof; a valid sample also requires the corresponding API inference to complete successfully."
+        "arm":args.arm,"identity":identity,"prompts_sha256":prompts_sha,"target_tokens":target_tokens,
+        "samples":sample_rows,"valid_samples_by_target":valid_samples_by_target,
+        "candidate_route_verified":candidate_route_verified,
+        "note":"Per-sample route/pipeline/dispatch counters must advance during the request window. A successful API response is required after enqueue; direct Metal command-buffer completion is not exposed, so dispatch_completion_proof remains false."
     }
     comparison=None
     combined_samples=sample_rows
