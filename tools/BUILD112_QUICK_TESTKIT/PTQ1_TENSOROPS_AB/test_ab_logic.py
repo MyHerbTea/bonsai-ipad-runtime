@@ -57,7 +57,7 @@ def fake_arm(arm, targets=(512, 2048), prefill_tps=None, ttft_ms=None, decode_tp
     return result
 
 
-def make_zip(path, tamper_samples=False):
+def make_zip(path, tamper_samples=False, omit_samples_manifest=False):
     prompts = {"512": {"target_tokens": 512, "actual_tokens": 512, "prompt": " apple"}}
     identity = {
         "source_git_sha": "a" * 40,
@@ -81,6 +81,8 @@ def make_zip(path, tamper_samples=False):
         "identity.json": json.dumps(identity, sort_keys=True).encode(),
     }
     manifest = {name: ab.sha(data) for name, data in members.items()}
+    if omit_samples_manifest:
+        manifest.pop("samples.json")
     if tamper_samples:
         members["samples.json"] = b'[{ "tampered": true }]'
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -172,4 +174,13 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         raise AssertionError("tampered prior-arm ZIP was accepted")
 
-print("PTQ1_TENSOROPS_AB_LOGIC: PASS (target completeness, route evidence, hashes, manifest integrity)")
+    missing_manifest = Path(directory) / "missing_manifest.zip"
+    make_zip(missing_manifest, omit_samples_manifest=True)
+    try:
+        ab.load_previous(missing_manifest)
+    except RuntimeError as exc:
+        assert "manifest coverage mismatch" in str(exc)
+    else:
+        raise AssertionError("ZIP with an unmanifested samples.json was accepted")
+
+print("PTQ1_TENSOROPS_AB_LOGIC: PASS (target completeness, route evidence, hashes, thermal gates, manifest integrity)")
