@@ -240,8 +240,12 @@ def load_previous(path):
             raise RuntimeError("Previous ZIP result arm is invalid")
         if result.get("identity") != identity:
             raise RuntimeError("Previous ZIP identity.json differs from result.json")
+        if identity.get("arm") != result.get("arm"):
+            raise RuntimeError("Previous ZIP identity arm differs from result arm")
         if not isinstance(prompts, dict) or not prompts or not isinstance(samples, list):
             raise RuntimeError("Previous ZIP prompt bank or samples payload is invalid")
+        if result.get("samples") != samples:
+            raise RuntimeError("Previous ZIP result.json samples differ from samples.json")
         actual_prompt_hash = sha(json.dumps(prompts, sort_keys=True, ensure_ascii=False).encode("utf-8"))
         if result.get("prompts_sha256") != actual_prompt_hash:
             raise RuntimeError("Previous ZIP prompt bank hash does not match result.json")
