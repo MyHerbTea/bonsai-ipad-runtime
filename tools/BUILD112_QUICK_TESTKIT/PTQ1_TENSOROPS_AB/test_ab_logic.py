@@ -26,11 +26,13 @@ def fake_arm(arm, targets=(512, 2048), prefill_tps=None, ttft_ms=None, decode_tp
         "arm": arm,
     }
     result = {
-        "schema": "bonsai-ptq1-tensorops-ab-v1",
+        "schema": "bonsai-ptq1-tensorops-ab-v2",
         "arm": arm,
         "identity": identity,
         "prompts_sha256": "b" * 64,
         "target_tokens": list(targets),
+        "preflight_ok": True,
+        "warmups": [],
         "candidate_route_verified": candidate,
         "samples": [],
     }
@@ -67,17 +69,20 @@ def make_zip(path, tamper_samples=False, omit_samples_manifest=False, mismatch_r
     }
     prompt_hash = ab.sha(json.dumps(prompts, sort_keys=True, ensure_ascii=False).encode("utf-8"))
     result = {
-        "schema": "bonsai-ptq1-tensorops-ab-v1",
+        "schema": "bonsai-ptq1-tensorops-ab-v2",
         "arm": "BASELINE",
         "identity": identity,
         "prompts_sha256": prompt_hash,
         "target_tokens": [512],
+        "preflight_ok": True,
+        "warmups": [],
         "samples": [{"fixture_mismatch": True}] if mismatch_result_samples else [],
     }
     members = {
         "result.json": json.dumps(result, sort_keys=True).encode(),
         "prompts.json": json.dumps(prompts, sort_keys=True).encode(),
         "samples.json": b"[]",
+        "warmups.json": b"[]",
         "identity.json": json.dumps(identity, sort_keys=True).encode(),
     }
     manifest = {name: ab.sha(data) for name, data in members.items()}
@@ -131,6 +136,37 @@ except RuntimeError:
 else:
     raise AssertionError("non-B16 shape arm was accepted")
 
+# Warmup smoke gate: candidate route, pipeline, dispatch, inference and fallback must be proven
+# before the benchmark loop is allowed to collect performance samples.
+warmup_response = {"prompt_tokens": 512, "completion_tokens": 128, "finish_reason": "length"}
+candidate_before = {"route_selected_count": 2, "pipeline_ready_count": 2, "dispatch_enqueued_count": 2, "fallback_count": 0}
+candidate_after = {"route_selected_count": 3, "pipeline_ready_count": 3, "dispatch_enqueued_count": 3, "fallback_count": 0}
+candidate_delta = {"route_selected_count": 1, "pipeline_ready_count": 1, "dispatch_enqueued_count": 1, "fallback_count": 0}
+assert ab.validate_warmup_evidence(
+    "CANDIDATE", 512, warmup_response, 7, 8, candidate_delta, candidate_before, candidate_after
+) == (True, "PASS")
+assert ab.validate_warmup_evidence(
+    "CANDIDATE", 512, warmup_response, 7, 8,
+    {"route_selected_count": 0, "pipeline_ready_count": 0, "dispatch_enqueued_count": 0, "fallback_count": 0},
+    candidate_before, candidate_after
+)[0] is False
+fallback_before = dict(candidate_before, fallback_count=1)
+assert ab.validate_warmup_evidence(
+    "CANDIDATE", 512, warmup_response, 7, 8, candidate_delta, fallback_before, dict(candidate_after, fallback_count=1)
+)[0] is False
+assert ab.validate_warmup_evidence(
+    "CANDIDATE", 512, warmup_response, 7, 9, candidate_delta, candidate_before, candidate_after
+)[0] is False
+baseline_zero = {"route_selected_count": 0, "pipeline_ready_count": 0, "dispatch_enqueued_count": 0, "fallback_count": 0}
+assert ab.validate_warmup_evidence(
+    "BASELINE", 512, warmup_response, 7, 8,
+    {"route_selected_count": 0, "pipeline_ready_count": 0, "dispatch_enqueued_count": 0, "fallback_count": 0},
+    baseline_zero, baseline_zero
+) == (True, "PASS")
+assert ab.validate_warmup_evidence(
+    "BASELINE", 512, warmup_response, 7, 8, candidate_delta, baseline_zero, candidate_after
+)[0] is False
+
 baseline = fake_arm("BASELINE")
 candidate = fake_arm("CANDIDATE")
 assert ab.compare_arms(baseline, candidate)["status"] == "M5_PERFORMANCE_GAIN_VERIFIED"
@@ -170,6 +206,7 @@ with tempfile.TemporaryDirectory() as directory:
     make_zip(good)
     result, prompts, samples = ab.load_previous(good)
     assert result["target_tokens"] == [512] and prompts["512"]["actual_tokens"] == 512 and samples == []
+    assert result["preflight_ok"] is True and result["warmups"] == []
 
     bad = Path(directory) / "bad.zip"
     make_zip(bad, tamper_samples=True)
@@ -198,4 +235,8 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         raise AssertionError("ZIP with inconsistent result/sample payloads was accepted")
 
-print("PTQ1_TENSOROPS_AB_LOGIC: PASS (target completeness, every-attempt route evidence, hashes, thermal gates, manifest integrity)")
+failed_preflight = fake_arm("CANDIDATE")
+failed_preflight["preflight_ok"] = False
+assert ab.compare_arms(baseline, failed_preflight)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
+
+print("PTQ1_TENSOROPS_AB_LOGIC: PASS (warmup preflight, target completeness, every-attempt route evidence, hashes, thermal gates, manifest integrity)")
