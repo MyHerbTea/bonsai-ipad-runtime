@@ -348,11 +348,12 @@ actor BonsaiEngine {
 
     func prepareAPIColdStart(
         metalTensorDisabled: Bool,
-        allowNAXCandidate: Bool = false
+        allowNAXCandidate: Bool = false,
+        allowPTQ1TensorOpsCandidate: Bool = false
     ) throws {
         allowNAXCandidateForCurrentModel = allowNAXCandidate
         allowPTQ1TensorOpsCandidateForCurrentModel =
-            allowNAXCandidate
+            allowPTQ1TensorOpsCandidate
             && Phase2CMetalTensorLaunchLatch.arm == .candidate
             && Phase2DPrefillBatchLaunchLatch.arm == .candidate16
         recordAPIStartupNativeTrace("SWIFT_ENGINE_COLD_START_BEGIN")
