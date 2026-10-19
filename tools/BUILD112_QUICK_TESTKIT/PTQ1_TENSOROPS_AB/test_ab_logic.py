@@ -93,6 +93,9 @@ baseline = fake_arm("BASELINE")
 candidate = fake_arm("CANDIDATE")
 assert ab.compare_arms(baseline, candidate)["status"] == "M5_PERFORMANCE_GAIN_VERIFIED"
 
+slow_candidate = fake_arm("CANDIDATE", prefill_tps=110.0, ttft_ms=950.0)
+assert ab.compare_arms(baseline, slow_candidate)["status"] == "CANDIDATE_NO_GAIN"
+
 missing_target = fake_arm("CANDIDATE")
 missing_target["samples"] = [x for x in missing_target["samples"] if x["target_tokens"] == 512]
 assert ab.compare_arms(baseline, missing_target)["status"] == "BLOCKED_NEEDS_ENGINE_EVIDENCE"
