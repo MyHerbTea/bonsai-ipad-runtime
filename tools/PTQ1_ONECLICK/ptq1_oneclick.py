@@ -246,9 +246,14 @@ def check_code(text):
 def write_reports(directory, report):
     directory.mkdir(parents=True,exist_ok=True);clean=scrub(report)
     dump(directory/'report.json',clean)
-    rows=clean.get('samples',[])
-    fields=['stage','candidate','repeat','target_tokens','prompt_tokens','generated_tokens','prefill_s','prefill_tps','ttft_s',
-        'client_first_sse_s','client_first_content_s','client_final_answer_s','decode_tps','wall_s','finish_reason','valid','errors','output_sha256']
+    rows=[]
+    for sample in clean.get('samples',[]):
+        row=dict(sample);actual=row.get('actual',{});memory=row.get('memory',{})
+        row.update({key:actual.get(key) for key in ('context','batch','ubatch','kv_k','kv_v','flags')})
+        row.update({key:memory.get(key) for key in ('sampled_peak_footprint_bytes','min_available_bytes','sampled_peak_metal_bytes','max_thermal_state')})
+        rows.append(row)
+    fields=['stage','candidate','context','batch','ubatch','kv_k','kv_v','flags','repeat','target_tokens','prompt_tokens','generated_tokens','prefill_s','prefill_tps','ttft_s',
+        'client_first_sse_s','client_first_content_s','client_final_answer_s','decode_tps','wall_s','finish_reason','sampled_peak_footprint_bytes','min_available_bytes','sampled_peak_metal_bytes','max_thermal_state','valid','errors','output_sha256']
     with (directory/'samples.csv').open('w',encoding='utf-8-sig',newline='') as handle:
         writer=csv.DictWriter(handle,fieldnames=fields,extrasaction='ignore');writer.writeheader()
         for row in rows:writer.writerow({**row,'errors':';'.join(row.get('errors',[]))})
@@ -263,6 +268,7 @@ def write_reports(directory, report):
     doc+='<p>日常配置：'+escape(clean.get('recommendations',{}).get('daily','待验收'))+'；长输入配置：'+escape(clean.get('recommendations',{}).get('long','待验收'))+'</p>'
     doc+='<p>恢复状态：'+escape(clean.get('restoration','未确认'))+'；稳定性：'+escape(clean.get('stability',{}))+'</p>'
     doc+='<p>门槛：预填充 ≥15%，TTFT ≥10%，解码回退 ≤5%，新增采样峰值 ≤1GiB，可用余量 ≥512MiB；严格输出哈希、质量和持续运行均须通过。</p>'
+    doc+='<h2>参数调优观察（通过全门槛才可采用）</h2><pre>'+escape(json.dumps(clean.get('tuning',{}),ensure_ascii=False,indent=2))+'</pre>'
     doc+='<h2>比较结果</h2><pre>'+comparisons+'</pre><h2>质量结果</h2><pre>'+escape(json.dumps(clean.get('quality',{}),ensure_ascii=False,indent=2))+'</pre>'
     doc+='<h2>请求样本</h2><div class="scroll"><table><tr>'+''.join('<th>'+escape(k)+'</th>' for k in fields)+'</tr>'+table+'</table></div>'
     doc+='<h2>诊断与限制</h2><pre>'+escape(json.dumps(clean.get('errors',[]),ensure_ascii=False,indent=2))+'</pre><p><a href="report.json">完整 JSON</a> · <a href="samples.csv">CSV</a></p></html>'
@@ -657,6 +663,7 @@ class Tournament:
             winner=max(winners,key=rank)
         else:winner=0
         daily,long=self.tune(winner)
+        self.report['tuning']={'observed_daily':daily,'observed_long':long,'automatic_rule':f'输入token+输出预算+512 <= {daily["context"]}时优先日常配置，否则使用容量允许的长配置；采纳状态以最终全门槛为准。','production_promotion':False}
         performance=True
         if winner:
             performance=self.confirm_pair(daily,'daily')['status']=='PERFORMANCE_PASS'

@@ -72,6 +72,9 @@ class Tests(unittest.TestCase):
             b.write_reports(Path(d),report)
             contents=(Path(d)/'report.json').read_text(encoding='utf-8')
             self.assertNotIn('PRIVATE',contents);self.assertNotIn('SECRET',contents);self.assertNotIn('KEY',contents)
+            import csv
+            with (Path(d)/'samples.csv').open(encoding='utf-8-sig') as f:
+                row=next(csv.DictReader(f));self.assertEqual(row['context'],'16384');self.assertEqual(row['kv_k'],'Q4_0')
             import zipfile
             with zipfile.ZipFile(Path(d)/'results.zip') as z:self.assertIsNone(z.testzip())
 if __name__=='__main__':unittest.main()
