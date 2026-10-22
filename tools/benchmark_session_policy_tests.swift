@@ -2,6 +2,11 @@ import Foundation
 
 @main struct BenchmarkPolicyTests {
     static func main() throws {
+        precondition(BenchmarkModelAdmission.accepts(gpuLayers: 56, mmap: true))
+        precondition(BenchmarkModelAdmission.accepts(gpuLayers: 99, mmap: true))
+        precondition(!BenchmarkModelAdmission.accepts(gpuLayers: 0, mmap: true))
+        precondition(!BenchmarkModelAdmission.accepts(gpuLayers: -1, mmap: true))
+        precondition(!BenchmarkModelAdmission.accepts(gpuLayers: 56, mmap: false))
         let gate = BenchmarkSessionControl()
         precondition(gate.enterOrdinary())
         precondition(gate.beginSession() == nil, "ordinary inference excludes benchmark")

@@ -62,3 +62,7 @@
 - 用户 Build112 的系统日志已通过原始产物 UUID/ARM64 地址核实 `ggml_init()` 的 NULL memory-pool 断言。Build114 有原生上下文创建期间的中断日志，但其系统异常未确认，不能直接继承 Build112 根因。
 - Build115 候选解除原生调度器分配失败恢复对日志开关的依赖，全部恢复失败时释放并返回 NULL；详见 [专项记录](PTQ1_BUILD115_STARTUP_RECOVERY.md)。准确源码/构建身份由 HEAD、Actions 和同包 TestKitIdentity 确定。
 - 本地回归与 CI/二进制验证分别记录；设备启动恢复和性能仍为 **NOT_RUN**。现有 RESULTS/current 为 INCOMPLETE、0 样本及旧 App 接口 404，不能据此选出优化赢家。
+
+## Build116 admission correction — 2026-10-22
+
+Build115 同身份真机 API 启动成功，官方模型 hash 正确；竞赛 start 因请求 GPU layers=56 被 >=99 门槛拒绝，capabilities=0。Build116 保留已有模型放置并修正 iPad `Apple M5 GPU` 精确名称解析。[专项事实与验证边界](PTQ1_BUILD116_DEVICE_ADMISSION.md)。性能仍为0样本、INCOMPLETE；Build116 设备验证 NOT_RUN。候选分支与单 artifact 交付方式不变。

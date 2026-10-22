@@ -84,7 +84,7 @@ class IntegrationTests(unittest.TestCase):
         package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);app=root/'build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app';app.mkdir(parents=True)
-            (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleVersion':'115'}));(app/'BonsaiLab').write_bytes(b'synthetic executable')
+            (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleVersion':'116'}));(app/'BonsaiLab').write_bytes(b'synthetic executable')
             tools=root/'tools';kit=tools/'PTQ1_ONECLICK';kit.mkdir(parents=True)
             (kit/'RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd').write_bytes(b'@echo off\necho synthetic test\npause\n')
             (kit/'ptq1_oneclick.py').write_text('# synthetic test')
@@ -96,14 +96,14 @@ class IntegrationTests(unittest.TestCase):
             data=stream.getvalue()
             with patch.object(package,'ROOT',root),patch.object(package,'PYTHON_SHA',hashlib.sha256(data).hexdigest()),patch.object(package.urllib.request,'urlopen',return_value=contextlib.closing(io.BytesIO(data))),patch.dict(os.environ,{'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'1','PRISM_COMMIT':'d'*40}):
                 package.build()
-            output=root/'build/delivery/BONSAI_BUILD115_PTQ1_ONECLICK.zip'
+            output=root/'build/delivery/BONSAI_BUILD116_PTQ1_ONECLICK.zip'
             with zipfile.ZipFile(output) as archive:
                 self.assertIsNone(archive.testzip())
-                launcher=archive.read('Bonsai-Build115-PTQ1/RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd')
+                launcher=archive.read('Bonsai-Build116-PTQ1/RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd')
                 self.assertNotIn(b'\n',launcher.replace(b'\r\n',b''),'Windows CMD must be packaged with CRLF')
                 self.assertFalse(launcher.startswith(b'\xef\xbb\xbf'))
                 self.assertEqual(len([n for n in archive.namelist() if n.endswith('.ipa')]),1)
-                identity=json.loads(archive.read('Bonsai-Build115-PTQ1/TestKitIdentity.json'))
+                identity=json.loads(archive.read('Bonsai-Build116-PTQ1/TestKitIdentity.json'))
                 self.assertEqual(identity['device_validation'],'NOT_RUN')
                 self.assertEqual(identity['source_git_sha'],'a'*40)
 if __name__=='__main__':unittest.main()

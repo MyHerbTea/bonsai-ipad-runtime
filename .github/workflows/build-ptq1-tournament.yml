@@ -1,4 +1,4 @@
-name: Bonsai Build115 PTQ1 One-click Tournament
+name: Bonsai Build116 PTQ1 One-click Tournament
 
 on:
   push:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "115"
+  BUILD_NUMBER: "116"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PRISM_DIR="$RUNNER_TEMP/prism-build115"
+          PRISM_DIR="$RUNNER_TEMP/prism-build116"
           git clone --filter=blob:none https://github.com/PrismML-Eng/llama.cpp.git "$PRISM_DIR"
           git -C "$PRISM_DIR" checkout "$PRISM_COMMIT"
           python3 "$GITHUB_WORKSPACE/tools/rc126_build83_patch_prism_kv_sharding.py" "$PRISM_DIR/src/llama-kv-cache.cpp"
@@ -78,6 +78,8 @@ jobs:
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_ptq1_native_benchmark.py -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 "$GITHUB_WORKSPACE/tools/rc126_build115_patch_scheduler_recovery.py" "$PRISM_DIR"
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_scheduler_allocation_recovery.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build116_patch_ipad_gpu_name.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_ipad_benchmark_admission.py -v 2>&1 | tee -a build/CI_TESTS.txt
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -131,7 +133,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build115 IPA and native ABI
+      - name: Verify Build116 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -172,10 +174,10 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build115-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build116-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD115_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD115_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD116_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD116_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
 

@@ -1027,7 +1027,7 @@ struct ProductionView: View {
                                 .font(.title2.bold())
                             Text("本地 · 离线 · Vision")
                                 .foregroundStyle(.secondary)
-                            Text("1.0 · RC1.26 Build115 PTQ1 Tournament")
+                            Text("1.0 · RC1.26 Build116 PTQ1 Tournament")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

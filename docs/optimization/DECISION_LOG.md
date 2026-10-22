@@ -18,3 +18,7 @@
 ## D09：分配恢复不能依赖诊断日志开关（2026-10-22）
 
 Build112 原始框架 UUID 与系统日志一致，确认 `ggml_init +420` 的前置 abort 为 `ctx->mem_buffer != NULL`。旧 compact/mmap 分配恢复受原生 trace 环境变量门控，16K/B8 没有同等恢复能力。Build115 仅解除该门控并保证失败返回 NULL，保留原分配成功路径和容量规则。[证据与适用边界](PTQ1_BUILD115_STARTUP_RECOVERY.md)：该系统日志不能认证 Build114 为同因；Build115 真机恢复、数值和性能均待测。
+
+## D10：以现有模型放置为比较基线，正确识别 iPad Metal 名称（2026-10-22）
+
+Build115 真机证明生产16K启动请求56 GPU层，不能用请求值99等价于实际全GPU证明；同模型竞赛应保留该放置并记录范围。原生精确型号解析还把 `Apple M5 GPU` 误归 GENERIC。Build116 增加精确末尾归一化与入场行为回归，不绕过模型/硬件/数值和执行证据门槛。[原始观察与状态](PTQ1_BUILD116_DEVICE_ADMISSION.md)；没有性能或默认晋级结论。

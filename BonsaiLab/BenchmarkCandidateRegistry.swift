@@ -1,5 +1,14 @@
 import Foundation
 
+enum BenchmarkModelAdmission {
+    // Compare candidates using the already loaded production model placement.
+    // A request value of 99 is not a native full-offload measurement, and the
+    // validated 16K production path intentionally requests 56 GPU layers.
+    static func accepts(gpuLayers: Int, mmap: Bool) -> Bool {
+        gpuLayers > 0 && mmap
+    }
+}
+
 struct BenchmarkConfiguration: Equatable, Sendable {
     let context: Int
     let batch: Int

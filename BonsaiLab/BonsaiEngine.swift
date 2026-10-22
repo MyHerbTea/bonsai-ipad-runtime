@@ -3806,8 +3806,12 @@ actor BonsaiEngine {
     }
     func benchmarkCapabilities() -> [String: Any] {
         let caps = Int(BonsaiBenchmarkCapabilities())
+        var evidence = BenchmarkTelemetry.evidence()
+        evidence["model_placement"] = ["requested_gpu_layers": appliedRuntime.gpuLayers,
+            "model_layer_count": model.map { Int(llama_model_n_layer($0)) } ?? 0,
+            "scope": "configured_at_model_load", "preserved_across_candidates": true] as [String: Any]
         return ["schema": 1, "capabilities": caps, "candidates": BenchmarkCandidateRegistry.json(capabilities: caps),
-                "hardware": BenchmarkTelemetry.hardware(), "safe_baseline_backend": backendRegistryMetalTensorDisabledAtFirstInit == true, "evidence": BenchmarkTelemetry.evidence(),
+                "hardware": BenchmarkTelemetry.hardware(), "safe_baseline_backend": backendRegistryMetalTensorDisabledAtFirstInit == true, "evidence": evidence,
                 "state": BenchmarkSessionControl.shared.snapshot,
                 "actual": benchmarkConfig?.json as Any? ?? NSNull(),
                 "rejected_configurations": Array(benchmarkRejected),
@@ -3829,8 +3833,8 @@ actor BonsaiEngine {
         guard let native = evidence["native_context"] as? [String: Any],
               let identity = native["model_identity"] as? [String: Any],
               identity["sha256"] as? String == "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
-              appliedRuntime.gpuLayers >= 99, appliedRuntime.loadMode == .mmap else {
-            throw LabError.invalidConfig("WAIT_FOR_OFFICIAL_MODEL_HASH_AND_FULL_GPU_MMAP")
+              BenchmarkModelAdmission.accepts(gpuLayers: appliedRuntime.gpuLayers, mmap: appliedRuntime.loadMode == .mmap) else {
+            throw LabError.invalidConfig("WAIT_FOR_OFFICIAL_MODEL_HASH_AND_GPU_MMAP")
         }
         guard backendRegistryMetalTensorDisabledAtFirstInit == true else {
             throw LabError.invalidConfig("SAFE_BASELINE_REQUIRES_PRODUCTION_TENSOR_DISABLED_LAUNCH")
