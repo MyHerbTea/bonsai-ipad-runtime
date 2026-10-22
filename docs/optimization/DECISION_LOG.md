@@ -14,3 +14,7 @@
 | D08 未归因内存不做“优化” | [旧 T12 状态](../history/CURRENT_STATE_20261013.md)、[候选 R14](release/EVIDENCE_MATRIX.csv)都指出缺 stage-attributed M5 trace | 当前 Q4_0、mmap 与历史 scheduler 补丁是既有机制；无测量不写新收益或 NO_SAFE_WIN | model／Vision hash、分阶段内存峰值与确证失败到位，确定一个主峰，再给单候选 A/B 与回滚 |
 
 每次新增决策：写明原始 SHA／报告、适用范围、判定、失败与回滚、重启条件；若替代旧决策，注明旧编号，不删除历史记录。v2 计划仍 DRAFT，其实验数值不是已经批准的发布默认。
+
+## D09：分配恢复不能依赖诊断日志开关（2026-10-22）
+
+Build112 原始框架 UUID 与系统日志一致，确认 `ggml_init +420` 的前置 abort 为 `ctx->mem_buffer != NULL`。旧 compact/mmap 分配恢复受原生 trace 环境变量门控，16K/B8 没有同等恢复能力。Build115 仅解除该门控并保证失败返回 NULL，保留原分配成功路径和容量规则。[证据与适用边界](PTQ1_BUILD115_STARTUP_RECOVERY.md)：该系统日志不能认证 Build114 为同因；Build115 真机恢复、数值和性能均待测。

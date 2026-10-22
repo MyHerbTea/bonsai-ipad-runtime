@@ -60,3 +60,5 @@ git diff --check
 ## PTQ1 单 IPA 自动竞赛候选
 
 - [Build114 实现、证据边界与一键流程](optimization/PTQ1_ONECLICK_BUILD114.md)
+
+- [Build115 启动恢复、Build112 系统崩溃证据与验证边界](optimization/PTQ1_BUILD115_STARTUP_RECOVERY.md)

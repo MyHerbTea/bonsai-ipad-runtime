@@ -99,6 +99,18 @@
     {
       "pattern": "device_tests/README.md",
       "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/optimization/PTQ1_ONECLICK_BUILD114.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/optimization/PTQ1_BUILD115_STARTUP_RECOVERY.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/superpowers/plans/2026-10-22-ptq1-oneclick-*.md",
+      "status": "DRAFT"
     }
   ],
   "unavailable_historical_links": [

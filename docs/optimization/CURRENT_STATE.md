@@ -55,3 +55,10 @@
 2. Sign/install the unsigned candidate through the existing device installation workflow, select the same model/Vision assets and 32768 context, then double-click RUN_B16_TESTKIT.cmd. Enter the key once; follow full-app-restart prompts. TestKit returns B8 when all arms complete and emits PASS/FAIL/INCOMPLETE with measured scope.
 3. Use real same-identity ABA evidence to decide whether to promote B16. If gates fail, retain evidence and locate the next native Prefill hotspot. No claim of speedup, 32K full-input certification or default promotion before evidence.
 4. Documentation governance is paused. Missing historical Build109 resources remain unavailable; no reconstruction or unrelated Runtime test repair is authorized by this engineering task.
+
+## Build115 PTQ1 startup recovery candidate — 2026-10-22
+
+- 当前授权任务为 `codex/ptq1-oneclick-tournament` 上的 PTQ1 单 IPA 竞赛与启动故障修复；不合并 main，不修改默认性能档位。
+- 用户 Build112 的系统日志已通过原始产物 UUID/ARM64 地址核实 `ggml_init()` 的 NULL memory-pool 断言。Build114 有原生上下文创建期间的中断日志，但其系统异常未确认，不能直接继承 Build112 根因。
+- Build115 候选解除原生调度器分配失败恢复对日志开关的依赖，全部恢复失败时释放并返回 NULL；详见 [专项记录](PTQ1_BUILD115_STARTUP_RECOVERY.md)。准确源码/构建身份由 HEAD、Actions 和同包 TestKitIdentity 确定。
+- 本地回归与 CI/二进制验证分别记录；设备启动恢复和性能仍为 **NOT_RUN**。现有 RESULTS/current 为 INCOMPLETE、0 样本及旧 App 接口 404，不能据此选出优化赢家。

@@ -1,0 +1,21 @@
+{
+  "scope": "Build112 system crash supplied by user; Build114 native startup trace has no exception identity",
+  "system_crash_build": "112",
+  "system_crash_time": "2026-10-22T20:20:46+08:00",
+  "signal": "SIGABRT",
+  "framework_uuid": "77b2c8d7-7528-34bc-8ed3-e7bd28f09644",
+  "artifact_id": 12138143521,
+  "workflow_run_id": 39131432210,
+  "artifact_sha256": "e425153167e149d5d9086d9cb61b84c54de9aef73fba30205d15c62a78e2b204",
+  "framework_sha256": "01ebb8ae3086f3b9b673ae3d8c2ebfb8aa0d712ec22130cb353ad6e6f0ecfb84",
+  "ggml_init_address": "0x233d64",
+  "caller_return_address": "0x233f08",
+  "caller_return_offset": 420,
+  "abort_call_address": "0x233f04",
+  "assertion_string_address": "0x457115",
+  "assertion": "ctx->mem_buffer != NULL",
+  "source": "pinned Prism adfffbe41b2cabcd51fff326ab045662265062bb ggml/src/ggml.c:1661",
+  "method": "Matched original framework LC_UUID; decoded ARM64 ADRP/ADD string references and BL at ggml_init+416. Return offset +420 identifies preceding call.",
+  "build114_device_root_cause": "NOT_CONFIRMED",
+  "build115_device_validation": "NOT_RUN"
+}
