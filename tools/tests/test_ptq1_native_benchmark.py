@@ -113,6 +113,7 @@ int main() {
     assert(BonsaiNativeBenchmarkCounter(10) == 0);
 }
 """
+        (ROOT / 'deliveries').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='ptq1-native-', dir=ROOT / 'deliveries') as folder:
             cpp = Path(folder) / 'control.cpp'
             binary = Path(folder) / ('control.exe' if os.name == 'nt' else 'control')
