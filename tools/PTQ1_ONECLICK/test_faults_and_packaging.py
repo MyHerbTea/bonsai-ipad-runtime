@@ -15,7 +15,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 import ptq1_oneclick as b
-from test_oneclick import IDENTITY, CONFIG
+from test_oneclick import IDENTITY, CONFIG, sample
 
 class Handler(BaseHTTPRequestHandler):
     calls=[]
@@ -51,6 +51,33 @@ class IntegrationTests(unittest.TestCase):
                 self.assertIn(tournament.config_id(CONFIG),checkpoint['blacklist'])
                 self.assertNotIn('test-key-never-persist',(Path(d)/'checkpoint.json').read_text())
         finally:server.shutdown();server.server_close();thread.join(2)
+    def test_recovery_quarantines_attempted_shape_not_old_marker(self):
+        class FakeClient:
+            session=None
+            def __init__(self):self.calls=[]
+            def request(self,command,body=None,**kwargs):
+                self.calls.append(command)
+                if command=='/health':return {'model':'official'}
+                if command=='/v1/models':return {'data':[]}
+                if command=='status':return {'state':{'active':False}}
+                if command=='capabilities':return {'capabilities':7,'state':{'active':False},'hardware':{'eligible':True},'safe_baseline_backend':True,
+                    'evidence':sample()['evidence'],'prior_interrupted':sample()['actual']}
+                if command=='start':return {'session_id':'synthetic','capabilities':7}
+                raise AssertionError(command)
+        for fault_flags in (1,0):
+            with self.subTest(fault_flags=fault_flags),tempfile.TemporaryDirectory() as d:
+                directory=Path(d);config=dict(CONFIG,flags=fault_flags)
+                b.dump(directory/'checkpoint.json',{'source':IDENTITY['source_git_sha'],'model':IDENTITY['official_model']['sha256'],
+                    'process_id':'prior-process','in_flight':{'config':config,'key':'uncertain'},'blacklist':[]})
+                client=FakeClient();tournament=b.Tournament(client,IDENTITY,directory)
+                if fault_flags==0:
+                    with self.assertRaises(b.EvidenceError):tournament.prepare()
+                    self.assertNotIn('start',client.calls)
+                else:
+                    self.assertTrue(tournament.prepare())
+                    self.assertIn(tournament.config_id(config),tournament.blacklist)
+                    self.assertNotIn(tournament.config_id(CONFIG),tournament.blacklist)
+
     def test_delivery_contains_one_ipa_portable_runtime_and_identity(self):
         script=Path(__file__).resolve().parents[1]/'package_ptq1_oneclick.py'
         spec=importlib.util.spec_from_file_location('package_under_test',script)

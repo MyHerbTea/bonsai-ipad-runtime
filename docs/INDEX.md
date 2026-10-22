@@ -56,3 +56,7 @@ git diff --check
 ```
 
 校验只证明文档分类、相对文件链接、候选引用范围、main／CI／baseline 快照 SHA 和现行工作区规则一致，以及已完成交接保持 HISTORICAL；不要求开发分支 HEAD 等于 main，不检查远端页面存活、构建、推理或设备性能。
+
+## PTQ1 单 IPA 自动竞赛候选
+
+- [Build114 实现、证据边界与一键流程](optimization/PTQ1_ONECLICK_BUILD114.md)

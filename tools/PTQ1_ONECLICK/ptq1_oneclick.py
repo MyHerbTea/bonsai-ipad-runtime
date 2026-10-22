@@ -158,7 +158,7 @@ def read_sse(response, began, clock=time.perf_counter, observer=None):
             if event=='error':raise APIError('ENGINE_REQUEST_FAILED')
             if event=='delta':
                 piece=data.get('content','');joined+=piece
-                if piece and content is None:content=now
+                if piece.strip() and content is None:content=now
                 if '<think>' in joined:thinking=True
                 if final is None:
                     if thinking and '</think>' in joined and joined.split('</think>',1)[1].strip():final=now
@@ -212,13 +212,16 @@ def parse_code(text):
         if len(blocks)!=1:raise ValueError('one code block required')
         code=blocks[0]
     tree=ast.parse(code)
-    allowed=(ast.Module,ast.FunctionDef,ast.arguments,ast.arg,ast.Return,ast.Assign,ast.For,ast.While,ast.If,ast.IfExp,
+    allowed=(ast.Module,ast.FunctionDef,ast.arguments,ast.arg,ast.Expr,ast.Return,ast.Assign,ast.For,ast.While,ast.If,ast.IfExp,
         ast.Compare,ast.Name,ast.Load,ast.Store,ast.Constant,ast.BinOp,ast.UnaryOp,ast.BoolOp,ast.List,ast.Tuple,
         ast.Call,ast.Add,ast.Sub,ast.Mult,ast.Mod,ast.FloorDiv,ast.Eq,ast.NotEq,ast.Lt,ast.LtE,ast.Gt,ast.GtE,
         ast.And,ast.Or,ast.Not,ast.USub,ast.UAdd,ast.AugAssign,ast.Pass,ast.Break,ast.Continue,ast.Subscript,ast.Slice,ast.ListComp,ast.comprehension)
     if len(code)>20000 or len(list(ast.walk(tree)))>2000:raise ValueError('too large')
     if len(tree.body)!=1 or not isinstance(tree.body[0],ast.FunctionDef) or tree.body[0].name!='sum_even':raise ValueError('function only')
-    if tree.body[0].decorator_list or tree.body[0].returns or tree.body[0].args.defaults:raise ValueError('simple function required')
+    if tree.body[0].decorator_list or tree.body[0].args.defaults:raise ValueError('simple function required')
+    annotations=[tree.body[0].returns]+[arg.annotation for arg in tree.body[0].args.args]
+    for annotation in annotations:
+        if annotation is not None and not (isinstance(annotation,ast.Name) and annotation.id=='int') and not (isinstance(annotation,ast.Constant) and annotation.value=='int'):raise ValueError('only integer annotations allowed')
     for node in ast.walk(tree):
         if not isinstance(node,allowed):raise ValueError('unsupported Python construct')
         if isinstance(node,ast.Name) and node.id.startswith('_'):raise ValueError('private names denied')
@@ -227,7 +230,7 @@ def parse_code(text):
 
 def code_worker(text):
     tree=parse_code(text)
-    scope={'__builtins__':{'sum':sum,'range':range,'len':len,'abs':abs}}
+    scope={'__builtins__':{'sum':sum,'range':range,'len':len,'abs':abs,'int':int}}
     exec(compile(tree,'<generated_quality_check>','exec'),scope)
     f=scope['sum_even']
     return all(f(n)==sum(range(0,n+1,2)) for n in (0,1,2,10,101,1000))
@@ -339,6 +342,7 @@ class Tournament:
         self.process=evidence['process_id'];self.report['hardware']=caps['hardware'];self.report['engine_evidence']=evidence
         self.original_runtime=dict(native)
         if caps.get('safe_baseline_backend') is not True:raise EvidenceError('BASELINE_BACKEND_NOT_PRODUCTION_SAFE_RELAUNCH_ONCE')
+        flight=None
         checkpoint=self.directory/'checkpoint.json'
         if checkpoint.exists():
             previous=json.loads(checkpoint.read_text(encoding='utf-8-sig'))
@@ -364,9 +368,10 @@ class Tournament:
                 self.original_runtime=restored.get('evidence',{}).get('native_context')
         elif caps.get('state',{}).get('active'):raise EvidenceError('ANOTHER_BENCHMARK_SESSION_ACTIVE')
         marker=caps.get('prior_interrupted')
-        if marker and isinstance(marker,dict) and not caps.get('state',{}).get('active'):
+        if marker and isinstance(marker,dict) and not caps.get('state',{}).get('active') and not flight:
             config={'flags':marker['flags'],'context':marker['context'],'batch':marker['batch'],'kv':marker['kv_k']}
             self.blacklist.add(self.config_id(config));self.report['errors'].append({'code':'APP_PREVIOUS_INTERRUPTED_CONFIG_QUARANTINED','config':config})
+        if self.config_id(self.config()) in self.blacklist:raise EvidenceError('BASELINE_QUARANTINED_DO_NOT_REPEAT_FAULT')
         started=self.client.request('start',{},timeout=240)
         self.client.session=started['session_id'];self.capabilities=started['capabilities'];self.report['capabilities']=self.capabilities
         self.configuration_memory[self.config_id(self.config())]=started.get('configuration_memory',{})

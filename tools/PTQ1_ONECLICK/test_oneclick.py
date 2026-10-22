@@ -63,6 +63,7 @@ class Tests(unittest.TestCase):
     def test_quality_code_exec_is_restricted(self):
         good='def sum_even(n):\n    return sum(range(0, n+1, 2))'
         self.assertTrue(b.check_code(good))
+        self.assertTrue(b.check_code('def sum_even(n: int) -> int:\n    \"\"\"Sum even integers.\"\"\"\n    return sum(range(0,n+1,2))'))
         self.assertFalse(b.check_code('import os\nos.remove("x")'))
         self.assertFalse(b.check_code('def sum_even(n):\n    return ().__class__'))
     def test_redaction_and_result_zip(self):

@@ -3858,6 +3858,9 @@ actor BonsaiEngine {
             throw LabError.invalidConfig("BENCHMARK_CONFIGURATION_UNAVAILABLE")
         }
         if candidate == benchmarkConfig, context != nil { return benchmarkCapabilities() }
+        // Persist the attempted shape before native allocation, so a process death
+        // points to the failing attempt rather than the previously working arm.
+        UserDefaults.standard.set(candidate.json, forKey: "BonsaiBenchmarkInterrupted")
         let configureTelemetry = BenchmarkTelemetry()
         let previous = benchmarkConfig
         if let context { llama_synchronize(context); llama_free(context); self.context = nil }

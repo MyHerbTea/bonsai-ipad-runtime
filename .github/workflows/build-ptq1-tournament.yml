@@ -153,12 +153,12 @@ jobs:
           strings "$FRAMEWORK" > build/llama-strings.txt
           grep -q 'kernel_mul_mv_ptq1_0_f32_bonsai_r5' build/llama-strings.txt
           grep -q 'kernel_mul_mm_ptq1_tensorops_0_f32' build/llama-strings.txt
-          nm -gU "$APP/BonsaiLab" > build/app-symbols.txt
-          if ! grep -q '_BonsaiBenchmarkConfigure' build/app-symbols.txt; then
-            nm "$APP/BonsaiLab" | grep 'BonsaiBenchmark' || true
-            echo '::error::App bridge symbol missing from global table'
-            exit 1
-          fi
+          # App wrappers are directly linked and legitimately localized by ld.
+          # Only the framework dlsym targets above require global exports.
+          nm -U "$APP/BonsaiLab" > build/app-symbols.txt
+          for symbol in BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation; do
+            grep -Eq "[[:space:]][tT][[:space:]]_$symbol$" build/app-symbols.txt
+          done
 
       - name: Package one IPA and portable one-click kit
         shell: bash
