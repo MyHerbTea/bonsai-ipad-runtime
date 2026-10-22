@@ -15,6 +15,7 @@ env:
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
+    needs: windows-launcher
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -174,3 +175,14 @@ jobs:
             build/delivery/BONSAI_BUILD114_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
+
+  windows-launcher:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Real CMD execution, paths and retained failure window
+        run: python -m unittest discover -s tools/tests -p test_windows_launcher.py -v

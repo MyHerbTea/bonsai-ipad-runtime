@@ -18,6 +18,11 @@ def sha(path):
     with path.open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
+def windows_cmd_bytes(data):
+    # Git checkouts on macOS/Linux must not leak LF-only CMDs into Windows ZIPs.
+    text = data.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+    return text.replace("\n", "\r\n").encode("utf-8")
+
 def build():
     app = ROOT / "build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
     assert app.is_dir(), "Release app missing"
@@ -29,7 +34,10 @@ def build():
     assert not any(kit.iterdir()), "Refuse stale delivery directory"
     for file in (ROOT / "tools/PTQ1_ONECLICK").iterdir():
         if file.is_file() and file.suffix in (".py", ".cmd", ".txt", ".md", ".json"):
-            shutil.copy2(file, kit / file.name)
+            if file.suffix.lower() == ".cmd":
+                (kit / file.name).write_bytes(windows_cmd_bytes(file.read_bytes()))
+            else:
+                shutil.copy2(file, kit / file.name)
     ipa = kit / "BonsaiLab-Build114-PTQ1-unsigned.ipa"
     with zipfile.ZipFile(ipa, "w", zipfile.ZIP_DEFLATED) as archive:
         for file in sorted(app.rglob("*")):

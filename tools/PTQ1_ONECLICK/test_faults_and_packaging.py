@@ -86,7 +86,7 @@ class IntegrationTests(unittest.TestCase):
             root=Path(d);app=root/'build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app';app.mkdir(parents=True)
             (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleVersion':'114'}));(app/'BonsaiLab').write_bytes(b'synthetic executable')
             tools=root/'tools';kit=tools/'PTQ1_ONECLICK';kit.mkdir(parents=True)
-            (kit/'RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd').write_text('@echo synthetic test')
+            (kit/'RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd').write_bytes(b'@echo off\necho synthetic test\npause\n')
             (kit/'ptq1_oneclick.py').write_text('# synthetic test')
             (tools/'ptq1_official_model.json').write_text(json.dumps(IDENTITY['official_model']))
             for name in ('CI_TESTS.txt','build.log','llama-symbols.txt','app-symbols.txt'):(root/'build'/name).write_text('SYNTHETIC TEST FIXTURE')
@@ -99,6 +99,9 @@ class IntegrationTests(unittest.TestCase):
             output=root/'build/delivery/BONSAI_BUILD114_PTQ1_ONECLICK.zip'
             with zipfile.ZipFile(output) as archive:
                 self.assertIsNone(archive.testzip())
+                launcher=archive.read('Bonsai-Build114-PTQ1/RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd')
+                self.assertNotIn(b'\n',launcher.replace(b'\r\n',b''),'Windows CMD must be packaged with CRLF')
+                self.assertFalse(launcher.startswith(b'\xef\xbb\xbf'))
                 self.assertEqual(len([n for n in archive.namelist() if n.endswith('.ipa')]),1)
                 identity=json.loads(archive.read('Bonsai-Build114-PTQ1/TestKitIdentity.json'))
                 self.assertEqual(identity['device_validation'],'NOT_RUN')
