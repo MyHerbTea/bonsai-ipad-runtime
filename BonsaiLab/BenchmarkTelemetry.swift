@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Metal
 import UIKit
 
@@ -34,12 +35,25 @@ final class BenchmarkTelemetry: @unchecked Sendable {
         queue.sync {}
         sample()
         lock.lock(); defer { lock.unlock() }
-        return ["sampled_peak_footprint_bytes": peak, "min_available_bytes": available,
+        var usage = rusage()
+        let peakResident = getrusage(RUSAGE_SELF, &usage) == 0 ? UInt64(max(0, usage.ru_maxrss)) : 0
+        return ["process_lifetime_peak_resident_bytes": peakResident, "sampled_peak_footprint_bytes": peak, "min_available_bytes": available,
                 "sampled_peak_metal_bytes": metal, "samples": samples,
                 "interval_ms": 50, "max_thermal_state": thermal]
     }
     deinit { timer?.cancel() }
     static func counters() -> [UInt64] { (0..<10).map { BonsaiBenchmarkCounter(Int32($0)) } }
+    static func operationEvidence() -> [[String: Any]] {
+        (0..<2).compactMap { arm in
+            let values = (0..<10).map { BonsaiBenchmarkObservation(Int32(arm * 10 + $0)) }
+            guard values[9] == 1 else { return nil }
+            return ["arm": arm == 0 ? "tensor" : "fused", "K": values[0], "M": values[1], "N": values[2],
+                "weight_nb0": values[3], "weight_nb1": values[4], "activation_nb0": values[5],
+                "activation_nb1": values[6], "output_nb0": values[7], "output_nb1": values[8],
+                "pipeline": arm == 0 ? "kernel_mul_mm_ptq1_tensorops_0_f32" : "kernel_mul_mv_ptq1_0_f32_bonsai_r5",
+                "scope": "first_eligible_operation_in_request"]
+        }
+    }
     static func evidence() -> [String: Any] {
         B16RuntimeEvidence.snapshot(sourceSHA: BonsaiCertificationBuildIdentity.sourceGitSHA,
             buildNumber: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")

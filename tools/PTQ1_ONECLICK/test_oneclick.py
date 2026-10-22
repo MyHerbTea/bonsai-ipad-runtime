@@ -15,8 +15,12 @@ def sample(flags=0):
     delta=[0]*10;delta[6]=delta[7]=10
     if flags&1:delta[:3]=[2,2,2]
     if flags&2:delta[3:6]=[2,2,2]
+    operations=[]
+    for mask,arm,pipeline in [(1,'tensor','kernel_mul_mm_ptq1_tensorops_0_f32'),(2,'fused','kernel_mul_mv_ptq1_0_f32_bonsai_r5')]:
+        if flags&mask:operations.append(dict(arm=arm,pipeline=pipeline,K=5120,M=16 if mask==1 else 1,N=5120,
+            weight_nb0=38,weight_nb1=1520,activation_nb0=4,activation_nb1=20480,output_nb0=4,output_nb1=20480))
     return {"actual":actual,"evidence":{"source_git_sha":"a"*40,"build_number":"114","process_id":"p","native_context":native},
-      "counter_delta":delta,"gpu_completion_drained":True,"prompt_tokens":2048,"generated_tokens":128,"effective_max_tokens":128,
+      "operation_evidence":operations,"counter_delta":delta,"gpu_completion_drained":True,"prompt_tokens":2048,"generated_tokens":128,"effective_max_tokens":128,
       "prefill_s":20.,"ttft_s":20.1,"decode_tps":10.,"client_first_content_s":20.2,"client_final_answer_s":20.2,
       "client_first_sse_s":.01,"wall_s":33.,"finish_reason":"length","output_sha256":"c"*64,
       "logits_probe":{"finite":True,"top1":7,"sample":[.1,.2]},"batch_allocations":2,"batch_reuses":200 if flags&4 else 0,

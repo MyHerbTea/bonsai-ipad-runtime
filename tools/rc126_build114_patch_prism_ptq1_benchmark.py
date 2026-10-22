@@ -15,6 +15,9 @@ DECLARATIONS = '''
 __attribute__((visibility("default"))) int32_t BonsaiNativeBenchmarkConfigure(int32_t flags);
 __attribute__((visibility("default"))) uint32_t BonsaiNativeBenchmarkCapabilities(void);
 __attribute__((visibility("default"))) uint64_t BonsaiNativeBenchmarkCounter(int index);
+__attribute__((visibility("default"))) void BonsaiNativeBenchmarkBeginRequest(void);
+__attribute__((visibility("default"))) int64_t BonsaiNativeBenchmarkObservation(int index);
+void BonsaiNativeBenchmarkObserve(int arm, const struct ggml_tensor * op);
 bool BonsaiNativeBenchmarkTensorEnabled(bool production);
 bool BonsaiNativeBenchmarkFusedEnabled(const struct ggml_tensor * op);
 void BonsaiNativeBenchmarkPublishCapabilities(uint32_t flags);
@@ -31,6 +34,27 @@ static std::atomic<int32_t> bonsai_benchmark_flags{-1};
 static std::atomic<uint32_t> bonsai_benchmark_caps{0};
 static std::atomic_bool bonsai_benchmark_tensor_source{true};
 static std::atomic<uint64_t> bonsai_benchmark_counts[10]{};
+// Bounded first eligible operation per arm per request, queried only after sync.
+static std::atomic<int64_t> bonsai_benchmark_observed[20]{};
+static std::atomic_flag bonsai_benchmark_observed_once[2] = {ATOMIC_FLAG_INIT, ATOMIC_FLAG_INIT};
+extern "C" __attribute__((visibility("default")))
+void BonsaiNativeBenchmarkBeginRequest(void) {
+    for (auto & value : bonsai_benchmark_observed) value.store(0, std::memory_order_relaxed);
+    for (auto & once : bonsai_benchmark_observed_once) once.clear(std::memory_order_release);
+}
+extern "C" __attribute__((visibility("default")))
+int64_t BonsaiNativeBenchmarkObservation(int index) {
+    return index >= 0 && index < 20 ? bonsai_benchmark_observed[index].load(std::memory_order_acquire) : 0;
+}
+extern "C" void BonsaiNativeBenchmarkObserve(int arm, const ggml_tensor * op) {
+    if (arm < 0 || arm > 1 || bonsai_benchmark_observed_once[arm].test_and_set(std::memory_order_acq_rel)) return;
+    const int64_t values[10] = {op->src[0]->ne[0], op->src[1]->ne[1], op->src[0]->ne[1],
+        (int64_t)op->src[0]->nb[0], (int64_t)op->src[0]->nb[1],
+        (int64_t)op->src[1]->nb[0], (int64_t)op->src[1]->nb[1],
+        (int64_t)op->nb[0], (int64_t)op->nb[1], 1};
+    for (int i = 0; i < 10; ++i) bonsai_benchmark_observed[arm*10+i].store(values[i], std::memory_order_release);
+}
+
 
 extern "C" __attribute__((visibility("default")))
 uint32_t BonsaiNativeBenchmarkCapabilities(void) {
@@ -134,6 +158,8 @@ def apply(root):
                  '        props_dev->has_tensor_benchmark &&\n        BonsaiNativeBenchmarkTensorEnabled(props_dev->has_tensor && !ptq1_tensorops_disabled) &&\n        props_dev->has_simdgroup_mm &&\n        props_dev->device_id >= GGML_METAL_DEVICE_M5 &&\n        op->src[0]->type == GGML_TYPE_PTQ1_0')
     # The legacy env flag is production policy only. Benchmark flags supersede it.
     replace_once(ops, '        !ptq1_tensorops_disabled &&\n', '')
+    replace_once(ops, '        bonsai_ptq1_route_selected_count.fetch_add(1, std::memory_order_relaxed);',
+                 '        bonsai_ptq1_route_selected_count.fetch_add(1, std::memory_order_relaxed);\n        BonsaiNativeBenchmarkObserve(0, op);')
     replace_once(ops, '            ptq1_tensorops_pipeline_failed.store(true, std::memory_order_relaxed);',
                  '            ptq1_tensorops_pipeline_failed.store(true, std::memory_order_relaxed);\n            BonsaiNativeBenchmarkTensorFailed();')
     # Build113 returned zero on failure, which is not the inherited operation path.
@@ -149,7 +175,7 @@ def apply(root):
     replace_once(cpp, '    res.nr0  = nr0;\n    res.nr1  = nr1;\n    res.nsg  = nsg;\n    res.smem = smem;\n\n    return res;\n}\n\nggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_id_map0',
                  '    if (!res.pipeline && tsrc0 == GGML_TYPE_PTQ1_0 && nr0 == 5) {\n        BonsaiNativeBenchmarkFusedFailed();\n        return ggml_metal_library_get_pipeline_mul_mv(lib, op);\n    }\n    res.nr0  = nr0;\n    res.nr1  = nr1;\n    res.nsg  = nsg;\n    res.smem = smem;\n\n    return res;\n}\n\nggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_id_map0')
     replace_once(ops, '        auto pipeline = ggml_metal_library_get_pipeline_mul_mv(lib, op);\n',
-                 '        if (BonsaiNativeBenchmarkFusedEnabled(op)) BonsaiNativeBenchmarkIncrement(3);\n        auto pipeline = ggml_metal_library_get_pipeline_mul_mv(lib, op);\n        const bool bonsai_fused_dispatched = op->src[0]->type == GGML_TYPE_PTQ1_0 && pipeline.nr0 == 5;\n        if (bonsai_fused_dispatched && pipeline.pipeline) BonsaiNativeBenchmarkIncrement(4);\n')
+                 '        if (BonsaiNativeBenchmarkFusedEnabled(op)) { BonsaiNativeBenchmarkIncrement(3); BonsaiNativeBenchmarkObserve(1, op); }\n        auto pipeline = ggml_metal_library_get_pipeline_mul_mv(lib, op);\n        const bool bonsai_fused_dispatched = op->src[0]->type == GGML_TYPE_PTQ1_0 && pipeline.nr0 == 5;\n        if (bonsai_fused_dispatched && pipeline.pipeline) BonsaiNativeBenchmarkIncrement(4);\n')
     replace_once(ops, '            ggml_metal_encoder_dispatch_threadgroups(enc, ((ne01 + nr0*nsg - 1)/(nr0*nsg)), ((ne11 + nr1 - 1)/nr1), ne12*ne13, 32, nsg, 1);\n',
                  '            ggml_metal_encoder_dispatch_threadgroups(enc, ((ne01 + nr0*nsg - 1)/(nr0*nsg)), ((ne11 + nr1 - 1)/nr1), ne12*ne13, 32, nsg, 1);\n            if (bonsai_fused_dispatched) BonsaiNativeBenchmarkIncrement(5);\n')
     replace_once(mv, '            sumf[row] += ptq1_0_dot_reg(ax[row] + ib, yl, sumy, it);',

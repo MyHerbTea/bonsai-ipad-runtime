@@ -132,6 +132,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'echo "::error::Verification failed at line $LINENO: $BASH_COMMAND"' ERR
+          set -x
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
           test -d "$APP"
           test -f "$APP/BonsaiLab"
@@ -145,14 +147,18 @@ jobs:
           grep -q '_llama_memory_seq_rm' build/llama-symbols.txt
           grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
 
-          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter; do
+          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter BonsaiNativeBenchmarkBeginRequest BonsaiNativeBenchmarkObservation; do
             grep -q "_$symbol" build/llama-symbols.txt
           done
           strings "$FRAMEWORK" > build/llama-strings.txt
           grep -q 'kernel_mul_mv_ptq1_0_f32_bonsai_r5' build/llama-strings.txt
           grep -q 'kernel_mul_mm_ptq1_tensorops_0_f32' build/llama-strings.txt
           nm -gU "$APP/BonsaiLab" > build/app-symbols.txt
-          grep -q '_BonsaiBenchmarkConfigure' build/app-symbols.txt
+          if ! grep -q '_BonsaiBenchmarkConfigure' build/app-symbols.txt; then
+            nm "$APP/BonsaiLab" | grep 'BonsaiBenchmark' || true
+            echo '::error::App bridge symbol missing from global table'
+            exit 1
+          fi
 
       - name: Package one IPA and portable one-click kit
         shell: bash

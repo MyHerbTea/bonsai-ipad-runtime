@@ -1300,6 +1300,9 @@ actor MLXVisionSidecar {
         weightsURL: URL,
         imageURL: URL
     ) throws -> MLXVisionEmbeddingPacket {
+        guard !BenchmarkSessionControl.shared.active else {
+            throw LabError.invalidConfig("BENCHMARK_SESSION_ACTIVE")
+        }
         let weightScope =
             weightsURL.startAccessingSecurityScopedResource()
         let imageScope =
@@ -1470,6 +1473,9 @@ actor MLXVisionSidecar {
         weightsURL: URL,
         imageURL: URL
     ) throws -> MLXVisionSidecarMetrics {
+        guard !BenchmarkSessionControl.shared.active else {
+            throw LabError.invalidConfig("BENCHMARK_SESSION_ACTIVE")
+        }
         let packet = try encodeForInjection(
             weightsURL: weightsURL,
             imageURL: imageURL

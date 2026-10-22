@@ -18,3 +18,14 @@ extern "C" uint64_t BonsaiBenchmarkCounter(int index) {
     static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeBenchmarkCounter"));
     return fn ? fn(index) : 0;
 }
+
+extern "C" void BonsaiBenchmarkBeginRequest(void) {
+    using Fn = void (*)(void);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeBenchmarkBeginRequest"));
+    if (fn) fn();
+}
+extern "C" int64_t BonsaiBenchmarkObservation(int index) {
+    using Fn = int64_t (*)(int);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeBenchmarkObservation"));
+    return fn ? fn(index) : 0;
+}

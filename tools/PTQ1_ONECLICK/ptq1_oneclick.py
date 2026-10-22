@@ -78,6 +78,15 @@ def validate_sample(s, config, identity):
             if any(delta[index+j]<=0 for j in range(3)):errors.append(label+'_dispatch')
         elif any(delta[index:index+3]):errors.append('unexpected_'+label)
     if config['flags']&4 and (s.get('batch_reuses',0)<=0 or s.get('batch_allocations',0)>4):errors.append('batch_reuse')
+    observations={item.get('arm'):item for item in s.get('operation_evidence',[])}
+    for mask,arm,pipeline in [(1,'tensor','kernel_mul_mm_ptq1_tensorops_0_f32'),(2,'fused','kernel_mul_mv_ptq1_0_f32_bonsai_r5')]:
+        if not config['flags']&mask:continue
+        op=observations.get(arm,{})
+        correct=op.get('pipeline')==pipeline and op.get('K',0)>0 and op.get('K',1)%128==0 and op.get('weight_nb0',0)>0 and op.get('weight_nb1',0)>0
+        correct=correct and op.get('activation_nb0')==4 and op.get('output_nb0')==4 and op.get('activation_nb1',0)>0 and op.get('output_nb1',0)>0
+        if arm=='tensor':correct=correct and op.get('M',0)>=16 and op.get('M',1)%16==0 and op.get('N',0)>=128
+        else:correct=correct and op.get('M')==1 and op.get('N',0)>=5
+        if not correct:errors.append(arm+'_shape_stride_pipeline')
     probe=s.get('logits_probe',{})
     if probe.get('finite') is not True or not probe.get('sample') or not all(math.isfinite(x) for x in probe['sample']):errors.append('nonfinite_logits')
     memory=s.get('memory',{})
@@ -296,7 +305,7 @@ def discover():
 class Tournament:
     def __init__(self,client,identity,directory,minutes=30):
         self.client=client;self.identity=identity;self.directory=directory;self.minutes=minutes
-        self.current=None;self.prompts={};self.blacklist=set();self.completed={};self.inflight=None;self.process=None
+        self.current=None;self.configuration_memory={};self.original_runtime=None;self.prompts={};self.blacklist=set();self.completed={};self.inflight=None;self.process=None
         self.report={'schema':'bonsai-ptq1-oneclick-v1','status':'INCOMPLETE','device_validation':'CONNECTED_DEVICE_ONLY',
             'identity':identity,'started_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'samples':[],
             'comparisons':{},'quality':{},'errors':[],'skipped':[],'recommendations':{},'restoration':'NOT_CONFIRMED'}
@@ -309,7 +318,7 @@ class Tournament:
     def save(self):
         dump(self.directory/'checkpoint.json',{'report':scrub(self.report),'completed':self.completed,
             'blacklist':sorted(self.blacklist),'in_flight':self.inflight,'process_id':self.process,
-            'session_id':self.client.session,'source':self.identity['source_git_sha'],'model':self.identity['official_model']['sha256']})
+            'session_id':self.client.session,'original_runtime':self.original_runtime,'source':self.identity['source_git_sha'],'model':self.identity['official_model']['sha256']})
     def prepare(self):
         health=self.client.request('/health',timeout=10)
         self.report['api_model_id']=health['model']
@@ -328,6 +337,8 @@ class Tournament:
             if time.monotonic()>=deadline:raise EvidenceError('MODEL_HASH_NOT_READY')
             print('等待官方模型完整 SHA256 核验…');time.sleep(5)
         self.process=evidence['process_id'];self.report['hardware']=caps['hardware'];self.report['engine_evidence']=evidence
+        self.original_runtime=dict(native)
+        if caps.get('safe_baseline_backend') is not True:raise EvidenceError('BASELINE_BACKEND_NOT_PRODUCTION_SAFE_RELAUNCH_ONCE')
         checkpoint=self.directory/'checkpoint.json'
         if checkpoint.exists():
             previous=json.loads(checkpoint.read_text(encoding='utf-8-sig'))
@@ -349,7 +360,8 @@ class Tournament:
             if state.get('active'):
                 if state.get('session_id')!=previous.get('session_id'):raise EvidenceError('ANOTHER_BENCHMARK_SESSION_ACTIVE')
                 self.client.session=state['session_id'];self.client.cancel_and_wait()
-                self.client.request('restore',{},timeout=180);self.client.session=None
+                restored=self.client.request('restore',{},timeout=180);self.client.session=None
+                self.original_runtime=restored.get('evidence',{}).get('native_context')
         elif caps.get('state',{}).get('active'):raise EvidenceError('ANOTHER_BENCHMARK_SESSION_ACTIVE')
         marker=caps.get('prior_interrupted')
         if marker and isinstance(marker,dict) and not caps.get('state',{}).get('active'):
@@ -357,6 +369,8 @@ class Tournament:
             self.blacklist.add(self.config_id(config));self.report['errors'].append({'code':'APP_PREVIOUS_INTERRUPTED_CONFIG_QUARANTINED','config':config})
         started=self.client.request('start',{},timeout=240)
         self.client.session=started['session_id'];self.capabilities=started['capabilities'];self.report['capabilities']=self.capabilities
+        self.configuration_memory[self.config_id(self.config())]=started.get('configuration_memory',{})
+        self.report['original_runtime']=self.original_runtime
         self.current=self.config();self.save();return True
     def switch(self,config):
         if self.config_id(config) in self.blacklist:raise EvidenceError('QUARANTINED_CONFIGURATION')
@@ -367,6 +381,7 @@ class Tournament:
         try:
             response=self.client.request('configure',config,timeout=240)
             if not actual_matches(response.get('evidence',{}).get('native_context'),config):raise EvidenceError('CONFIGURATION_NOT_APPLIED')
+            self.configuration_memory[self.config_id(config)]=response.get('configuration_memory',{})
             self.current=dict(config);self.inflight=None;self.save()
         except UncertainRequest:
             self.blacklist.add(self.config_id(config));self.save();raise
@@ -411,7 +426,14 @@ class Tournament:
         except APIError:
             self.blacklist.add(self.config_id(config));self.inflight=None;self.current=None
             self.report['errors'].append({'code':'ENGINE_REQUEST_FAILURE','key':key,'config':config});self.save();raise
+        result['configuration_memory']=self.configuration_memory.get(self.config_id(config),{})
         errors=validate_sample(result,config,self.identity)
+        configuration_memory=result['configuration_memory']
+        if configuration_memory and configuration_memory.get('min_available_bytes',0)<MIN_HEADROOM:errors.append('configuration_headroom')
+        initial_peak=self.report.get('baseline_initial_peak_bytes')
+        observed_peak=max(result.get('memory',{}).get('sampled_peak_footprint_bytes',0), result['configuration_memory'].get('sampled_peak_footprint_bytes',0))
+        if initial_peak and observed_peak-initial_peak>GIB:
+            errors.append('session_initial_peak_delta')
         if result.get('evidence',{}).get('process_id')!=self.process:errors.append('app_process_changed')
         if abs(result.get('prompt_tokens',0)-target)>12:errors.append('actual_token_count_mismatch')
         if stage in ('screen','formal','combination','tune','tune_confirm'):
@@ -456,10 +478,11 @@ class Tournament:
             except (APIError,EvidenceError) as e:self.report['errors'].append({'code':str(e),'stage':'screen','flags':flag})
         baseline=screens.get(0)
         if not baseline or not baseline['valid']:raise EvidenceError('BASELINE_SCREEN_INCOMPLETE')
+        self.report['baseline_initial_peak_bytes']=baseline['memory']['sampled_peak_footprint_bytes']
         ranked=[]
         for flag,s in screens.items():
             if flag==0:continue
-            parity=s.get('valid') and numerical_parity(baseline,s)
+            parity=s.get('valid') and numerical_parity(baseline,s) and s['memory']['sampled_peak_footprint_bytes']-baseline['memory']['sampled_peak_footprint_bytes']<=GIB
             if not parity:self.report['skipped'].append({'flags':flag,'reason':'SCREEN_EXECUTION_OR_NUMERICAL_FAILURE'});continue
             # Short screen is a filter, never a performance certification.
             benefit=max(s['prefill_tps']/baseline['prefill_tps'],s['decode_tps']/baseline['decode_tps'],baseline['ttft_s']/s['ttft_s'])
@@ -664,6 +687,8 @@ class Tournament:
             if state.get('active'):
                 result=self.client.request('restore',{},timeout=240)
                 if result.get('state',{}).get('active'):raise EvidenceError('RESTORE_LEASE_STILL_ACTIVE')
+                actual=result.get('evidence',{}).get('native_context') or {}
+                if self.original_runtime and any(actual.get(k)!=self.original_runtime.get(k) for k in ('context','batch','ubatch','kv_k','kv_v','flash_attention','sequence_max')):raise EvidenceError('ORIGINAL_RUNTIME_RESTORE_MISMATCH')
             self.client.session=None;self.current=None;self.inflight=None
             self.report['restoration']='RESTORED';self.save()
         except (APIError,EvidenceError,UncertainRequest):
@@ -696,7 +721,7 @@ def main():
     parser.add_argument('--output',type=Path,default=ROOT/'RESULTS'/'current')
     parser.add_argument('--no-browser',action='store_true')
     args=parser.parse_args()
-    report=None;tournament=None
+    report=None;tournament=None;startup_error=None
     try:
         identity=json.loads((ROOT/'TestKitIdentity.json').read_text(encoding='utf-8-sig'))
         print('核验同包 IPA、测试工具及便携 Python 完整性…');verify_delivery(identity)
@@ -710,6 +735,7 @@ def main():
         if tournament:tournament.report['errors'].append({'code':'USER_INTERRUPTED'})
     except (APIError,EvidenceError,UncertainRequest,ValueError,OSError,KeyError) as error:
         code=str(error) if isinstance(error,(APIError,EvidenceError,UncertainRequest)) else type(error).__name__
+        startup_error=code
         print('测试未完整完成：',code)
         if tournament:tournament.report['errors'].append({'code':code});tournament.report['status']='INCOMPLETE'
     finally:
@@ -720,6 +746,9 @@ def main():
             print('结果包：',str((args.output/'results.zip').resolve()))
             print('状态：',tournament.report['status'],'；恢复：',tournament.report['restoration'])
             if not args.no_browser:webbrowser.open((args.output/'report.html').resolve().as_uri())
+        elif startup_error:
+            write_reports(args.output,{'status':'INCOMPLETE','device_validation':'NOT_RUN','samples':[],'errors':[{'code':startup_error}],'restoration':'NOT_STARTED'})
+            print('启动诊断报告：',str((args.output/'report.html').resolve()))
     return 0 if tournament and tournament.report['status'] in ('PASS','NO_GAIN') and tournament.report['restoration']=='RESTORED' else 2
 
 if __name__=='__main__':raise SystemExit(main())

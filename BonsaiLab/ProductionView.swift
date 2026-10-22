@@ -926,6 +926,7 @@ struct ProductionView: View {
     @State private var status = "准备就绪"
     @State private var detail = ""
     @State private var busy = false
+    @State private var benchmarkSessionActive = false
     @State private var usedFallback = false
     @State private var latestMetrics: StagedVisionMetrics?
 
@@ -1026,7 +1027,7 @@ struct ProductionView: View {
                                 .font(.title2.bold())
                             Text("本地 · 离线 · Vision")
                                 .foregroundStyle(.secondary)
-                            Text("1.0 · RC1.26 Build112 B16 Default")
+                            Text("1.0 · RC1.26 Build114 PTQ1 Tournament")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1788,8 +1789,13 @@ struct ProductionView: View {
                     }
                 }
             }
+            .disabled(benchmarkSessionActive)
+            .onReceive(NotificationCenter.default.publisher(for: BenchmarkSessionControl.changed)) { _ in
+                benchmarkSessionActive = BenchmarkSessionControl.shared.active
+            }
             .navigationTitle("Bonsai")
             .onAppear {
+                benchmarkSessionActive = BenchmarkSessionControl.shared.active
                 if modelURL == nil, let restored = B16AssetBookmarks.restore(B16AssetBookmarks.modelKey) {
                     modelURL = restored
                     modelName = restored.lastPathComponent

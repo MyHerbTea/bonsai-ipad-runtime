@@ -34,6 +34,7 @@ enum BenchmarkCandidateRegistry {
 /// The cancellation/status lock must remain callable while the inference actor is occupied.
 final class BenchmarkSessionControl: @unchecked Sendable {
     static let shared = BenchmarkSessionControl()
+    static let changed = Notification.Name("BonsaiBenchmarkSessionChanged")
     private let lock = NSLock()
     private var session: String?
     private var ordinary = 0
@@ -52,6 +53,7 @@ final class BenchmarkSessionControl: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard session == nil && ordinary == 0 else { return nil }
         let id = UUID().uuidString; session = id; touched = ProcessInfo.processInfo.systemUptime
+        DispatchQueue.main.async { NotificationCenter.default.post(name: Self.changed, object: nil) }
         return id
     }
     func beginOperation(session id: String, request value: String) -> Bool {
@@ -69,7 +71,10 @@ final class BenchmarkSessionControl: @unchecked Sendable {
     func matches(_ id: String) -> Bool { lock.lock(); defer { lock.unlock() }; return session == id }
     func endSession(session id: String) {
         lock.lock(); defer { lock.unlock() }
-        if session == id && !running { session = nil; cancelled = false }
+        if session == id && !running {
+            session = nil; cancelled = false
+            DispatchQueue.main.async { NotificationCenter.default.post(name: Self.changed, object: nil) }
+        }
     }
     func overdueOperation(after seconds: Double) -> String? {
         lock.lock(); defer { lock.unlock() }

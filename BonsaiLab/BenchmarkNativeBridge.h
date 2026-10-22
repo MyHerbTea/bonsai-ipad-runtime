@@ -8,6 +8,8 @@ extern "C" {
 // 4 app batch reuse. Returns 0 if unavailable, invalid or GPU work is in flight.
 int32_t BonsaiBenchmarkConfigure(int32_t flags);
 uint32_t BonsaiBenchmarkCapabilities(void);
+void BonsaiBenchmarkBeginRequest(void);
+int64_t BonsaiBenchmarkObservation(int index);
 // All values are process-lifetime monotonic; compare request deltas.
 // GPU counters cover Metal context command buffers, not just candidate kernels.
 // A complete request also requires successful synchronized engine completion.

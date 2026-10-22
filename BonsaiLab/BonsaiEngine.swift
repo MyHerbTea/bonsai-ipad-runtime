@@ -3807,7 +3807,7 @@ actor BonsaiEngine {
     func benchmarkCapabilities() -> [String: Any] {
         let caps = Int(BonsaiBenchmarkCapabilities())
         return ["schema": 1, "capabilities": caps, "candidates": BenchmarkCandidateRegistry.json(capabilities: caps),
-                "hardware": BenchmarkTelemetry.hardware(), "evidence": BenchmarkTelemetry.evidence(),
+                "hardware": BenchmarkTelemetry.hardware(), "safe_baseline_backend": backendRegistryMetalTensorDisabledAtFirstInit == true, "evidence": BenchmarkTelemetry.evidence(),
                 "state": BenchmarkSessionControl.shared.snapshot,
                 "actual": benchmarkConfig?.json as Any? ?? NSNull(),
                 "rejected_configurations": Array(benchmarkRejected),
@@ -3832,6 +3832,9 @@ actor BonsaiEngine {
               appliedRuntime.gpuLayers >= 99, appliedRuntime.loadMode == .mmap else {
             throw LabError.invalidConfig("WAIT_FOR_OFFICIAL_MODEL_HASH_AND_FULL_GPU_MMAP")
         }
+        guard backendRegistryMetalTensorDisabledAtFirstInit == true else {
+            throw LabError.invalidConfig("SAFE_BASELINE_REQUIRES_PRODUCTION_TENSOR_DISABLED_LAUNCH")
+        }
         benchmarkOriginal = appliedRuntime
         benchmarkRejected.removeAll()
         benchmarkInvocation = true
@@ -3855,6 +3858,7 @@ actor BonsaiEngine {
             throw LabError.invalidConfig("BENCHMARK_CONFIGURATION_UNAVAILABLE")
         }
         if candidate == benchmarkConfig, context != nil { return benchmarkCapabilities() }
+        let configureTelemetry = BenchmarkTelemetry()
         let previous = benchmarkConfig
         if let context { llama_synchronize(context); llama_free(context); self.context = nil }
         clearTextKVReuseState(reason: "benchmark_switch")
@@ -3879,8 +3883,11 @@ actor BonsaiEngine {
             }
             appliedRuntime = runtime; benchmarkConfig = candidate
             UserDefaults.standard.set(candidate.json, forKey: "BonsaiBenchmarkInterrupted")
-            return benchmarkCapabilities()
+            var evidence = benchmarkCapabilities()
+            evidence["configuration_memory"] = configureTelemetry.finish()
+            return evidence
         } catch {
+            _ = configureTelemetry.finish()
             benchmarkRejected.insert(candidate.identity)
             if let context { llama_synchronize(context); llama_free(context); self.context = nil }
             benchmarkConfig = nil
@@ -3921,6 +3928,7 @@ actor BonsaiEngine {
         guard BonsaiBenchmarkConfigure(Int32(config.flags)) == 1 else {
             throw LabError.invalidConfig("PREVIOUS_GPU_WORK_NOT_DRAINED")
         }
+        BonsaiBenchmarkBeginRequest()
         let before = BenchmarkTelemetry.counters()
         let telemetry = BenchmarkTelemetry()
         let began = ProcessInfo.processInfo.systemUptime
@@ -3935,7 +3943,7 @@ actor BonsaiEngine {
             let after = BenchmarkTelemetry.counters()
             return ["schema": 1, "candidate": BenchmarkCandidateRegistry.name(config.flags), "actual": config.json,
                 "evidence": BenchmarkTelemetry.evidence(), "counters_before": before, "counters_after": after,
-                "counter_delta": zip(after, before).map { pair in pair.0 >= pair.1 ? pair.0 - pair.1 : 0 },
+                "operation_evidence": BenchmarkTelemetry.operationEvidence(), "counter_delta": zip(after, before).map { pair in pair.0 >= pair.1 ? pair.0 - pair.1 : 0 },
                 "gpu_completion_drained": drained, "memory": telemetry.finish(), "batch_allocations": benchmarkAllocations,
                 "batch_reuses": benchmarkReuses, "logits_probe": benchmarkLogits,
                 "prompt_tokens": result.promptTokens, "generated_tokens": result.generatedTokens,

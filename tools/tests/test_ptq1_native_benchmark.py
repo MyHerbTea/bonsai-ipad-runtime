@@ -84,6 +84,16 @@ int main() {
     input.type = output.type = GGML_TYPE_F32; input.ne[1]=1;
     input.nb[0]=output.nb[0]=sizeof(float);
     output.src[0]=&weight; output.src[1]=&input;
+    BonsaiNativeBenchmarkBeginRequest();
+    BonsaiNativeBenchmarkObserve(1, &output);
+    assert(BonsaiNativeBenchmarkObservation(10) == 128);
+    assert(BonsaiNativeBenchmarkObservation(11) == 1);
+    input.ne[1] = 7;
+    BonsaiNativeBenchmarkObserve(1, &output);
+    assert(BonsaiNativeBenchmarkObservation(11) == 1);
+    BonsaiNativeBenchmarkBeginRequest();
+    assert(BonsaiNativeBenchmarkObservation(19) == 0);
+    input.ne[1] = 1;
     assert(BonsaiNativeBenchmarkConfigure(2) == 1);
     assert(BonsaiNativeBenchmarkFusedEnabled(&output));
     input.ne[1]=2; assert(!BonsaiNativeBenchmarkFusedEnabled(&output));
