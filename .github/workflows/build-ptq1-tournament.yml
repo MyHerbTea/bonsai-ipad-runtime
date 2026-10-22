@@ -45,6 +45,7 @@ jobs:
           python3 -m unittest discover -s tools/tests -p "test_measurement_thresholds.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build117_symbols.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build117_delivery_identity.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_ipad_bundle_metadata.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift BonsaiLab/DiagnosticSessionJournal.swift tools/build117_diagnostics_tests.swift -o "$RUNNER_TEMP/diagnostics"
           "$RUNNER_TEMP/diagnostics" | tee -a build/CI_TESTS.txt
           xcrun clang++ -std=c++17 -fobjc-arc -framework Foundation -I BonsaiLab BonsaiLab/CrashCaptureBridge.mm tools/build117_crash_capture_tests.mm -o "$RUNNER_TEMP/crash-capture"
@@ -124,6 +125,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p build/GeneratedInfo
           xcodegen generate
           test -d BonsaiLab.xcodeproj
 
@@ -156,6 +158,7 @@ jobs:
           APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
           test -d "$APP"
           test -f "$APP/BonsaiLab"
+          python3 tools/validate_ipad_bundle.py "$APP/Info.plist" | tee -a build/CI_TESTS.txt
           test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Info.plist")" = "1.0.0"
           test "$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")" = "$BUILD_NUMBER"
           FRAMEWORK="$APP/Frameworks/llama.framework/llama"

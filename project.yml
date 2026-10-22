@@ -20,13 +20,32 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: BonsaiLab
+    info:
+      path: build/GeneratedInfo/BonsaiLab-Info.plist
+      properties:
+        CFBundleDisplayName: Bonsai
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSLocalNetworkUsageDescription: "Bonsai 可在你的局域网内提供本地 OpenAI 兼容 API。"
+        UILaunchScreen: {}
+        UIRequiresFullScreen: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: local.bonsai.lab.v1
         PRODUCT_NAME: BonsaiLab
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "117"
-        GENERATE_INFOPLIST_FILE: YES
+        GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "2"
         SUPPORTS_MACCATALYST: NO
         SWIFT_VERSION: "5.0"
@@ -34,8 +53,6 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: "BonsaiLab/MTMDProbeBridge.h"
         CODE_SIGN_ENTITLEMENTS: "BonsaiLab/BonsaiLab.entitlements"
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
-        INFOPLIST_KEY_CFBundleDisplayName: "Bonsai"
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Bonsai 可在你的局域网内提供本地 OpenAI 兼容 API。"
     dependencies:
       - framework: Vendor/llama.xcframework
         embed: true
