@@ -9,6 +9,14 @@
   ],
   "rules": [
     {
+      "pattern": "docs/build117/*",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/superpowers/plans/*",
+      "status": "REFERENCE"
+    },
+    {
       "pattern": "AGENTS.md",
       "status": "ACTIVE"
     },

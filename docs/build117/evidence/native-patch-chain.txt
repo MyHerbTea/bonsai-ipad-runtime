@@ -1,0 +1,19 @@
+RC1.26 Build 83 Prism Metal KV layer sharding patch: PASS
+RC1.26 Build 84 crash-persistent native trace patch: PASS
+RC1.26 Build 85 fine-grained scheduler trace patch: PASS
+RC1.26 Build86 Prism backend split and fused-probe forensics patch: PASS
+RC1.26 Build87 scheduler context initialization instrumentation: PASS
+RC1.26 Build88 32K scheduler mmap recovery native patch: PASS
+RC1.26 Build89 bounded GGML scheduler metadata patch: PASS
+BONSAI_M5_NAX_PQ2_01: PASS
+Prism base: adfffbe41b2cabcd51fff326ab045662265062bb
+Touched: ggml-metal-impl.h, ggml-metal-device.h, ggml-metal-device.cpp, ggml-metal-ops.cpp, kernels/mul_mm.metal
+PINNED_PRISM_PTQ1_0_LUT_PARITY: PASS (256 entries x 5 trits)
+BONSAI_M5_PTQ1_TENSOROPS_01: PASS
+Prism base: adfffbe41b2cabcd51fff326ab045662265062bb
+PTQ1 route: actual weight type + F32 activation + M5 + K%128 + M%16
+Decode: Prism ptq1_0_lut trits -> half4 registers -> cooperative TensorOps MMA
+Pipeline compile failure is traced and falls back to inherited Prism dispatch
+BONSAI_PTQ1_BENCHMARK_114: PASS (source application only; GPU validation pending)
+Build115 scheduler recovery: source patch PASS; device startup pending
+Build116 iPad exact GPU name normalization: source PASS

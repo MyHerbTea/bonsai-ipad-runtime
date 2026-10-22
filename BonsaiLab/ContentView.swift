@@ -2,6 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var numberFieldWidth: CGFloat = 120
     @Environment(\.scenePhase) private var scenePhase
     private let engine = BonsaiEngine()
 
@@ -342,7 +345,7 @@ struct ContentView: View {
             visionTab
                 .tabItem { Label("视觉", systemImage: "photo") }
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 Task {
                     await engine.unloadAll()
@@ -1237,7 +1240,8 @@ struct ContentView: View {
         _ title: String,
         value: Binding<Int>
     ) -> some View {
-        HStack {
+        AnyLayout(horizontalSizeClass == .compact || dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())) {
             Text(title)
             Spacer()
             TextField(
@@ -1247,7 +1251,8 @@ struct ContentView: View {
             )
             .keyboardType(.numberPad)
             .multilineTextAlignment(.trailing)
-            .frame(width: 120)
+            .frame(maxWidth: numberFieldWidth)
+            .accessibilityLabel(title)
         }
     }
 
@@ -1255,7 +1260,8 @@ struct ContentView: View {
         _ title: String,
         value: Binding<Double>
     ) -> some View {
-        HStack {
+        AnyLayout(horizontalSizeClass == .compact || dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())) {
             Text(title)
             Spacer()
             TextField(
@@ -1267,7 +1273,8 @@ struct ContentView: View {
             )
             .keyboardType(.decimalPad)
             .multilineTextAlignment(.trailing)
-            .frame(width: 120)
+            .frame(maxWidth: numberFieldWidth)
+            .accessibilityLabel(title)
         }
     }
 }

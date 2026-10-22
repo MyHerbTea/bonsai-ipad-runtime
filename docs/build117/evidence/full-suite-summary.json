@@ -1,0 +1,16 @@
+{
+  "tests_run": 117,
+  "failures": [
+    "test_every_context_free_invalidates_proof_and_completion_is_bound (test_b16_runtime_source.B16RuntimeSourceTests.test_every_context_free_invalidates_proof_and_completion_is_bound)",
+    "test_qualification_identity_does_not_bypass_recovery (test_b16_runtime_source.B16RuntimeSourceTests.test_qualification_identity_does_not_bypass_recovery)",
+    "test_read_only_evidence_and_real_source_are_exposed (test_b16_runtime_source.B16RuntimeSourceTests.test_read_only_evidence_and_real_source_are_exposed)",
+    "test_current_repository_wires_one_identity_and_preserves_runtime_gates (test_current_release_contract.CurrentReleaseContractTests.test_current_repository_wires_one_identity_and_preserves_runtime_gates)"
+  ],
+  "errors": [
+    "test_release_manifest (unittest.loader._FailedTest.test_release_manifest)"
+  ],
+  "skipped": 7,
+  "baseline_reproduced": true,
+  "new_failure_classes": [],
+  "notes": "Baseline current-release error lists differ only in missing-file absolute workspace paths; normalized comparison is empty. Apple and device checks remain NOT_RUN."
+}

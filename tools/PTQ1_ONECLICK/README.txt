@@ -1,4 +1,4 @@
-Bonsai Build114 PTQ1 一键真机竞赛
+Bonsai Build117 PTQ1 一键真机竞赛
 
 1. 完整解压整个交付 ZIP，保留 IPA、TestKitIdentity.json、DELIVERY_SHA256.json 和 python 文件夹。
 2. 用现有侧载工具签名并安装同包 unsigned.ipa 一次（本仓库没有用户签名证书）。
@@ -17,3 +17,10 @@ Bonsai Build114 PTQ1 一键真机竞赛
 代码生成任务只接受受限 Python 子集，在独立进程执行有超时的测试，原始提示/答案与密钥不写入报告。
 完整模型 SHA256、IPA/源码/工具身份、真实 GPU 提交/完成、实际 KV/批次均会核验。
 CI 编译成功不代表 M5 性能或长期稳定性已验证。
+
+Build117 新增：逐候选 ABBA（每样本两次256 token预热）；漂移>5%警告、>10%不稳定；按候选目标评价并经5轮确认。
+PTQ1_MV_R5 主要看decode；收益等级与晋级分开。mean±std不是置信区间。
+App新增测试常亮设置、GET /debug/profiling、GET /debug/crashes、POST /debug/snapshot；沿用原API鉴权。
+崩溃的完整JSON/Markdown通常在下次启动后生成；系统强杀可能只有未正常结束标记，不能推断根因。
+匹配dSYM通过独立 Bonsai-Build117-Symbols 构建产物保留；UUID身份文件随CI_EVIDENCE分发。
+详见 BUILD117_GUIDE.txt；真机验收完成前，不把候选构建当成已证实性能收益。

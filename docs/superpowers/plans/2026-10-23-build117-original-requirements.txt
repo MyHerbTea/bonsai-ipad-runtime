@@ -1,0 +1,1194 @@
+<think> 用户要求添加一个关于崩溃诊断的完整记录功能，要求：
+1. 足够详细可追因
+2. 方便 AI 分析
+3. 改进的形式和内容
+
+根据搜索结果和最佳实践，我需要设计一个全面的崩溃报告系统，包括：
+
+1. **崩溃时的完整上下文**：
+   - 堆栈跟踪（symbolicated）
+   - 系统状态（内存、CPU、热状态、GPU 状态）
+   - 应用状态（正在执行的操作、配置、候选等）
+   - 设备信息（型号、iOS 版本、可用内存等）
+
+2. **历史操作记录**：
+   - 崩溃前的操作序列（breadcrumbs）
+   - API 调用历史
+   - 推理任务历史
+   - 配置变更历史
+
+3. **性能指标快照**：
+   - 内存使用趋势
+   - GPU 使用情况
+   - 线程状态
+   - 活跃的异步任务
+
+4. **AI 友好的格式**：
+   - 结构化 JSON
+   - 明确的因果关系标注
+   - 时间线视图
+   - 可读的上下文描述
+
+5. **持久化和导出**：
+   - 本地保存崩溃报告
+   - API 端点获取历史崩溃
+   - 导出为人类可读的 Markdown
+   - 自动上传选项（可选）
+
+6. **预防性诊断**：
+   - 检测即将发生的问题（内存警告、线程死锁）
+   - 非致命错误记录
+   - 性能降级警告
+
+让我基于这些设计一个完整的崩溃诊断系统。
+
+
+</think>
+```
+为 Build 117 修复性能测量框架并添加 profiling 能力，解决基线漂移和单次筛选导致的误判问题。
+
+## 目标
+
+1. 实现可靠的 A/B/B/A 交错测量，检测并报告基线漂移
+2. 分离 decode 优化和 prefill 优化的评估维度，使用分级门槛
+3. 添加详细的性能分解和算子级 profiling
+4. 重命名现有候选，澄清实际功能和预期收益
+5. 添加测试时屏幕常亮开关
+6. 重新调整界面适配 iPadOS 27
+7. 实现完整的崩溃诊断和记录系统，方便 AI 分析和追因
+
+## 具体要求
+
+### 1. 修复测量框架 (ptq1_oneclick.py)
+
+**A/B/B/A 交错测量**：
+- 每个候选的测试序列改为：baseline → candidate → candidate → baseline
+- 计算前后两次 baseline 的差异百分比，超过 5% 则标记 DRIFT_DETECTED
+- 使用配对比较：(candidate1 - baseline1) 和 (candidate2 - baseline2) 的平均值
+- 如果漂移超过 10%，整轮测试标记为 UNSTABLE，建议重测
+
+**热状态监控**：
+- 每次测试前记录系统 thermalState（通过 API 查询或增加端点）
+- 每次测试前执行 2 次短推理预热（256 token），丢弃结果
+- 在报告中记录每次测试的热状态和前后 baseline 差异
+
+**分离评估维度**：
+- 为候选添加 optimization_target 属性：DECODE_FOCUSED / PREFILL_FOCUSED / BALANCED
+- DECODE_FOCUSED 候选（如 PTQ1_MV_R5）：
+  - 主要看 decode token/s 和单 token TTFT
+  - prefill 允许 ±10% 波动，不作为淘汰条件
+  - 门槛：decode 提升 ≥3% 且稳定
+- PREFILL_FOCUSED 候选：
+  - 主要看 prefill 时间
+  - decode 允许下降 ≤10%
+  - 门槛：prefill 提升 ≥5%
+- BALANCED 候选保持原有严格标准（prefill ≥15%、TTFT ≥10%、decode 下降 ≤5%）
+
+**分级门槛**：
+- SIGNIFICANT：达到原标准（15%/10%）
+- MODERATE：5-15% 提升，标注为"中等收益，建议进一步验证"
+- MINOR：2-5% 提升且重复测试稳定，标注为"微小但可重复收益"
+- NO_BENEFIT：<2% 或不稳定
+
+**改进报告**：
+- 输出每个候选的置信区间（mean ± std）
+- 明确标注：SHORT_SCREEN_NO_BENEFIT（未进入重复比较）vs CONFIRMED_NO_BENEFIT（重复比较确认无收益）
+- 记录实际场景覆盖：M=1 命中次数、M>1 命中次数、prefill/decode 占比
+- 基线漂移记录：每轮前后 baseline 差异百分比
+
+### 2. 添加性能分解 (BonsaiEngine.swift)
+
+**分阶段高精度计时**：
+在 `infer()` 和 `llama_decode` 调用周围添加：
+```swift
+struct InferenceBreakdown {
+    var batchPrepTime: Double      // CPU batch 准备
+    var decodeCallTime: Double     // llama_decode 总耗时
+    var metalSubmitTime: Double    // Metal command buffer 提交
+    var gpuWaitTime: Double        // GPU 执行等待
+    var resultReadTime: Double     // 结果回读
+}
+```
+
+使用 `mach_absolute_time()` 或 `CFAbsoluteTimeGetCurrent()` 高精度计时。
+
+**算子级统计**（通过原生桥接）：
+添加原生函数返回：
+- 各 Metal kernel 的 dispatch 次数（R4、R5、FWHT、其他）
+- M=1 vs M>1 操作次数
+- 总 GPU 执行时间（如果 Metal 支持查询）
+
+**新增 API 端点**：
+`GET /debug/profiling` 返回最近一次推理的性能分解 JSON：
+```json
+{
+  "breakdown": {
+    "batch_prep_ms": 1.2,
+    "decode_call_ms": 3500.5,
+    "metal_submit_ms": 0.8,
+    "gpu_wait_ms": 3490.0,
+    "result_read_ms": 5.3
+  },
+  "kernel_stats": {
+    "ptq1_mv_r4_dispatches": 12000,
+    "ptq1_mv_r5_dispatches": 0,
+    "fwht_dispatches": 8000,
+    "m1_operations": 128,
+    "m_gt1_operations": 64
+  },
+  "thermal_state": "nominal"
+}
+```
+
+### 3. 重命名候选 (BenchmarkCandidateRegistry.swift)
+
+```swift
+public enum BenchmarkCandidate: Int, Codable, CaseIterable {
+    case SAFE_BASELINE = 0
+    // case PTQ1_TENSOROPS = 1  // 保留占位
+    case PTQ1_MV_R5 = 2         // 原 PTQ1_FUSED_KERNEL
+    case PTQ1_BATCH_REUSE = 4   // 原 PTQ1_LOW_OVERHEAD
+    
+    public var displayName: String {
+        switch self {
+        case .SAFE_BASELINE: return "Safe Baseline"
+        case .PTQ1_MV_R5: return "PTQ1 MatVec Row-5"
+        case .PTQ1_BATCH_REUSE: return "PTQ1 Batch Reuse"
+        }
+    }
+    
+    public var description: String {
+        switch self {
+        case .SAFE_BASELINE:
+            return "安全基线：继承 Prism 原始实现，无实验优化"
+        case .PTQ1_MV_R5:
+            return "PTQ1 矩阵-向量乘法 5 行变体：将 SIMD 组处理行数从 4 增加到 5。\n" +
+                   "适用：M=1 decode，K % 128 == 0\n" +
+                   "理论收益：减少 ~20% 激活加载重复，预期 decode 提升 1-3%\n" +
+                   "不适用：B16 prefill 大矩阵计算"
+        case .PTQ1_BATCH_REUSE:
+            return "Batch 结构复用：复用 CPU batch 输入描述数组，减少分配次数从 160 降至 2。\n" +
+                   "适用：所有阶段\n" +
+                   "理论收益：CPU 分配开销减少，预期端到端 <1%（除非分配是瓶颈）\n" +
+                   "不影响：GPU 调度、command buffer 数量、同步点"
+        }
+    }
+    
+    public var optimizationTarget: OptimizationTarget {
+        switch self {
+        case .SAFE_BASELINE: return .BALANCED
+        case .PTQ1_MV_R5: return .DECODE_FOCUSED
+        case .PTQ1_BATCH_REUSE: return .BALANCED
+        }
+    }
+}
+
+public enum OptimizationTarget {
+    case DECODE_FOCUSED
+    case PREFILL_FOCUSED
+    case BALANCED
+}
+```
+
+### 4. 增强原生诊断 (BenchmarkNativeBridge.mm 和原生层)
+
+**添加桥接函数**：
+```objective-c
++ (NSDictionary *)getKernelStatistics;
++ (double)getLastGPUExecutionTime;
++ (int)getThermalState;  // 0=nominal, 1=fair, 2=serious, 3=critical
+```
+
+**原生层添加**：
+- 全局计数器：`g_ptq1_mv_r4_count`, `g_ptq1_mv_r5_count`, `g_fwht_count`
+- 在对应 Metal kernel dispatch 处递增
+- 在 context 创建时重置
+- 提供查询接口给 Swift 层
+
+### 5. 更新测试流程
+
+**快速筛选改为**：
+1. 2 次短预热（256 token），检查热状态
+2. baseline (512/128) → candidate → candidate → baseline，记录漂移
+3. 根据 optimization_target 和分级门槛判断是否晋级
+4. 晋级后进入重复比较（5 轮 A/B/B/A）
+
+**报告模板**：
+```
+候选: PTQ1_MV_R5 (decode-focused)
+状态: MODERATE (中等收益，建议验证)
+Decode: 7.2 ± 0.3 token/s (baseline: 6.9 ± 0.4) → +4.3%
+Prefill: 45.1 ± 2.1s (baseline: 44.2 ± 1.8) → +2.0% (允许范围内)
+基线漂移: 测试前 44.2s，测试后 44.8s → 1.4% (可接受)
+场景覆盖: M=1 命中 44161 次，M>1 命中 128 次
+建议: 进入长期稳定性测试
+```
+
+### 6. 添加测试时屏幕常亮开关
+
+**功能需求**：
+- 在设置或测试界面添加"测试时保持屏幕常亮"开关
+- 开关状态持久化保存（UserDefaults）
+- 当开关开启且 API 服务运行或性能测试进行中时，禁用自动锁屏
+- 测试结束或 API 停止时，恢复系统默认锁屏设置
+- 添加状态指示：显示当前是否处于常亮模式
+
+**实现方式**：
+```swift
+// 在 BonsaiEngine 或 APIServer 类中添加
+private var keepScreenOn: Bool {
+    UserDefaults.standard.bool(forKey: "benchmark_keep_screen_on")
+}
+
+func updateIdleTimerState() {
+    if keepScreenOn && (isAPIRunning || isBenchmarkRunning) {
+        UIApplication.shared.isIdleTimerDisabled = true
+    } else {
+        UIApplication.shared.isIdleTimerDisabled = false
+    }
+}
+
+// 在 API 启动/停止、测试开始/结束时调用
+```
+
+**UI 位置**：
+- 在设置界面（如果有）添加 Toggle
+- 或在 API 服务/测试界面添加独立开关
+- 显示提示文本："测试期间保持屏幕常亮（避免系统休眠影响性能测量）"
+- 当前状态指示器：显示"屏幕常亮已启用"或使用图标
+
+**API 端点**（可选）：
+```
+POST /debug/screen-on
+Body: {"enabled": true}
+Response: {"screen_on": true, "status": "ok"}
+```
+
+### 7. 重新调整界面适配 iPadOS 27
+
+**适配要点**：
+
+1. **布局更新**：
+   - 使用 SwiftUI 的 `.dynamicTypeSize()` 和 `.scenePadding()` 适配新的间距规范
+   - 确保所有视图支持 iPadOS 27 的多任务模式（Split View、Slide Over、Stage Manager）
+   - 使用 `@Environment(\.horizontalSizeClass)` 和 `\.verticalSizeClass` 适配不同窗口尺寸
+
+2. **Safe Area 和边距**：
+   - 更新所有视图的 safe area insets 处理
+   - 适配新的系统导航栏和工具栏样式
+   - 使用 `.safeAreaInset()` 替代硬编码边距
+
+3. **新 API 支持**：
+   - 如果使用了已弃用的 API，更新到 iPadOS 27 推荐的新 API
+   - 检查并更新：
+     - Navigation API（NavigationStack vs NavigationView）
+     - List 和 ScrollView 的新样式
+     - 新的 button 和 toggle 样式
+
+4. **深色模式和主题**：
+   - 确保所有颜色使用 semantic colors 或 Asset Catalog
+   - 验证深色模式下的对比度和可读性
+   - 适配 iPadOS 27 的新系统颜色
+
+5. **性能和响应**：
+   - 使用 `@MainActor` 确保 UI 更新在主线程
+   - 检查 Combine 或 async/await 的使用是否符合最佳实践
+   - 优化长列表和滚动性能
+
+6. **辅助功能**：
+   - 确保所有交互元素有适当的 accessibility labels
+   - 支持 VoiceOver 和动态字体大小
+   - 键盘导航和焦点管理
+
+7. **具体文件检查**：
+   - 所有 SwiftUI View 文件（ContentView.swift, ProductionView.swift 等）
+   - Navigation 结构
+   - 设置和配置界面
+   - API 服务状态显示界面
+
+**最低要求**：
+- App 在 iPadOS 27 上无布局错误和警告
+- 支持 Split View 和 Stage Manager 的所有窗口尺寸
+- 深色模式正常工作
+- 无使用已弃用 API 的编译警告
+
+**测试检查清单**：
+- [ ] 在 iPad Pro 13" 上全屏显示正常
+- [ ] Split View（1/3、1/2、2/3）布局正确
+- [ ] Slide Over 模式不遮挡关键信息
+- [ ] Stage Manager 多窗口正常
+- [ ] 深色模式切换无异常
+- [ ] 动态字体大小（最小到最大）可读
+- [ ] 旋转横竖屏布局适配
+
+### 8. 实现完整的崩溃诊断和记录系统
+
+**设计原则**：
+- **完整性**：记录崩溃前后的所有相关上下文
+- **结构化**：使用 JSON 格式，方便 AI 解析和分析
+- **可追溯**：包含完整的操作时间线和因果关系
+- **可读性**：生成人类可读的 Markdown 摘要
+- **预防性**：捕获非致命错误和警告信号
+
+#### 8.1 崩溃报告数据结构
+
+**完整的 JSON 格式**：
+```json
+{
+  "crash_id": "CRASH_20250115_143052_A7F3",
+  "timestamp": "2025-01-15T14:30:52.847Z",
+  "app_version": "Build117-PTQ1-4dce38a",
+  "report_version": "2.0",
+  
+  "executive_summary": {
+    "crash_type": "SIGABRT",
+    "exception_name": "NSInternalInconsistencyException",
+    "primary_thread": 1,
+    "crashed_in_operation": "INFERENCE_DECODE",
+    "likely_cause": "Metal buffer allocation failed due to memory pressure",
+    "ai_analysis_hint": "Check memory usage trend before crash. GPU memory may have fragmented during long-running decode session."
+  },
+  
+  "device_info": {
+    "model": "iPad16,3",
+    "marketing_name": "iPad Pro 13-inch (M4, 2024)",
+    "os_version": "iPadOS 27.0 (21A5277j)",
+    "gpu": "Apple M4 GPU",
+    "total_memory_gb": 16,
+    "available_memory_mb": 1243,
+    "disk_space_gb": 45.2,
+    "battery_level": 0.67,
+    "thermal_state": "serious",
+    "low_power_mode": false
+  },
+  
+  "app_state": {
+    "api_server_running": true,
+    "api_uptime_seconds": 3847,
+    "active_sessions": 1,
+    "current_candidate": "PTQ1_MV_R5",
+    "model_loaded": "DeepSeek-R1-Distill-Qwen-7B-q4_0_8_8.gguf",
+    "model_size_gb": 4.2,
+    "context_size": 16384,
+    "gpu_layers": 56,
+    "current_operation": "INFERENCE_DECODE",
+    "operation_started_at": "2025-01-15T14:28:15.234Z",
+    "tokens_generated": 2847,
+    "last_successful_token": 2846,
+    "screen_keep_on_enabled": true
+  },
+  
+  "stack_trace": {
+    "thread_1_crashed": {
+      "frames": [
+        {
+          "index": 0,
+          "symbol": "BonsaiEngine.generateToken()",
+          "file": "BonsaiEngine.swift",
+          "line": 3721,
+          "address": "0x0000000102a3f840"
+        },
+        {
+          "index": 1,
+          "symbol": "llama_decode",
+          "library": "libllama.dylib",
+          "address": "0x0000000104f82c10"
+        },
+        {
+          "index": 2,
+          "symbol": "ggml_metal_graph_compute",
+          "library": "libllama.dylib",
+          "address": "0x0000000104f95a20"
+        },
+        {
+          "index": 3,
+          "symbol": "-[MTLIOAccelBuffer didModifyRange:]",
+          "library": "Metal",
+          "address": "0x00000001a8f3c890"
+        }
+      ],
+      "note": "Crashed in Metal buffer modification, likely during GPU memory allocation"
+    },
+    "all_threads": [
+      {"id": 0, "name": "main", "state": "waiting"},
+      {"id": 1, "name": "inference", "state": "crashed"},
+      {"id": 2, "name": "com.apple.NSURLSession", "state": "waiting"},
+      {"id": 3, "name": "Metal kernel", "state": "waiting"}
+    ]
+  },
+  
+  "memory_state": {
+    "app_memory_mb": 8932,
+    "app_memory_peak_mb": 9124,
+    "gpu_allocated_mb": 6840,
+    "gpu_used_mb": 6723,
+    "system_pressure": "critical",
+    "memory_warnings_received": 3,
+    "last_memory_warning": "2025-01-15T14:29:48.123Z",
+    "malloc_zone_stats": {
+      "allocated_mb": 8932,
+      "free_list_mb": 23,
+      "fragmentation_ratio": 0.34
+    },
+    "kv_cache_size_mb": 4096,
+    "model_weights_mb": 4200,
+    "intermediate_buffers_mb": 640
+  },
+  
+  "operation_timeline": [
+    {
+      "timestamp": "2025-01-15T14:28:15.234Z",
+      "event": "INFERENCE_STARTED",
+      "details": {
+        "prompt_tokens": 512,
+        "max_tokens": 4096,
+        "temperature": 0.7
+      }
+    },
+    {
+      "timestamp": "2025-01-15T14:28:58.547Z",
+      "event": "PREFILL_COMPLETED",
+      "duration_s": 43.313,
+      "details": {"processed_tokens": 512}
+    },
+    {
+      "timestamp": "2025-01-15T14:29:48.123Z",
+      "event": "MEMORY_WARNING",
+      "details": {"available_mb": 1580, "pressure": "warning"}
+    },
+    {
+      "timestamp": "2025-01-15T14:30:15.890Z",
+      "event": "MEMORY_WARNING",
+      "details": {"available_mb": 1320, "pressure": "critical"}
+    },
+    {
+      "timestamp": "2025-01-15T14:30:52.834Z",
+      "event": "DECODE_TOKEN_2846",
+      "details": {"token_id": 15847, "decode_time_ms": 145}
+    },
+    {
+      "timestamp": "2025-01-15T14:30:52.847Z",
+      "event": "CRASH",
+      "details": {"attempting": "allocate Metal buffer for token 2847"}
+    }
+  ],
+  
+  "breadcrumbs": [
+    {"time": "14:25:10", "action": "API_STARTED", "user": "benchmark_script"},
+    {"time": "14:25:15", "action": "MODEL_LOADED", "model": "DeepSeek-R1-7B"},
+    {"time": "14:25:20", "action": "CANDIDATE_SWITCHED", "from": "BASELINE", "to": "PTQ1_MV_R5"},
+    {"time": "14:26:00", "action": "INFERENCE_REQUEST", "session": "sess_001", "prompt_length": 256},
+    {"time": "14:26:45", "action": "INFERENCE_COMPLETED", "tokens": 128, "duration": 45.2},
+    {"time": "14:28:15", "action": "INFERENCE_REQUEST", "session": "sess_001", "prompt_length": 512},
+    {"time": "14:29:48", "action": "SYSTEM_MEMORY_WARNING", "level": "warning"},
+    {"time": "14:30:15", "action": "SYSTEM_MEMORY_WARNING", "level": "critical"},
+    {"time": "14:30:52", "action": "CRASH", "token": 2847}
+  ],
+  
+  "performance_snapshot": {
+    "last_10_tokens_avg_ms": 147,
+    "last_100_tokens_avg_ms": 142,
+    "decode_speed_trend": "degrading",
+    "gpu_utilization": 0.89,
+    "thermal_throttling_detected": true,
+    "metal_command_buffers_active": 12,
+    "metal_heap_fragmentation": 0.41
+  },
+  
+  "kernel_statistics": {
+    "ptq1_mv_r4_dispatches": 182400,
+    "ptq1_mv_r5_dispatches": 182400,
+    "fwht_dispatches": 121600,
+    "m1_operations": 2846,
+    "m_gt1_operations": 512,
+    "failed_dispatches": 0,
+    "pipeline_creation_failures": 0
+  },
+  
+  "configuration": {
+    "candidate": "PTQ1_MV_R5",
+    "n_gpu_layers": 56,
+    "n_ctx": 16384,
+    "n_batch": 512,
+    "n_ubatch": 512,
+    "flash_attn": true,
+    "use_mlock": false,
+    "use_mmap": true,
+    "rope_freq_base": 1000000,
+    "rope_freq_scale": 1.0
+  },
+  
+  "recent_errors": [
+    {
+      "timestamp": "2025-01-15T14:29:48.123Z",
+      "severity": "WARNING",
+      "type": "MEMORY_PRESSURE",
+      "message": "System memory pressure elevated to WARNING level"
+    },
+    {
+      "timestamp": "2025-01-15T14:30:15.890Z",
+      "severity": "ERROR",
+      "type": "MEMORY_PRESSURE",
+      "message": "System memory pressure elevated to CRITICAL level"
+    },
+    {
+      "timestamp": "2025-01-15T14:30:50.234Z",
+      "severity": "WARNING",
+      "type": "PERFORMANCE_DEGRADATION",
+      "message": "Decode speed degraded by 15% in last 50 tokens"
+    }
+  ],
+  
+  "diagnostic_files": {
+    "full_crash_log": "/var/mobile/Library/Logs/CrashReporter/BonsaiLab_2025-01-15_143052.crash",
+    "memory_graph": "/Documents/Diagnostics/memory_graph_143052.memgraph",
+    "os_log_archive": "/Documents/Diagnostics/os_log_143052.logarchive"
+  },
+  
+  "ai_analysis": {
+    "root_cause_hypothesis": [
+      "Memory pressure reached critical level after 2800+ tokens generated",
+      "Metal buffer allocation failed due to GPU memory fragmentation",
+      "Thermal throttling may have contributed to performance degradation",
+      "No automatic memory cleanup triggered between warnings and crash"
+    ],
+    "reproduction_steps": [
+      "Load DeepSeek-R1-7B with PTQ1_MV_R5 candidate",
+      "Run inference with 512 prompt tokens, 4096 max tokens",
+      "Generate 2800+ tokens continuously without clearing KV cache",
+      "Observe memory warnings ignored, leading to allocation failure"
+    ],
+    "suggested_fixes": [
+      "Implement proactive memory cleanup when pressure reaches WARNING",
+      "Add periodic Metal heap compaction during long decode sessions",
+      "Reduce KV cache size dynamically under memory pressure",
+      "Add max_tokens safety limit based on available memory",
+      "Monitor and handle thermal throttling more aggressively"
+    ]
+  }
+}
+```
+
+#### 8.2 实现组件
+
+**CrashDiagnostics.swift - 主要诊断类**：
+```swift
+import Foundation
+import UIKit
+import Metal
+
+class CrashDiagnostics {
+    static let shared = CrashDiagnostics()
+    
+    private var breadcrumbs: [Breadcrumb] = []
+    private var operationTimeline: [TimelineEvent] = []
+    private var recentErrors: [DiagnosticError] = []
+    private let maxBreadcrumbs = 100
+    private let maxTimelineEvents = 200
+    
+    // 操作追踪
+    func recordBreadcrumb(_ action: String, metadata: [String: Any] = [:]) {
+        let crumb = Breadcrumb(
+            timestamp: Date(),
+            action: action,
+            metadata: metadata
+        )
+        breadcrumbs.append(crumb)
+        if breadcrumbs.count > maxBreadcrumbs {
+            breadcrumbs.removeFirst()
+        }
+    }
+    
+    func recordTimelineEvent(_ event: String, details: [String: Any] = [:]) {
+        let timelineEvent = TimelineEvent(
+            timestamp: Date(),
+            event: event,
+            details: details
+        )
+        operationTimeline.append(timelineEvent)
+        if operationTimeline.count > maxTimelineEvents {
+            operationTimeline.removeFirst()
+        }
+    }
+    
+    func recordError(severity: ErrorSeverity, type: String, message: String) {
+        let error = DiagnosticError(
+            timestamp: Date(),
+            severity: severity,
+            type: type,
+            message: message
+        )
+        recentErrors.append(error)
+        if recentErrors.count > 50 {
+            recentErrors.removeFirst()
+        }
+    }
+    
+    // 生成完整崩溃报告
+    func generateCrashReport(
+        exception: NSException?,
+        signal: Int32?,
+        additionalContext: [String: Any] = [:]
+    ) -> CrashReport {
+        let crashId = generateCrashId()
+        
+        let report = CrashReport(
+            crashId: crashId,
+            timestamp: Date(),
+            appVersion: getAppVersion(),
+            executiveSummary: generateExecutiveSummary(exception: exception, signal: signal),
+            deviceInfo: collectDeviceInfo(),
+            appState: collectAppState(),
+            stackTrace: collectStackTrace(exception: exception),
+            memoryState: collectMemoryState(),
+            operationTimeline: operationTimeline,
+            breadcrumbs: breadcrumbs,
+            performanceSnapshot: collectPerformanceSnapshot(),
+            kernelStatistics: collectKernelStatistics(),
+            configuration: collectConfiguration(),
+            recentErrors: recentErrors,
+            diagnosticFiles: collectDiagnosticFiles(),
+            aiAnalysis: generateAIAnalysis()
+        )
+        
+        // 保存报告
+        saveCrashReport(report)
+        
+        return report
+    }
+    
+    // 收集设备信息
+    private func collectDeviceInfo() -> DeviceInfo {
+        let device = UIDevice.current
+        return DeviceInfo(
+            model: getDeviceModel(),
+            marketingName: getMarketingName(),
+            osVersion: "\(device.systemName) \(device.systemVersion)",
+            gpu: getGPUName(),
+            totalMemoryGB: ProcessInfo.processInfo.physicalMemory / 1_000_000_000,
+            availableMemoryMB: getAvailableMemory(),
+            diskSpaceGB: getAvailableDiskSpace(),
+            batteryLevel: UIDevice.current.batteryLevel,
+            thermalState: getThermalStateName(),
+            lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled
+        )
+    }
+    
+    // 收集应用状态
+    private func collectAppState() -> AppState {
+        // 从 BonsaiEngine 和 APIServer 获取当前状态
+        return AppState(
+            apiServerRunning: APIServer.shared.isRunning,
+            apiUptimeSeconds: APIServer.shared.uptime,
+            activeSessions: APIServer.shared.activeSessions,
+            currentCandidate: BonsaiEngine.shared.currentCandidate?.displayName ?? "NONE",
+            modelLoaded: BonsaiEngine.shared.currentModelName ?? "NONE",
+            modelSizeGB: BonsaiEngine.shared.modelSizeBytes / 1_000_000_000,
+            contextSize: BonsaiEngine.shared.contextSize,
+            gpuLayers: BonsaiEngine.shared.gpuLayers,
+            currentOperation: BonsaiEngine.shared.currentOperation ?? "IDLE",
+            operationStartedAt: BonsaiEngine.shared.operationStartTime,
+            tokensGenerated: BonsaiEngine.shared.tokensGenerated,
+            lastSuccessfulToken: BonsaiEngine.shared.lastSuccessfulToken,
+            screenKeepOnEnabled: UserDefaults.standard.bool(forKey: "benchmark_keep_screen_on")
+        )
+    }
+    
+    // 收集内存状态
+    private func collectMemoryState() -> MemoryState {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_,
+                         task_flavor_t(MACH_TASK_BASIC_INFO),
+                         $0,
+                         &count)
+            }
+        }
+        
+        let appMemoryMB = kerr == KERN_SUCCESS ? info.resident_size / 1_048_576 : 0
+        
+        return MemoryState(
+            appMemoryMB: Int(appMemoryMB),
+            appMemoryPeakMB: Int(BonsaiEngine.shared.peakMemoryUsage / 1_048_576),
+            gpuAllocatedMB: Int(getGPUAllocatedMemory() / 1_048_576),
+            gpuUsedMB: Int(getGPUUsedMemory() / 1_048_576),
+            systemPressure: getMemoryPressureName(),
+            memoryWarningsReceived: BonsaiEngine.shared.memoryWarningCount,
+            lastMemoryWarning: BonsaiEngine.shared.lastMemoryWarningTime,
+            kvCacheSizeMB: Int(BonsaiEngine.shared.kvCacheSize / 1_048_576),
+            modelWeightsMB: Int(BonsaiEngine.shared.modelWeightsSize / 1_048_576),
+            intermediateBuffersMB: Int(BonsaiEngine.shared.intermediateBuffersSize / 1_048_576)
+        )
+    }
+    
+    // 生成 AI 分析提示
+    private func generateAIAnalysis() -> AIAnalysis {
+        var hypotheses: [String] = []
+        var reproSteps: [String] = []
+        var fixes: [String] = []
+        
+        // 基于收集的数据生成假设
+        if recentErrors.contains(where: { $0.type == "MEMORY_PRESSURE" }) {
+            hypotheses.append("Memory pressure reached critical level before crash")
+            hypotheses.append("Possible GPU memory fragmentation")
+            fixes.append("Implement proactive memory cleanup when pressure reaches WARNING")
+            fixes.append("Add periodic Metal heap compaction during long sessions")
+        }
+        
+        if let thermalState = operationTimeline.last(where: { $0.event == "THERMAL_STATE_CHANGED" }) {
+            hypotheses.append("Thermal throttling may have contributed to crash")
+            fixes.append("Monitor and handle thermal throttling more aggressively")
+        }
+        
+        // 生成重现步骤
+        reproSteps.append("Load model: \(BonsaiEngine.shared.currentModelName ?? "unknown")")
+        reproSteps.append("Use candidate: \(BonsaiEngine.shared.currentCandidate?.displayName ?? "unknown")")
+        if let opStart = operationTimeline.first(where: { $0.event == "INFERENCE_STARTED" }) {
+            reproSteps.append("Run inference with prompt tokens: \(opStart.details["prompt_tokens"] ?? 0)")
+        }
+        reproSteps.append("Generate tokens continuously until crash")
+        
+        return AIAnalysis(
+            rootCauseHypothesis: hypotheses,
+            reproductionSteps: reproSteps,
+            suggestedFixes: fixes
+        )
+    }
+    
+    // 保存崩溃报告
+    private func saveCrashReport(_ report: CrashReport) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        
+        do {
+            let jsonData = try encoder.encode(report)
+            let crashDir = getCrashReportDirectory()
+            let jsonPath = crashDir.appendingPathComponent("\(report.crashId).json")
+            try jsonData.write(to: jsonPath)
+            
+            // 也生成 Markdown 版本
+            let markdown = generateMarkdownReport(report)
+            let mdPath = crashDir.appendingPathComponent("\(report.crashId).md")
+            try markdown.write(to: mdPath, atomically: true, encoding: .utf8)
+            
+            print("Crash report saved: \(jsonPath.path)")
+        } catch {
+            print("Failed to save crash report: \(error)")
+        }
+    }
+    
+    // 生成人类可读的 Markdown 报告
+    private func generateMarkdownReport(_ report: CrashReport) -> String {
+        var md = """
+        # Crash Report: \(report.crashId)
+        
+        **Time**: \(report.timestamp)  
+        **App Version**: \(report.appVersion)  
+        **Device**: \(report.deviceInfo.marketingName) (\(report.deviceInfo.model))  
+        **OS**: \(report.deviceInfo.osVersion)
+        
+        ## Executive Summary
+        
+        - **Crash Type**: \(report.executiveSummary.crashType)
+        - **Exception**: \(report.executiveSummary.exceptionName ?? "N/A")
+        - **Crashed In**: \(report.executiveSummary.crashedInOperation)
+        - **Likely Cause**: \(report.executiveSummary.likelyCause)
+        
+        > 🤖 **AI Analysis Hint**: \(report.executiveSummary.aiAnalysisHint)
+        
+        ## System State at Crash
+        
+        ### Device
+        - Memory: \(report.memoryState.appMemoryMB) MB / \(report.deviceInfo.totalMemoryGB) GB
+        - GPU Memory: \(report.memoryState.gpuUsedMB) / \(report.memoryState.gpuAllocatedMB) MB
+        - Battery: \(Int(report.deviceInfo.batteryLevel * 100))%
+        - Thermal: \(report.deviceInfo.thermalState)
+        - Memory Pressure: \(report.memoryState.systemPressure)
+        
+        ### Application
+        - Model: \(report.appState.modelLoaded)
+        - Candidate: \(report.appState.currentCandidate)
+        - Operation: \(report.appState.currentOperation)
+        - Tokens Generated: \(report.appState.tokensGenerated)
+        - API Uptime: \(report.appState.apiUptimeSeconds)s
+        
+        ## Timeline (Last 10 Events)
+        
+        """
+        
+        for event in report.operationTimeline.suffix(10) {
+            md += "- **\(event.timestamp)**: \(event.event)\n"
+            if !event.details.isEmpty {
+                md += "  - Details: \(event.details)\n"
+            }
+        }
+        
+        md += """
+        
+        ## Recent Errors
+        
+        """
+        
+        for error in report.recentErrors {
+            md += "- [\(error.severity)] **\(error.type)**: \(error.message) (at \(error.timestamp))\n"
+        }
+        
+        md += """
+        
+        ## AI Analysis
+        
+        ### Root Cause Hypotheses
+        
+        """
+        
+        for (i, hypothesis) in report.aiAnalysis.rootCauseHypothesis.enumerated() {
+            md += "\(i+1). \(hypothesis)\n"
+        }
+        
+        md += """
+        
+        ### Suggested Fixes
+        
+        """
+        
+        for (i, fix) in report.aiAnalysis.suggestedFixes.enumerated() {
+            md += "\(i+1). \(fix)\n"
+        }
+        
+        md += """
+        
+        ---
+        
+        **Full JSON Report**: `\(report.crashId).json`
+        """
+        
+        return md
+    }
+    
+    // 生成唯一崩溃 ID
+    private func generateCrashId() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let dateStr = formatter.string(from: Date())
+        let random = String(format: "%04X", arc4random_uniform(65536))
+        return "CRASH_\(dateStr)_\(random)"
+    }
+    
+    // 辅助函数
+    private func getCrashReportDirectory() -> URL {
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let crashDir = documentsDir.appendingPathComponent("CrashReports")
+        try? FileManager.default.createDirectory(at: crashDir, withIntermediateDirectories: true)
+        return crashDir
+    }
+}
+
+// 数据结构定义
+struct Breadcrumb: Codable {
+    let timestamp: Date
+    let action: String
+    let metadata: [String: AnyCodable]
+}
+
+struct TimelineEvent: Codable {
+    let timestamp: Date
+    let event: String
+    let details: [String: AnyCodable]
+}
+
+struct DiagnosticError: Codable {
+    let timestamp: Date
+    let severity: ErrorSeverity
+    let type: String
+    let message: String
+}
+
+enum ErrorSeverity: String, Codable {
+    case WARNING, ERROR, CRITICAL
+}
+
+// ... 其他数据结构 (DeviceInfo, AppState, MemoryState, CrashReport, AIAnalysis)
+```
+
+**集成到应用启动**：
+```swift
+// AppDelegate.swift 或 App 初始化
+func setupCrashHandler() {
+    // 注册崩溃处理
+    NSSetUncaughtExceptionHandler { exception in
+        CrashDiagnostics.shared.generateCrashReport(
+            exception: exception,
+            signal: nil
+        )
+    }
+    
+    // 监听内存警告
+    NotificationCenter.default.addObserver(
+        forName: UIApplication.didReceiveMemoryWarningNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        CrashDiagnostics.shared.recordError(
+            severity: .WARNING,
+            type: "MEMORY_PRESSURE",
+            message: "System memory warning received"
+        )
+        CrashDiagnostics.shared.recordTimelineEvent(
+            "MEMORY_WARNING",
+            details: ["available_mb": getAvailableMemory()]
+        )
+    }
+    
+    // 监听热状态变化
+    NotificationCenter.default.addObserver(
+        forName: ProcessInfo.thermalStateDidChangeNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        let state = ProcessInfo.processInfo.thermalState
+        CrashDiagnostics.shared.recordTimelineEvent(
+            "THERMAL_STATE_CHANGED",
+            details: ["state": getThermalStateName()]
+        )
+    }
+}
+```
+
+**在关键操作处添加追踪**：
+```swift
+// BonsaiEngine.swift
+func startInference(prompt: String, maxTokens: Int) {
+    CrashDiagnostics.shared.recordBreadcrumb("INFERENCE_STARTED", metadata: [
+        "prompt_length": prompt.count,
+        "max_tokens": maxTokens
+    ])
+    CrashDiagnostics.shared.recordTimelineEvent("INFERENCE_STARTED", details: [
+        "prompt_tokens": tokenCount,
+        "max_tokens": maxTokens,
+        "temperature": temperature
+    ])
+    
+    // ... 实际推理代码
+}
+
+func generateToken() throws -> Token {
+    defer {
+        CrashDiagnostics.shared.recordTimelineEvent("DECODE_TOKEN_\(tokensGenerated)", details: [
+            "token_id": token.id,
+            "decode_time_ms": decodeTime
+        ])
+    }
+    
+    // ... token 生成代码
+}
+```
+
+#### 8.3 API 端点
+
+**查询崩溃历史**：
+```
+GET /debug/crashes
+Response:
+{
+  "crashes": [
+    {
+      "crash_id": "CRASH_20250115_143052_A7F3",
+      "timestamp": "2025-01-15T14:30:52.847Z",
+      "summary": "SIGABRT in INFERENCE_DECODE due to Metal buffer allocation failure",
+      "files": {
+        "json": "/Documents/CrashReports/CRASH_20250115_143052_A7F3.json",
+        "markdown": "/Documents/CrashReports/CRASH_20250115_143052_A7F3.md"
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+**获取特定崩溃详情**：
+```
+GET /debug/crashes/{crash_id}
+Response: [完整的 JSON 崩溃报告]
+```
+
+**获取崩溃 Markdown 报告**：
+```
+GET /debug/crashes/{crash_id}/markdown
+Response: [人类可读的 Markdown 文本]
+```
+
+**清除崩溃历史**：
+```
+DELETE /debug/crashes
+或
+DELETE /debug/crashes/{crash_id}
+```
+
+**手动触发诊断快照**（不崩溃）：
+```
+POST /debug/snapshot
+Response: 
+{
+  "snapshot_id": "SNAPSHOT_20250115_143500_B8E4",
+  "file": "/Documents/Diagnostics/SNAPSHOT_20250115_143500_B8E4.json"
+}
+```
+
+#### 8.4 预防性诊断
+
+**健康检查和预警**：
+```swift
+class HealthMonitor {
+    static let shared = HealthMonitor()
+    
+    func startMonitoring() {
+        Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
+            self.checkHealth()
+        }
+    }
+    
+    private func checkHealth() {
+        // 检查内存压力
+        let availableMB = getAvailableMemory()
+        if availableMB < 500 {
+            CrashDiagnostics.shared.recordError(
+                severity: .WARNING,
+                type: "LOW_MEMORY",
+                message: "Available memory below 500 MB: \(availableMB) MB"
+            )
+            // 触发主动内存清理
+            BonsaiEngine.shared.cleanupMemory()
+        }
+        
+        // 检查性能降级
+        let recentSpeed = BonsaiEngine.shared.getRecentDecodeSpeed()
+        let baselineSpeed = BonsaiEngine.shared.baselineDecodeSpeed
+        if recentSpeed < baselineSpeed * 0.7 {
+            CrashDiagnostics.shared.recordError(
+                severity: .WARNING,
+                type: "PERFORMANCE_DEGRADATION",
+                message: "Decode speed degraded by \(Int((1 - recentSpeed/baselineSpeed) * 100))%"
+            )
+        }
+        
+        // 检查 GPU 内存碎片
+        let fragmentation = getGPUMemoryFragmentation()
+        if fragmentation > 0.5 {
+            CrashDiagnostics.shared.recordError(
+                severity: .WARNING,
+                type: "GPU_MEMORY_FRAGMENTATION",
+                message: "GPU memory fragmentation at \(Int(fragmentation * 100))%"
+            )
+        }
+        
+        // 检查热状态
+        if ProcessInfo.processInfo.thermalState == .serious || 
+           ProcessInfo.processInfo.thermalState == .critical {
+            CrashDiagnostics.shared.recordError(
+                severity: .WARNING,
+                type: "THERMAL_THROTTLING",
+                message: "Device in \(getThermalStateName()) thermal state"
+            )
+        }
+    }
+}
+```
+
+### 9. 文件清单
+
+修改：
+- `tools/PTQ1_ONECLICK/ptq1_oneclick.py` - 测量框架核心逻辑
+- `BonsaiLab/BenchmarkCandidateRegistry.swift` - 候选定义和重命名
+- `BonsaiLab/BonsaiEngine.swift` - 分阶段计时、profiling 端点、屏幕常亮逻辑、崩溃追踪埋点
+- `BonsaiLab/BenchmarkNativeBridge.mm` - 原生统计桥接
+- `BonsaiLab/BenchmarkTelemetry.swift` - 报告格式增强
+- `BonsaiLab/ContentView.swift` - 界面适配 iPadOS 27
+- `BonsaiLab/ProductionView.swift` - 添加屏幕常亮开关，界面适配
+- `BonsaiLab/Info.plist` - 如需更新最低系统版本或权限
+- `BonsaiLab/AppDelegate.swift` - 崩溃处理初始化
+
+新增：
+- `BonsaiLab/CrashDiagnostics.swift` - 完整的崩溃诊断系统
+- `BonsaiLab/HealthMonitor.swift` - 预防性健康监控
+- `BonsaiLab/DiagnosticModels.swift` - 崩溃报告数据结构
+- `tools/tests/test_abba_measurement.py` - A/B/B/A 测量逻辑的单元测试
+- `tools/tests/test_drift_detection.py` - 漂移检测的测试用例
+- `BonsaiLab/SettingsView.swift` - 如果需要独立的设置界面
+
+生成：
+- Build 117 IPA（修复的测量框架 + profiling + 屏幕常亮 + iPadOS 27 适配 + 崩溃诊断）
+- 更新的一键测试完整包
+- 更新的 README（说明新的测量方法、崩溃报告和报告解读）
+- 崩溃报告样本和解读指南
+
+## 验收标准
+
+1. A/B/B/A 测量能正确检测和报告基线漂移
+2. PTQ1_MV_R5 作为 DECODE_FOCUSED 候选，prefill 波动不导致淘汰
+3. 报告明确区分 SHORT_SCREEN_NO_BENEFIT 和 CONFIRMED_NO_BENEFIT
+4. `/debug/profiling` 端点返回完整的性能分解数据
+5. 屏幕常亮开关正常工作，状态持久化保存
+6. App 在 iPadOS 27 的各种窗口模式下布局正确，无警告
+7. 深色模式和动态字体大小支持正常
+8. 崩溃时自动生成完整的 JSON 和 Markdown 报告
+9. 崩溃报告包含所有关键上下文（堆栈、内存、时间线、AI 分析）
+10. API 端点可查询和下载历史崩溃报告
+11. 健康监控能提前检测和记录潜在问题
+12. 所有现有测试通过，Windows CMD 一键测试包正常工作
+13. 不改变模型精度、推理参数或核心算法实现
+
+## 崩溃报告使用指南
+
+### 如何查看崩溃报告
+
+1. **通过 API**：
+   ```bash
+   # 列出所有崩溃
+   curl http://iPad-IP:8080/debug/crashes
+   
+   # 获取特定崩溃的 JSON 详情
+   curl http://iPad-IP:8080/debug/crashes/CRASH_20250115_143052_A7F3
+   
+   # 获取人类可读的 Markdown 报告
+   curl http://iPad-IP:8080/debug/crashes/CRASH_20250115_143052_A7F3/markdown
+   ```
+
+2. **通过文件浏览器**（如 iTunes 文件共享或 iMazing）：
+   - 路径：`Documents/CrashReports/`
+   - JSON 文件：完整的结构化数据
+   - Markdown 文件：人类可读的摘要
+
+### AI 分析崩溃报告的步骤
+
+1. **读取 executive_summary**：快速了解崩溃类型和可能原因
+2. **检查 operation_timeline**：追踪崩溃前的事件序列
+3. **分析 memory_state**：确认是否是内存相关问题
+4. **查看 breadcrumbs**：了解用户操作流程
+5. **阅读 ai_analysis**：查看自动生成的假设和建议
+6. **验证 recent_errors**：识别预警信号是否被忽略
+
+### 常见崩溃模式和修复
+
+报告中 `ai_analysis.root_cause_hypothesis` 和 `suggested_fixes` 会基于以下模式自动生成建议：
+
+- **内存压力崩溃**：检查 memory_warnings_received，建议主动清理
+- **GPU 内存碎片**：检查 metal_heap_fragmentation，建议周期性压缩
+- **热节流崩溃**：检查 thermal_state 变化，建议降低负载
+- **长时间推理崩溃**：检查 tokens_generated，建议添加安全上限
+
+## 备注
+
+- 保持向后兼容：旧的候选标识符保留别名，API 同时支持新旧名称
+- 漂移检测阈值可配置：默认 5% 警告、10% 标记不稳定
+- profiling 数据默认不输出到标准报告，需要显式请求 `/debug/profiling`
+- 如果 Metal 不支持查询 GPU 执行时间，使用 CPU 侧的 command buffer 完成时间估算
+- 屏幕常亮功能仅在 API 运行或测试进行中生效，避免影响日常使用
+- iPadOS 27 适配可能需要 Xcode 相应版本，确保开发环境已更新
+- 崩溃报告默认保存在本地，不自动上传；如需上传功能，可添加可选的远程日志服务
+- 崩溃报告会占用存储空间，建议定期清理旧报告（保留最近 50 个）
+- 健康监控每 10 秒检查一次，可根据需要调整频率
+- Breadcrumbs 和 timeline 使用循环缓冲区，最多保留最近 100/200 条记录
+```

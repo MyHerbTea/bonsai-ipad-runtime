@@ -1,0 +1,15 @@
+Combined delivery integrity: PASS; device validation: NOT_RUN
+���� formal fault
+F..
+======================================================================
+FAIL: test_delivery_contains_one_ipa_portable_runtime_and_identity (test_faults_and_packaging.IntegrationTests.test_delivery_contains_one_ipa_portable_runtime_and_identity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\PTQ1_ONECLICK\test_faults_and_packaging.py", line 110, in test_delivery_contains_one_ipa_portable_runtime_and_identity
+    self.assertIn('Bonsai-Build117-PTQ1/CI_EVIDENCE/SYMBOL_IDENTITY.json',archive.namelist())
+AssertionError: 'Bonsai-Build117-PTQ1/CI_EVIDENCE/SYMBOL_IDENTITY.json' not found in ['Bonsai-Build117-PTQ1/BonsaiLab-Build117-PTQ1-unsigned.ipa', 'Bonsai-Build117-PTQ1/BonsaiLab-Build117-PTQ1-unsigned.ipa.sha256', 'Bonsai-Build117-PTQ1/BUILD_INFO.txt', 'Bonsai-Build117-PTQ1/CI_EVIDENCE/app-symbols.txt', 'Bonsai-Build117-PTQ1/CI_EVIDENCE/build.log', 'Bonsai-Build117-PTQ1/CI_EVIDENCE/CI_TESTS.txt', 'Bonsai-Build117-PTQ1/CI_EVIDENCE/llama-symbols.txt', 'Bonsai-Build117-PTQ1/DELIVERY_SHA256.json', 'Bonsai-Build117-PTQ1/ptq1_oneclick.py', 'Bonsai-Build117-PTQ1/python/_ssl.pyd', 'Bonsai-Build117-PTQ1/python/LICENSE.txt', 'Bonsai-Build117-PTQ1/python/python.exe', 'Bonsai-Build117-PTQ1/python/python312._pth', 'Bonsai-Build117-PTQ1/python/python312.dll', 'Bonsai-Build117-PTQ1/python/python312.zip', 'Bonsai-Build117-PTQ1/RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd', 'Bonsai-Build117-PTQ1/TestKitIdentity.json']
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.593s
+
+FAILED (failures=1)

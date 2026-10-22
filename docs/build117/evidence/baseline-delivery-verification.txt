@@ -1,0 +1,3 @@
+Build116 delivery manifest and paired IPA SHA256: PASS
+Source: 4dce38a80ddfbfe186c3af052cb4932012367a70
+IPA SHA256: 6b96e1f98daba850518b62f85ebfd878853d93aaecdb44556eb96e85dc425dc1

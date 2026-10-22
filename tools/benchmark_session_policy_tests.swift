@@ -2,6 +2,12 @@ import Foundation
 
 @main struct BenchmarkPolicyTests {
     static func main() throws {
+        precondition(BenchmarkCandidateRegistry.flags(named: "PTQ1_FUSED_KERNEL") == 2)
+        precondition(BenchmarkCandidateRegistry.flags(named: "PTQ1_MV_R5") == 2)
+        precondition(BenchmarkCandidateRegistry.flags(named: "PTQ1_LOW_OVERHEAD") == 4)
+        precondition(BenchmarkCandidateRegistry.flags(named: "PTQ1_BATCH_REUSE") == 4)
+        precondition(BenchmarkCandidateRegistry.flags(named: "unknown") == nil)
+        precondition(BenchmarkCandidateRegistry.optimizationTarget(2) == "DECODE_FOCUSED")
         precondition(BenchmarkModelAdmission.accepts(gpuLayers: 56, mmap: true))
         precondition(BenchmarkModelAdmission.accepts(gpuLayers: 99, mmap: true))
         precondition(!BenchmarkModelAdmission.accepts(gpuLayers: 0, mmap: true))

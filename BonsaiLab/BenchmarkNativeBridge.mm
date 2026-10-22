@@ -1,6 +1,20 @@
 #include "BenchmarkNativeBridge.h"
 #include <dlfcn.h>
 
+extern "C" bool BonsaiProfileAvailable(void) { return dlsym(RTLD_DEFAULT, "BonsaiNativeProfileCounter") != nullptr; }
+extern "C" void BonsaiProfileReset(void) {
+    using Fn = void (*)(void);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeProfileReset")); if (fn) fn();
+}
+extern "C" void BonsaiProfileEnable(int enabled) {
+    using Fn = void (*)(int);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeProfileEnable")); if (fn) fn(enabled);
+}
+extern "C" uint64_t BonsaiProfileCounter(int index) {
+    using Fn = uint64_t (*)(int);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeProfileCounter")); return fn ? fn(index) : 0;
+}
+
 // Missing framework exports fail closed. The IPA build verifies all three
 // symbols in the linked framework; dlsym keeps non-benchmark builds linkable.
 extern "C" int32_t BonsaiBenchmarkConfigure(int32_t flags) {

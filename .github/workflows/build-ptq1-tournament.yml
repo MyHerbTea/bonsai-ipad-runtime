@@ -1,8 +1,8 @@
-name: Bonsai Build116 PTQ1 One-click Tournament
+name: Bonsai Build117 PTQ1 One-click Tournament
 
 on:
   push:
-    branches: [codex/ptq1-oneclick-tournament]
+    branches: [codex/build117-diagnostics]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "116"
+  BUILD_NUMBER: "117"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -40,6 +40,16 @@ jobs:
           python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/PTQ1_ONECLICK -p 'test_*.py' -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/package_ptq1_oneclick.py
+          python3 -m unittest discover -s tools/tests -p "test_abba_measurement.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_drift_detection.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_measurement_thresholds.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_build117_symbols.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_build117_delivery_identity.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift BonsaiLab/DiagnosticSessionJournal.swift tools/build117_diagnostics_tests.swift -o "$RUNNER_TEMP/diagnostics"
+          "$RUNNER_TEMP/diagnostics" | tee -a build/CI_TESTS.txt
+          xcrun clang++ -std=c++17 -fobjc-arc -framework Foundation -I BonsaiLab BonsaiLab/CrashCaptureBridge.mm tools/build117_crash_capture_tests.mm -o "$RUNNER_TEMP/crash-capture"
+          "$RUNNER_TEMP/crash-capture" | tee -a build/CI_TESTS.txt
+          xcrun swiftc -frontend -parse BonsaiLab/*.swift
           git diff --check
 
       - name: Install XcodeGen
@@ -53,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PRISM_DIR="$RUNNER_TEMP/prism-build116"
+          PRISM_DIR="$RUNNER_TEMP/prism-build117"
           git clone --filter=blob:none https://github.com/PrismML-Eng/llama.cpp.git "$PRISM_DIR"
           git -C "$PRISM_DIR" checkout "$PRISM_COMMIT"
           python3 "$GITHUB_WORKSPACE/tools/rc126_build83_patch_prism_kv_sharding.py" "$PRISM_DIR/src/llama-kv-cache.cpp"
@@ -80,6 +90,8 @@ jobs:
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_scheduler_allocation_recovery.py -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 "$GITHUB_WORKSPACE/tools/rc126_build116_patch_ipad_gpu_name.py" "$PRISM_DIR"
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_ipad_benchmark_admission.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build117_patch_profiling.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build117_native_profile.py -v 2>&1 | tee -a build/CI_TESTS.txt
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -127,13 +139,15 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$PWD/build/DerivedData" \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build116 IPA and native ABI
+      - name: Verify Build117 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -152,7 +166,7 @@ jobs:
           grep -q '_llama_memory_seq_rm' build/llama-symbols.txt
           grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
 
-          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter BonsaiNativeBenchmarkBeginRequest BonsaiNativeBenchmarkObservation; do
+          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter BonsaiNativeBenchmarkBeginRequest BonsaiNativeBenchmarkObservation BonsaiNativeProfileCounter BonsaiNativeProfileReset BonsaiNativeProfileEnable; do
             grep -q "_$symbol" build/llama-symbols.txt
           done
           strings "$FRAMEWORK" > build/llama-strings.txt
@@ -162,9 +176,13 @@ jobs:
           # App wrappers are directly linked and legitimately localized by ld.
           # Only the framework dlsym targets above require global exports.
           nm -U "$APP/BonsaiLab" > build/app-symbols.txt
-          for symbol in BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation; do
+          for symbol in BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation BonsaiProfileAvailable BonsaiProfileCounter BonsaiProfileReset BonsaiProfileEnable BonsaiCrashInstall BonsaiCrashRead; do
             grep -Eq "[[:space:]][tT][[:space:]]_$symbol$" build/app-symbols.txt
           done
+
+      - name: Preserve UUID-matched App and native symbols
+        shell: bash
+        run: python3 tools/build117_symbols.py
 
       - name: Package one IPA and portable one-click kit
         shell: bash
@@ -174,12 +192,23 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build116-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build117-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD116_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD116_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD117_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD117_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload retained symbol artifact and UUID identity
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bonsai-Build117-Symbols
+          path: |
+            build/Bonsai-Build117-Symbols.zip
+            build/Bonsai-Build117-Symbols.zip.sha256
+            build/SYMBOL_IDENTITY.json
+          if-no-files-found: error
+          retention-days: 90
 
   windows-launcher:
     runs-on: windows-latest

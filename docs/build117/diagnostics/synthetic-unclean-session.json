@@ -1,0 +1,35 @@
+{
+  "executive_summary": {
+    "crash_type": "unknown_termination",
+    "likely_cause": null,
+    "ai_analysis_hint": "Synthetic example, never device evidence"
+  },
+  "device_info": null,
+  "app_state": null,
+  "stack_trace": {
+    "program_counter": null,
+    "all_threads": null,
+    "availability": "no_system_crash_log"
+  },
+  "memory_state": null,
+  "operation_timeline": [],
+  "breadcrumbs": [],
+  "performance_snapshot": null,
+  "kernel_statistics": null,
+  "configuration": null,
+  "recent_errors": [],
+  "ai_analysis": {
+    "root_cause_hypothesis": [],
+    "confidence": "insufficient_evidence",
+    "evidence_refs": [],
+    "verification_steps": [
+      "Match system crash log and dSYM UUID before drawing a conclusion"
+    ]
+  },
+  "schema_version": 2,
+  "synthetic": true,
+  "crash_id": "CRASH_SYNTHETIC_EXAMPLE",
+  "timestamp": null,
+  "report_kind": "previous_session_unclean",
+  "timestamp_scope": "last_checkpoint_not_exact_fatal_time"
+}

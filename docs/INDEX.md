@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build117 本地实施记录：[执行日志](build117/execution-log.md)、[源码映射](build117/source-map.md)。该阶段尚需 Apple 编译及真机验收，不能作为发行或性能通过证据。
+
 状态：ACTIVE。治理快照：2026-10-14（UTC+08）。现有 GitHub 文档仍是项目资料；本页只导航、分类和解决冲突。
 
 新会话顺序：[AGENTS.md](../AGENTS.md) → 本页 → [CURRENT_STATE.md](optimization/CURRENT_STATE.md) → [DECISION_LOG.md](optimization/DECISION_LOG.md)。先核对工作区与 Git，再选任务；文档快照不是实时状态。

@@ -57,9 +57,11 @@ final class BenchmarkSessionManager: @unchecked Sendable {
             var result: [String: Any]
             switch command {
             case "configure":
+                let named = (body["candidate"] ?? body["id"]) as? String
+                if let named, BenchmarkCandidateRegistry.flags(named: named) == nil { throw LabError.invalidConfig("UNKNOWN_CANDIDATE") }
                 let config = BenchmarkConfiguration(context: body["context"] as? Int ?? 16384,
                     batch: body["batch"] as? Int ?? 16, kv: body["kv"] as? String ?? "Q4_0",
-                    flags: body["flags"] as? Int ?? 0)
+                    flags: named.flatMap(BenchmarkCandidateRegistry.flags(named:)) ?? body["flags"] as? Int ?? 0)
                 result = try await engine.benchmarkConfigure(config)
             case "restore": result = try await engine.benchmarkRestore()
             default:

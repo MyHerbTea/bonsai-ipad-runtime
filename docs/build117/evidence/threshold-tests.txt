@@ -1,0 +1,16 @@
+..F.
+======================================================================
+FAIL: test_levels_and_screen_confirmation_are_distinct (test_measurement_thresholds.ThresholdTests.test_levels_and_screen_confirmation_are_distinct)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\tests\test_measurement_thresholds.py", line 23, in test_levels_and_screen_confirmation_are_distinct
+    self.assertEqual(runner.compare_abba(rounds(gain=gain),2)['benefit_level'],level)
+AssertionError: 'NO_BENEFIT' != 'MINOR'
+- NO_BENEFIT
++ MINOR
+
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.016s
+
+FAILED (failures=1)

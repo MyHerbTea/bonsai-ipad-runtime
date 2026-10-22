@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_uuid_architecture_pair_must_match_exactly (test_build117_symbols.SymbolTests.test_uuid_architecture_pair_must_match_exactly)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\tests\test_build117_symbols.py", line 10, in setUp
+    self.assertTrue(path.exists(),'symbol preservation implementation missing')
+AssertionError: False is not true : symbol preservation implementation missing
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

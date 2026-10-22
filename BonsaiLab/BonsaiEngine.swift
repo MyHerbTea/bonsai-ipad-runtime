@@ -82,6 +82,7 @@ actor BonsaiEngine {
     private var benchmarkReuses = 0
     private var benchmarkLogits: [String: Any] = [:]
     private var benchmarkRejected = Set<String>()
+    private var activeProfile: InferenceProfile?
 
     private func checkBenchmarkAdmission() throws {
         if BenchmarkSessionControl.shared.active && !benchmarkInvocation {
@@ -119,6 +120,7 @@ actor BonsaiEngine {
     private let stageKey = "BonsaiLabLastStage"
 
     private func mark(_ stage: String) {
+        CrashDiagnostics.shared.recordBreadcrumb(stage)
         UserDefaults.standard.set(stage, forKey: stageKey)
         UserDefaults.standard.set(
             Date().timeIntervalSince1970,
@@ -2779,6 +2781,28 @@ actor BonsaiEngine {
         guard let context, let vocab else {
             throw LabError.noModel
         }
+        let request = BenchmarkSessionControl.shared.snapshot["request_id"] as? String
+        let profile = InferenceProfile(requestID: benchmarkInvocation ? (request ?? UUID().uuidString) : UUID().uuidString,
+            nativeSerialized: benchmarkInvocation)
+        activeProfile = profile
+        HealthMonitor.shared.progress(requestID: profile.requestID)
+        CrashDiagnostics.shared.updateState(["request_id": .string(profile.requestID), "current_operation": .string("INFERENCE_STARTED"),
+            "candidate": .string(benchmarkInvocation ? BenchmarkCandidateRegistry.name(benchmarkConfig?.flags ?? 0) : "PRODUCTION_RUNTIME"),
+            "context_size": .number(Double(appliedRuntime.context)), "batch": .number(Double(appliedRuntime.batch)),
+            "ubatch": .number(Double(appliedRuntime.ubatch)), "requested_gpu_layers": .number(Double(appliedRuntime.gpuLayers)),
+            "flash_attention": .bool(appliedRuntime.flashAttention), "mmap": .bool(appliedRuntime.loadMode == .mmap),
+            "configuration_source": .string("engine_applied_runtime;benchmark_has_native_validation"),
+            "max_tokens": .number(Double(generation.maxTokens))], force: true)
+        CrashDiagnostics.shared.recordTimelineEvent("INFERENCE_STARTED", details: ["request_id": .string(profile.requestID)])
+        defer {
+            // The benchmark already requires terminal GPU drain. Publish its profile only after it.
+            if benchmarkInvocation { llama_synchronize(context) }
+            let gpuDrained = benchmarkInvocation && BonsaiBenchmarkConfigure(Int32(benchmarkConfig?.flags ?? 0)) == 1
+            profile.finish(gpuDrained: gpuDrained); activeProfile = nil
+            HealthMonitor.shared.progress(requestID: profile.requestID, finished: true)
+            CrashDiagnostics.shared.recordTimelineEvent(profile.succeeded ? "INFERENCE_COMPLETED" : "INFERENCE_FAILED", details: ["request_id": .string(profile.requestID)])
+            CrashDiagnostics.shared.updateState(["current_operation": .string("IDLE")], force: true)
+        }
         var gen = try generation.validated(
             context: appliedRuntime.context
         )
@@ -2987,6 +3011,10 @@ actor BonsaiEngine {
                     ? "TEXT_99_PASS_KV_REUSE"
                     : "TEXT_99_PASS_FULL_PREFILL"
             )
+            profile.succeeded = true
+            HealthMonitor.shared.observe(speed: Double(generated.count) / generationSeconds,
+                configuration: "\(modelScopedURL?.path ?? "unknown"):\(appliedRuntime.context):\(appliedRuntime.batch):\(benchmarkConfig?.kv ?? "production")",
+                isBaseline: benchmarkConfig?.flags == 0)
             return GenerationMetrics(
                 text: generated.text,
                 generatedTokens:
@@ -3574,6 +3602,7 @@ actor BonsaiEngine {
         defer { if let storage { llama_batch_free(storage) } }
         while offset < stopOffset {
             try benchmarkCheckCancellation()
+            let prepStart = ProcessInfo.processInfo.systemUptime
             let count = min(batchSize, stopOffset - offset)
             var batch = storage ?? llama_batch_init(Int32(count), 0, 1)
             if benchmarkInvocation { if reuse { benchmarkReuses += 1 } else { benchmarkAllocations += 1 } }
@@ -3592,9 +3621,12 @@ actor BonsaiEngine {
             }
 
             let batchIndex = (offset - tokenOffset) / max(1, batchSize)
+            activeProfile?.batchPrepared(since: prepStart)
             onProgress?("decode_begin", stopOffset - tokenOffset, offset - tokenOffset, batchIndex, 0)
             let decodeStart = ProcessInfo.processInfo.systemUptime
             let code = llama_decode(context, batch)
+            activeProfile?.decoded(since: decodeStart, prefill: true)
+            if let profile = activeProfile { HealthMonitor.shared.progress(requestID: profile.requestID) }
             let durationMs = (ProcessInfo.processInfo.systemUptime - decodeStart) * 1_000
             if !reuse { llama_batch_free(batch) } else { storage = batch }
             onProgress?("decode_end", stopOffset - tokenOffset,
@@ -3698,7 +3730,9 @@ actor BonsaiEngine {
         }
         while generated < maxTokens {
             try benchmarkCheckCancellation()
+            let readStart = ProcessInfo.processInfo.systemUptime
             let token = llama_sampler_sample(sampler, context, -1)
+            activeProfile?.readResult(since: readStart)
 
             if llama_vocab_is_eog(vocab, token) {
                 terminationReason = .eog
@@ -3717,6 +3751,7 @@ actor BonsaiEngine {
                 if !valid.isEmpty { onDelta?(valid) }
             }
 
+            let prepStart = ProcessInfo.processInfo.systemUptime
             var batch = storage ?? llama_batch_init(1, 0, 1)
             if benchmarkInvocation { if reuse { benchmarkReuses += 1 } else { benchmarkAllocations += 1 } }
             batch.n_tokens = 0
@@ -3727,7 +3762,10 @@ actor BonsaiEngine {
                 logits: true
             )
 
+            activeProfile?.batchPrepared(since: prepStart)
+            let decodeStart = ProcessInfo.processInfo.systemUptime
             let code = llama_decode(context, batch)
+            activeProfile?.decoded(since: decodeStart, prefill: false)
             if !reuse { llama_batch_free(batch) } else { storage = batch }
 
             if code != 0 {
@@ -3737,6 +3775,10 @@ actor BonsaiEngine {
 
             position += 1
             generated += 1
+            if generated % 16 == 0 {
+                if let profile = activeProfile { HealthMonitor.shared.progress(requestID: profile.requestID) }
+                CrashDiagnostics.shared.updateState(["current_operation": .string("INFERENCE_DECODE"), "tokens_generated": .number(Double(generated))])
+            }
         }
 
         if !pending.isEmpty {
@@ -3856,6 +3898,7 @@ actor BonsaiEngine {
     }
 
     func benchmarkConfigure(_ candidate: BenchmarkConfiguration) throws -> [String: Any] {
+        CrashDiagnostics.shared.recordTimelineEvent("CANDIDATE_SWITCH_REQUEST", details: candidate.json.mapValues(DiagnosticValue.from))
         guard let model, benchmarkOriginal != nil,
             candidate.isValid(capabilities: Int(BonsaiBenchmarkCapabilities())),
             !benchmarkRejected.contains(candidate.identity) else {
@@ -3889,6 +3932,7 @@ actor BonsaiEngine {
                 throw LabError.invalidConfig("NATIVE_CONFIGURATION_MISMATCH")
             }
             appliedRuntime = runtime; benchmarkConfig = candidate
+            BonsaiProfileReset()
             UserDefaults.standard.set(candidate.json, forKey: "BonsaiBenchmarkInterrupted")
             var evidence = benchmarkCapabilities()
             evidence["configuration_memory"] = configureTelemetry.finish()
@@ -3945,7 +3989,6 @@ actor BonsaiEngine {
         do {
             let result = try generateText(systemPrompt: system, history: history, userPrompt: prompt,
                 generation: generation, reasoningEffort: "none", onDelta: onDelta)
-            if let context { llama_synchronize(context) }
             let drained = BonsaiBenchmarkConfigure(Int32(config.flags)) == 1
             let after = BenchmarkTelemetry.counters()
             return ["schema": 1, "candidate": BenchmarkCandidateRegistry.name(config.flags), "actual": config.json,
@@ -3953,6 +3996,9 @@ actor BonsaiEngine {
                 "operation_evidence": BenchmarkTelemetry.operationEvidence(), "counter_delta": zip(after, before).map { pair in pair.0 >= pair.1 ? pair.0 - pair.1 : 0 },
                 "gpu_completion_drained": drained, "memory": telemetry.finish(), "batch_allocations": benchmarkAllocations,
                 "batch_reuses": benchmarkReuses, "logits_probe": benchmarkLogits,
+                "request_id": ProfilingSnapshot.shared.read()["request_id"] ?? NSNull(),
+                "coverage": ProfilingSnapshot.shared.read()["kernel_stats"] ?? NSNull(),
+                "stage_coverage": ProfilingSnapshot.shared.read()["coverage"] ?? NSNull(),
                 "prompt_tokens": result.promptTokens, "generated_tokens": result.generatedTokens,
                 "effective_max_tokens": result.effectiveMaxTokens,
                 "prefill_s": result.prefillSeconds, "ttft_s": result.ttftSeconds,

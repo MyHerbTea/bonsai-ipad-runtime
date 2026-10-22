@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,6 +28,10 @@ enum BonsaiBenchmarkCounterIndex {
     BonsaiBenchmarkCounterCount = 10
 };
 uint64_t BonsaiBenchmarkCounter(int index);
+bool BonsaiProfileAvailable(void);
+void BonsaiProfileReset(void);
+void BonsaiProfileEnable(int enabled);
+uint64_t BonsaiProfileCounter(int index);
 #ifdef __cplusplus
 }
 #endif

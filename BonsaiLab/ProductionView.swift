@@ -893,7 +893,12 @@ private enum RC1232PerformanceDiagnostics {
 }
 
 // Build 97: configurable API output budget and homepage MLX Vision Sidecar.
-struct ProductionView: View {
+@MainActor struct ProductionView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage("benchmark_keep_screen_on") private var benchmarkKeepScreenOn = false
+    @ObservedObject private var screenOn = ScreenOnCoordinator.shared
+    @State private var build117SnapshotStatus = ""
     @Environment(\.scenePhase) private var scenePhase
     private let engine = BonsaiEngine()
     @StateObject private var apiServer = LocalOpenAIServer()
@@ -1280,7 +1285,27 @@ struct ProductionView: View {
                 }
 
                 Section("局域网 OpenAI API") {
-                    HStack {
+                    Toggle("测试时保持屏幕常亮", isOn: $benchmarkKeepScreenOn)
+                        .accessibilityHint("API服务运行或性能测试进行时保持屏幕常亮")
+                    Text(screenOn.active ? "屏幕常亮已启用" : "测试期间可保持屏幕常亮，避免系统休眠影响性能测量")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("保存本地诊断快照") {
+                        build117SnapshotStatus = "正在保存诊断快照…"
+                        Task {
+                            do {
+                                let id = try await Task.detached(priority: .utility) { try CrashDiagnostics.shared.snapshot() }.value
+                                build117SnapshotStatus = "已保存：\(id)"
+                            } catch { build117SnapshotStatus = "诊断快照保存失败，请检查可用存储空间。" }
+                        }
+                    }
+                    if !build117SnapshotStatus.isEmpty {
+                        Text(build117SnapshotStatus).font(.footnote).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    AnyLayout(horizontalSizeClass == .compact || dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                        : AnyLayout(HStackLayout(alignment: .center, spacing: 12))) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(
                                 apiServer.isRunning
@@ -1304,6 +1329,7 @@ struct ProductionView: View {
                             .font(.footnote.monospaced())
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
                         Circle()
@@ -1829,7 +1855,7 @@ struct ProductionView: View {
                     .refreshLatestArchiveFromDisk()
                 recoverPreviousFailureHint()
             }
-            .onChange(of: scenePhase) { newPhase in
+            .onChange(of: scenePhase) { _, newPhase in
                 UserDefaults.standard.set(
                     String(describing: newPhase),
                     forKey: "BonsaiRC1240AppScenePhase"

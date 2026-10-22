@@ -1,0 +1,26 @@
+{
+  "tests_run": 47,
+  "passed": 43,
+  "failures": [],
+  "errors": [],
+  "skipped": [
+    {
+      "test": "test_build117_native_profile.ProfilePatchTests.test_actual_atomic_profile_control",
+      "reason": "C++ compiler unavailable; run on Apple CI"
+    },
+    {
+      "test": "test_ptq1_native_benchmark.NativeBenchmarkTests.test_actual_native_control_cpp",
+      "reason": "C++ compiler unavailable; macOS CI executes actual native control"
+    },
+    {
+      "test": "test_scheduler_allocation_recovery.SchedulerAllocationTests.test_actual_allocation_block_with_failed_allocators",
+      "reason": "macOS CI compiles and runs actual Apple recovery block"
+    },
+    {
+      "test": "test_ipad_benchmark_admission.IPadBenchmarkAdmissionTests.test_actual_native_device_name_parser",
+      "reason": "macOS CI executes the actual native parser"
+    }
+  ],
+  "device_validation": "NOT_RUN",
+  "apple_compilation": "NOT_RUN"
+}

@@ -1,0 +1,7 @@
+Combined delivery integrity: PASS; device validation: NOT_RUN
+���� formal fault
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 1.288s
+
+OK

@@ -1,0 +1,18 @@
+F
+======================================================================
+FAIL: test_app_and_ci_build_numbers_match_build117_package (test_build117_delivery_identity.DeliveryIdentityTests.test_app_and_ci_build_numbers_match_build117_package)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\tests\test_build117_delivery_identity.py", line 13, in test_app_and_ci_build_numbers_match_build117_package
+    self.assertEqual(app,ci,'IPA/testkit identity must not disagree')
+AssertionError: '116' != '117'
+- 116
+?   ^
++ 117
+?   ^
+ : IPA/testkit identity must not disagree
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

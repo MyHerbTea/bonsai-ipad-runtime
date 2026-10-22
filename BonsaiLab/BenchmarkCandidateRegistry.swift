@@ -30,13 +30,31 @@ struct BenchmarkConfiguration: Equatable, Sendable {
 enum BenchmarkCandidateRegistry {
     static let entries: [(String, Int)] = [
         ("SAFE_BASELINE", 0), ("PTQ1_TENSOROPS", 1),
-        ("PTQ1_FUSED_KERNEL", 2), ("PTQ1_LOW_OVERHEAD", 4)
+        ("PTQ1_MV_R5", 2), ("PTQ1_BATCH_REUSE", 4)
     ]
+    static func flags(named name: String) -> Int? {
+        if name == "PTQ1_FUSED_KERNEL" { return 2 }
+        if name == "PTQ1_LOW_OVERHEAD" { return 4 }
+        return entries.first(where: { $0.0 == name })?.1
+    }
+    static func optimizationTarget(_ flags: Int) -> String {
+        flags == 2 ? "DECODE_FOCUSED" : flags == 1 ? "PREFILL_FOCUSED" : "BALANCED"
+    }
+    static func description(_ flags: Int) -> String {
+        switch flags {
+        case 0: return "安全基线：继承 Prism 原始实现，无实验优化"
+        case 1: return "PTQ1 TensorOps：面向满足 tile 形状的 prefill；收益待真机验证"
+        case 2: return "PTQ1 MatVec Row-5：SIMD 组从4行到5行；M=1 decode、K%128==0；预期1–3%为待验证假设，不适用于B16大矩阵prefill"
+        case 4: return "PTQ1 Batch Reuse：复用CPU batch输入数组减少分配；不改变GPU调度、command buffer或同步点；预期端到端<1%为待验证假设"
+        default: return "组合候选：需独立ABBA验证"
+        }
+    }
     static func name(_ flags: Int) -> String {
         entries.first(where: { $0.1 == flags })?.0 ?? "PTQ1_BEST_COMBINATION"
     }
     static func json(capabilities: Int) -> [[String: Any]] {
-        entries.map { ["id": $0.0, "flags": $0.1, "available": $0.1 & capabilities == $0.1] }
+        entries.map { ["id": $0.0, "flags": $0.1, "available": $0.1 & capabilities == $0.1,
+                      "optimization_target": optimizationTarget($0.1), "description": description($0.1)] }
     }
 }
 

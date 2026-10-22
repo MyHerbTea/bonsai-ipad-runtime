@@ -1,0 +1,21 @@
+usage: ptq1_oneclick.py [-h] [--url URL] [--key-env KEY_ENV]
+                        [--duration-minutes {30,60}] [--output OUTPUT]
+                        [--no-browser] [--drift-warning-pct DRIFT_WARNING_PCT]
+                        [--drift-unstable-pct DRIFT_UNSTABLE_PCT]
+
+Bonsai M5 12GB PTQ1 一键真机竞赛
+
+options:
+  -h, --help            show this help message and exit
+  --url URL
+  --key-env KEY_ENV
+  --duration-minutes {30,60}
+  --output OUTPUT
+  --no-browser
+  --drift-warning-pct DRIFT_WARNING_PCT
+  --drift-unstable-pct DRIFT_UNSTABLE_PCT
+
+Exit code: 0
+Reports, when generated: RESULTS\current
+
+Press any key to close this window.

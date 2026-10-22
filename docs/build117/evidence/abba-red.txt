@@ -1,0 +1,29 @@
+FFF
+======================================================================
+FAIL: test_abba_collection_warms_every_slot_twice_and_never_reuses_partial_round (test_abba_measurement.ABBATests.test_abba_collection_warms_every_slot_twice_and_never_reuses_partial_round)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\tests\test_abba_measurement.py", line 57, in test_abba_collection_warms_every_slot_twice_and_never_reuses_partial_round
+    self.assertTrue(hasattr(t,'abba'), 'ABBA collector missing')
+AssertionError: False is not true : ABBA collector missing
+
+======================================================================
+FAIL: test_decode_target_and_minor_are_separate_from_promotion (test_abba_measurement.ABBATests.test_decode_target_and_minor_are_separate_from_promotion)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\tests\test_abba_measurement.py", line 30, in test_decode_target_and_minor_are_separate_from_promotion
+    self.assertTrue(hasattr(runner, 'compare_abba'), 'ABBA comparison missing')
+AssertionError: False is not true : ABBA comparison missing
+
+======================================================================
+FAIL: test_unknown_values_and_mismatches_cannot_pass (test_abba_measurement.ABBATests.test_unknown_values_and_mismatches_cannot_pass)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\tests\test_abba_measurement.py", line 39, in test_unknown_values_and_mismatches_cannot_pass
+    self.assertTrue(hasattr(runner, 'compare_abba'), 'ABBA comparison missing')
+AssertionError: False is not true : ABBA comparison missing
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.021s
+
+FAILED (failures=3)

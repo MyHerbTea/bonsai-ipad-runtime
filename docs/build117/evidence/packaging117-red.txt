@@ -1,0 +1,17 @@
+���� formal fault
+F..
+======================================================================
+FAIL: test_delivery_contains_one_ipa_portable_runtime_and_identity (test_faults_and_packaging.IntegrationTests.test_delivery_contains_one_ipa_portable_runtime_and_identity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\PTQ1_ONECLICK\test_faults_and_packaging.py", line 98, in test_delivery_contains_one_ipa_portable_runtime_and_identity
+    package.build()
+  File "D:\codexSpace\iPad27B\bonsai-ipad-runtime\tools\package_ptq1_oneclick.py", line 30, in build
+    assert str(info["CFBundleVersion"]) == "116"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.565s
+
+FAILED (failures=1)

@@ -66,6 +66,8 @@ final class BenchmarkTelemetry: @unchecked Sendable {
         let gpu = MTLCreateSystemDefaultDevice()?.name ?? "unknown"
         let memory = ProcessInfo.processInfo.physicalMemory
         return ["machine": machine, "gpu": gpu, "physical_memory_bytes": memory,
+                "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
+                "low_power_mode": ProcessInfo.processInfo.isLowPowerModeEnabled,
                 "eligible": UIDevice.current.userInterfaceIdiom == .pad && gpu.contains("M5")
                     && memory >= 11 * 1_073_741_824 && memory < 13 * 1_073_741_824,
                 "thermal_state": ProcessInfo.processInfo.thermalState.rawValue]

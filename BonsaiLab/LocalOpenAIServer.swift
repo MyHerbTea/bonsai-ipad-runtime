@@ -119,7 +119,14 @@ private final class OpenAILazyStreamState: @unchecked Sendable {
 }
 
 final class LocalOpenAIServer: ObservableObject {
-    @Published private(set) var isRunning = false
+    @Published private(set) var isRunning = false {
+        didSet {
+            let running = isRunning
+            Task { @MainActor in ScreenOnCoordinator.shared.apiRunning = running }
+            CrashDiagnostics.shared.updateState(["api_server_running": .bool(running)], force: true)
+            CrashDiagnostics.shared.recordTimelineEvent(running ? "API_STARTED" : "API_STOPPED")
+        }
+    }
     @Published private(set) var status = "已停止"
     @Published private(set) var port: UInt16 = 8080
     @Published private(set) var requestCount = 0
@@ -738,6 +745,22 @@ final class LocalOpenAIServer: ObservableObject {
             return
         }
 
+        // Diagnostic endpoints use precisely the same authorization guard as inference.
+        if request.path == "/debug/profiling", request.method == "GET" {
+            sendJSON(connection, status: 200, object: ProfilingSnapshot.shared.read()); return
+        }
+        if request.path == "/debug/snapshot", request.method == "POST" {
+            do {
+                let id = try CrashDiagnostics.shared.snapshot()
+                sendJSON(connection, status: 200, object: ["snapshot_id": id, "file": "\(id).json"])
+            } catch { sendJSON(connection, status: 503, object: Self.errorObject("snapshot_failed", "Diagnostic storage unavailable.")) }
+            return
+        }
+        if request.path == "/debug/crashes" || request.path.hasPrefix("/debug/crashes/") {
+            let response = CrashDiagnostics.shared.api(method: request.method, path: request.path,
+                query: request.query)
+            sendRaw(connection, status: response.0, contentType: response.1, body: response.2); return
+        }
         if request.path.hasPrefix("/debug/benchmark/") {
             processBenchmark(request, connection: connection)
             return
@@ -3731,6 +3754,7 @@ private struct HTTPRequest {
     let path: String
     let headers: [String: String]
     let body: Data
+    let query: [String: String]
 
     static func parseIfComplete(
         _ data: Data
@@ -3772,6 +3796,10 @@ private struct HTTPRequest {
 
         let method = String(parts[0]).uppercased()
         let pathWithQuery = String(parts[1])
+        var query: [String: String] = [:]
+        if let items = URLComponents(string: pathWithQuery)?.queryItems {
+            for item in items { query[item.name] = item.value ?? "" }
+        }
         let path = pathWithQuery
             .split(separator: "?", maxSplits: 1)
             .first
@@ -3842,7 +3870,8 @@ private struct HTTPRequest {
             method: method,
             path: path,
             headers: headers,
-            body: body
+            body: body,
+            query: query
         )
 
     }

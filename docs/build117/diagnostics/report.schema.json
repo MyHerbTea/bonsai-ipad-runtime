@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bonsai Build117 local diagnostic report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "executive_summary",
+    "device_info",
+    "app_state",
+    "stack_trace",
+    "memory_state",
+    "operation_timeline",
+    "breadcrumbs",
+    "performance_snapshot",
+    "kernel_statistics",
+    "configuration",
+    "recent_errors",
+    "ai_analysis"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "timestamp": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "report_kind": {
+      "enum": [
+        "fatal_signal",
+        "previous_session_unclean",
+        "nonfatal_snapshot"
+      ]
+    },
+    "executive_summary": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "device_info": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "app_state": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "stack_trace": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "memory_state": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "operation_timeline": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "breadcrumbs": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "performance_snapshot": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "kernel_statistics": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "configuration": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "recent_errors": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "ai_analysis": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  }
+}

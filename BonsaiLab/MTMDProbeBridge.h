@@ -1,4 +1,5 @@
 #pragma once
+#include "CrashCaptureBridge.h"
 
 #include <stdbool.h>
 #include <stdint.h>

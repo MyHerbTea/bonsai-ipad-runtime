@@ -1,1 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+build/
+Vendor/llama.xcframework/
+*.xcodeproj/
 /deliveries/

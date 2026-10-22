@@ -27,13 +27,15 @@ import urllib.parse
 import urllib.request
 import webbrowser
 import zipfile
+import uuid
 if "--check-code" not in sys.argv:
     from quick_components import normalize_base, write_zip
+    from measurement import analyze_abba_round, compare_abba, optimization_target, ALIASES
 
 ROOT = Path(__file__).resolve().parent
 GIB = 1024**3
 MIN_HEADROOM = 512*1024**2
-NAMES = {0:'SAFE_BASELINE',1:'PTQ1_TENSOROPS',2:'PTQ1_FUSED_KERNEL',4:'PTQ1_LOW_OVERHEAD'}
+NAMES = {0:'SAFE_BASELINE',1:'PTQ1_TENSOROPS',2:'PTQ1_MV_R5',4:'PTQ1_BATCH_REUSE'}
 SYSTEM = 'You are a helpful assistant. Follow the requested output format exactly.'
 MICRO = ('Continue an uninterrupted sequence of neutral English words separated by commas. '
          'Do not summarize or conclude. Continue until the output limit. Reference payload:\n')
@@ -108,7 +110,21 @@ def numerical_parity(base, candidate):
     scale=max(1.,math.sqrt(sum(i*i for i in x)/len(x)))
     return rms/scale<=0.001 and bool(base.get('output_sha256')) and base['output_sha256']==candidate.get('output_sha256')
 
-def compare_samples(base, candidate):
+def compare_samples(base, candidate, warning=5., unstable=10.):
+    if any('abba_round' in s for s in base+candidate):
+        groups={}
+        for s in base+candidate:
+            if 'abba_round' in s:groups.setdefault(s['abba_round'],{})[s['abba_slot']]=s
+        candidate_ids={s.get('abba_round') for s in candidate}
+        rows=[[slots[k] for k in ('A1','B1','B2','A2') if k in slots]
+              for key,slots in groups.items() if key in candidate_ids]
+        flags=candidate[0].get('config',candidate[0].get('actual',{})).get('flags',0) if candidate else 0
+        return compare_abba(rows,flags,warning,unstable)
+    result=compare_legacy_samples(base,candidate)
+    result['measurement_method']='LEGACY_NON_ABBA_NOT_BUILD117_PROMOTION'
+    return result
+
+def compare_legacy_samples(base, candidate):
     base=[s for s in base if s.get('valid')];candidate=[s for s in candidate if s.get('valid')]
     result={'status':'INCOMPLETE','baseline_valid':len(base),'candidate_valid':len(candidate)}
     if len(base)<3 or len(candidate)<3:return result
@@ -252,7 +268,7 @@ def write_reports(directory, report):
         row.update({key:actual.get(key) for key in ('context','batch','ubatch','kv_k','kv_v','flags')})
         row.update({key:memory.get(key) for key in ('sampled_peak_footprint_bytes','min_available_bytes','sampled_peak_metal_bytes','max_thermal_state')})
         rows.append(row)
-    fields=['stage','candidate','context','batch','ubatch','kv_k','kv_v','flags','repeat','target_tokens','prompt_tokens','generated_tokens','prefill_s','prefill_tps','ttft_s',
+    fields=['stage','candidate','optimization_target','abba_round','abba_slot','thermal_before','coverage','stage_coverage','context','batch','ubatch','kv_k','kv_v','flags','repeat','target_tokens','prompt_tokens','generated_tokens','prefill_s','prefill_tps','ttft_s','decode_to_first_token_s',
         'client_first_sse_s','client_first_content_s','client_final_answer_s','decode_tps','wall_s','finish_reason','sampled_peak_footprint_bytes','min_available_bytes','sampled_peak_metal_bytes','max_thermal_state','valid','errors','output_sha256']
     with (directory/'samples.csv').open('w',encoding='utf-8-sig',newline='') as handle:
         writer=csv.DictWriter(handle,fieldnames=fields,extrasaction='ignore');writer.writeheader()
@@ -267,7 +283,7 @@ def write_reports(directory, report):
     doc+='<p>本报告仅包含连接设备实测。CI 构建不代表性能收益。内存峰值为 50ms 采样观察值。128 token 仅用于微基准；质量任务单独验收。首 SSE 元数据与首内容时间分别记录。</p>'
     doc+='<p>日常配置：'+escape(clean.get('recommendations',{}).get('daily','待验收'))+'；长输入配置：'+escape(clean.get('recommendations',{}).get('long','待验收'))+'</p>'
     doc+='<p>恢复状态：'+escape(clean.get('restoration','未确认'))+'；稳定性：'+escape(clean.get('stability',{}))+'</p>'
-    doc+='<p>门槛：预填充 ≥15%，TTFT ≥10%，解码回退 ≤5%，新增采样峰值 ≤1GiB，可用余量 ≥512MiB；严格输出哈希、质量和持续运行均须通过。</p>'
+    doc+='<p>ABBA 配对：正收益表示改善；漂移 >5% 警告，>10% 不稳定。Decode目标 ≥3%；Prefill目标 ≥5% 且解码回退 ≤10%；Balanced目标预填充 ≥15%、TTFT ≥10%、解码回退 ≤5%。确认需5个有效轮及95%配对均值区间下界大于0；质量、身份和内存保护继续生效。</p>'
     doc+='<h2>参数调优观察（通过全门槛才可采用）</h2><pre>'+escape(json.dumps(clean.get('tuning',{}),ensure_ascii=False,indent=2))+'</pre>'
     doc+='<h2>比较结果</h2><pre>'+comparisons+'</pre><h2>质量结果</h2><pre>'+escape(json.dumps(clean.get('quality',{}),ensure_ascii=False,indent=2))+'</pre>'
     doc+='<h2>请求样本</h2><div class="scroll"><table><tr>'+''.join('<th>'+escape(k)+'</th>' for k in fields)+'</tr>'+table+'</table></div>'
@@ -315,7 +331,7 @@ class Tournament:
     def __init__(self,client,identity,directory,minutes=30):
         self.client=client;self.identity=identity;self.directory=directory;self.minutes=minutes
         self.current=None;self.configuration_memory={};self.original_runtime=None;self.prompts={};self.blacklist=set();self.completed={};self.inflight=None;self.process=None
-        self.report={'schema':'bonsai-ptq1-oneclick-v1','status':'INCOMPLETE','device_validation':'CONNECTED_DEVICE_ONLY',
+        self.report={'schema':'bonsai-ptq1-oneclick-v2','schema_version':2,'run_id':str(uuid.uuid4()),'status':'INCOMPLETE','device_validation':'CONNECTED_DEVICE_ONLY',
             'identity':identity,'started_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'samples':[],
             'comparisons':{},'quality':{},'errors':[],'skipped':[],'recommendations':{},'restoration':'NOT_CONFIRMED'}
         directory.mkdir(parents=True,exist_ok=True)
@@ -362,7 +378,7 @@ class Tournament:
                 if previous.get('process_id')==self.process:
                     self.completed=previous.get('completed',{})
                     old=previous.get('report',{})
-                    if old.get('status') in ('PASS','NO_GAIN') and old.get('restoration')=='RESTORED':
+                    if old.get('schema_version')==2 and old.get('status') in ('PASS','NO_GAIN') and old.get('restoration')=='RESTORED':
                         self.report=old;return False
                     self.report['samples']=old.get('samples',[])
                     self.report['errors']+=old.get('errors',[])
@@ -426,7 +442,8 @@ class Tournament:
             # Quality answers are not persisted: rerun only completed, certain requests when needed.
             if not keep_text:return dict(existing)
         self.switch(config)
-        payload={'system':SYSTEM,'prompt':prompt,'history':history or [],'max_tokens':max_tokens,'request_id':digest(key)[:24]}
+        payload={'system':SYSTEM,'prompt':prompt,'history':history or [],'max_tokens':max_tokens,'request_id':digest(key)[:24],
+                 'run_id':self.report['run_id'],'stage':stage}
         self.inflight={'key':key,'config':config};self.save()
         print('运行',stage,key)
         try:
@@ -450,57 +467,77 @@ class Tournament:
         if stage in ('screen','formal','combination','tune','tune_confirm'):
             if result.get('generated_tokens')!=128 or result.get('finish_reason')!='length':errors.append('micro_output_length_mismatch')
         result.update(stage=stage,repeat=repeat,target_tokens=target,prompt_hash=digest(SYSTEM+'\n'+prompt+json.dumps(history or [],sort_keys=True)),
-            config=dict(config),candidate=NAMES.get(config['flags'],'PTQ1_BEST_COMBINATION'),valid=not errors,errors=errors,
+            config=dict(config),candidate=NAMES.get(config['flags'],'PTQ1_BEST_COMBINATION'),optimization_target=optimization_target(config['flags']),valid=not errors,errors=errors,
             prefill_tps=result.get('prompt_tokens',0)/max(result.get('prefill_s',0),1e-9))
         clean=scrub(result);self.report['samples'].append(clean);self.completed[key]=clean
         self.inflight=None;self.save()
         if not keep_text:result.pop('text',None)
         return result
+    def thermal(self):
+        value=self.client.request('capabilities',timeout=30).get('hardware',{}).get('thermal_state')
+        if not isinstance(value,int) or value not in (0,1,2,3):raise EvidenceError('THERMAL_STATE_UNAVAILABLE')
+        return value
     def warm(self,config,key):
         prompt,count=self.fit_prompt(512)
-        result=self.run(config,prompt,count,'warm:'+key,'warmup',max_tokens=32)
-        if not result['valid']:raise EvidenceError('WARMUP_EXECUTION_EVIDENCE_FAILED')
+        for index in range(2):
+            if self.thermal()>=2:raise EvidenceError('THERMAL_PRECHECK')
+            result=self.run(config,prompt,count,f'warm:{key}:{index}','warmup',max_tokens=256)
+            if not result['valid']:raise EvidenceError('WARMUP_EXECUTION_EVIDENCE_FAILED')
+    def abba(self,candidate,stage,round_index,target=2048):
+        prompt,count=self.fit_prompt(target);round_id=uuid.uuid4().hex;row=[]
+        for slot in ('A1','B1','B2','A2'):
+            config=dict(candidate,flags=0) if slot.startswith('A') else candidate
+            self.switch(config)
+            self.warm(config,f'{stage}:{round_id}:{slot}')
+            thermal=self.thermal()
+            if thermal>=2:raise EvidenceError('THERMAL_PRECHECK')
+            sample=self.run(config,prompt,count,f'{stage}:{round_id}:{slot}',stage,repeat=round_index)
+            sample.update(abba_round=round_id,abba_slot=slot,thermal_before=thermal,
+                          optimization_target=optimization_target(candidate['flags']))
+            if row and not numerical_parity(row[0],sample):
+                sample['valid']=False;sample.setdefault('errors',[]).append('logits_or_hash_mismatch')
+            row.append(sample)
+            # run() persisted the terminal sample already; preserve slot metadata too.
+            self.completed[f'{stage}:{round_id}:{slot}']=scrub(sample)
+            if self.report['samples']:self.report['samples'][-1].update(scrub(sample))
+            self.save()
+        analysis=analyze_abba_round(row,*getattr(self,'drift_thresholds',(5.,10.)))
+        if any(not numerical_parity(row[0],s) for s in row[1:]):
+            analysis.update(status='INCOMPLETE',reason='logits_or_hash_mismatch')
+            for s in row:s['valid']=False
+        self.report.setdefault('abba_attempts',[]).append(dict(analysis,stage=stage,flags=candidate['flags']))
+        self.save();return row
     def formal(self,flags,stage='formal'):
-        prompt,count=self.fit_prompt(2048);records={flag:[] for flag in flags}
-        for round_index in range(3):
-            order=flags if round_index%2==0 else list(reversed(flags))
-            for flag in order:
-                config=self.config(flag)
+        records={flag:[] for flag in flags};records.setdefault(0,[])
+        for flag in flags:
+            if flag==0:continue
+            valid=0
+            for round_index in range(10):
                 try:
-                    self.switch(config);self.warm(config,f'{stage}:{round_index}:{flag}')
-                    for attempt in range(2):
-                        s=self.run(config,prompt,count,f'{stage}:{round_index}:{flag}:{attempt}',stage,repeat=round_index)
-                        if s['valid']:records[flag].append(s);break
-                        # Only certain terminal observations can be retried. No request replay on timeout.
-                        if any(e not in ('thermal','micro_output_length_mismatch') for e in s['errors']):break
-                        if 'micro_output_length_mismatch' in s['errors']:break
-                        time.sleep(15)
+                    row=self.abba(self.config(flag),stage,round_index)
+                    for s in row:records[s['config']['flags']].append(s)
+                    if analyze_abba_round(row,*getattr(self,'drift_thresholds',(5.,10.)))['status']=='STABLE':valid+=1
+                    if valid>=5:break
                 except (APIError,EvidenceError) as e:
                     self.report['errors'].append({'code':str(e),'stage':stage,'flags':flag})
         return records
     def screen(self):
-        prompt,count=self.fit_prompt(512);screens={}
-        for flag in (0,1,2,4):
+        selected=[];complete=True
+        for flag in (1,2,4):
             if flag&~self.capabilities:
                 self.report['skipped'].append({'flags':flag,'reason':'NATIVE_CAPABILITY_UNAVAILABLE'});continue
             try:
-                config=self.config(flag);self.warm(config,'screen:'+str(flag))
-                screens[flag]=self.run(config,prompt,count,'screen:'+str(flag),'screen')
-            except (APIError,EvidenceError) as e:self.report['errors'].append({'code':str(e),'stage':'screen','flags':flag})
-        baseline=screens.get(0)
-        if not baseline or not baseline['valid']:raise EvidenceError('BASELINE_SCREEN_INCOMPLETE')
-        self.report['baseline_initial_peak_bytes']=baseline['memory']['sampled_peak_footprint_bytes']
-        ranked=[]
-        for flag,s in screens.items():
-            if flag==0:continue
-            parity=s.get('valid') and numerical_parity(baseline,s) and s['memory']['sampled_peak_footprint_bytes']-baseline['memory']['sampled_peak_footprint_bytes']<=GIB
-            if not parity:self.report['skipped'].append({'flags':flag,'reason':'SCREEN_EXECUTION_OR_NUMERICAL_FAILURE'});continue
-            # Short screen is a filter, never a performance certification.
-            benefit=max(s['prefill_tps']/baseline['prefill_tps'],s['decode_tps']/baseline['decode_tps'],baseline['ttft_s']/s['ttft_s'])
-            if benefit>1.01:ranked.append((benefit,flag))
-            else:self.report['skipped'].append({'flags':flag,'reason':'NO_SCREEN_BENEFIT'})
-        self.report['screen_evidence_complete']=all(s.get('valid') for s in screens.values()) and len(screens)==sum(not (f & ~self.capabilities) for f in (0,1,2,4))
-        return [flag for _,flag in sorted(ranked,reverse=True)[:2]]
+                row=self.abba(self.config(flag),'screen',0,512)
+                result=compare_abba([row],flag,*getattr(self,'drift_thresholds',(5.,10.)),screen=True)
+                self.report['comparisons']['screen_'+NAMES[flag]]=result
+                complete=complete and result['status']!='INCOMPLETE'
+                if row[0]['valid']:self.report.setdefault('baseline_initial_peak_bytes',row[0]['memory']['sampled_peak_footprint_bytes'])
+                if result['status']=='SCREEN_PROMOTE':selected.append(flag)
+                else:self.report['skipped'].append({'flags':flag,'reason':result['evidence_status']})
+            except (APIError,EvidenceError) as e:
+                complete=False;self.report['errors'].append({'code':str(e),'stage':'screen','flags':flag})
+        self.report['screen_evidence_complete']=complete
+        return selected
     def tune(self,flag):
         prompt,count=self.fit_prompt(512);candidates=[]
         reference=self.config(flag)
@@ -577,15 +614,12 @@ class Tournament:
             result.pop('text',None)
         return {'config':config,'cases':scores,'pass':all(s['correct'] and s['complete'] and s['valid'] for s in scores)}
     def confirm_pair(self,candidate,label):
-        baseline=dict(candidate,flags=0);records={0:[],1:[]}
-        prompt,count=self.fit_prompt(2048)
-        for repeat in range(3):
-            order=[(0,baseline),(1,candidate)] if repeat%2==0 else [(1,candidate),(0,baseline)]
-            for index,config in order:
-                self.warm(config,f'final:{label}:{repeat}:{index}')
-                result=self.run(config,prompt,count,f'final:{label}:{repeat}:{index}','formal',repeat=repeat)
-                records[index].append(result)
-        comparison=compare_samples(records[0],records[1]);self.report['comparisons']['final_'+label]=comparison
+        rows=[]
+        for repeat in range(10):
+            rows.append(self.abba(candidate,'formal',repeat))
+            if sum(analyze_abba_round(r,*getattr(self,'drift_thresholds',(5.,10.)))['status']=='STABLE' for r in rows)>=5:break
+        comparison=compare_abba(rows,candidate['flags'],*getattr(self,'drift_thresholds',(5.,10.)))
+        self.report['comparisons']['final_'+label]=comparison
         return comparison
     def cancellation_probe(self,config):
         self.switch(config)
@@ -637,7 +671,7 @@ class Tournament:
         selected=self.screen();records=self.formal([0]+selected)
         effective=[];winners=[]
         for flag in selected:
-            comparison=compare_samples(records.get(0,[]),records.get(flag,[]))
+            comparison=compare_samples(records.get(0,[]),records.get(flag,[]),*getattr(self,'drift_thresholds',(5.,10.)))
             self.report['comparisons'][NAMES[flag]]=comparison
             if comparison['status']=='PERFORMANCE_PASS':winners.append(flag)
             # Independent positive components may form a combination; the combination must pass all final gates.
@@ -653,13 +687,14 @@ class Tournament:
                     combinations_to_test.append(mask)
             for mask in combinations_to_test:
                 combined=self.formal([0,mask],stage='combination')
-                result=compare_samples(combined[0],combined[mask]);self.report['comparisons']['PTQ1_BEST_COMBINATION_'+str(mask)]=result
+                result=compare_samples(combined[0],combined[mask],*getattr(self,'drift_thresholds',(5.,10.)));self.report['comparisons']['PTQ1_BEST_COMBINATION_'+str(mask)]=result
                 if result['status']=='PERFORMANCE_PASS':winners.append(mask)
         self.save()
         if winners:
             def rank(flag):
                 name=NAMES.get(flag,'PTQ1_BEST_COMBINATION_'+str(flag))
-                return self.report['comparisons'][name]['ttft_gain_pct']
+                comparison=self.report['comparisons'][name]
+                return comparison['decode_change_pct'] if flag==2 else comparison['prefill_gain_pct']
             winner=max(winners,key=rank)
         else:winner=0
         daily,long=self.tune(winner)
@@ -732,6 +767,8 @@ def main():
     parser.add_argument('--duration-minutes',type=int,choices=(30,60),default=30)
     parser.add_argument('--output',type=Path,default=ROOT/'RESULTS'/'current')
     parser.add_argument('--no-browser',action='store_true')
+    parser.add_argument('--drift-warning-pct',type=float,default=5.)
+    parser.add_argument('--drift-unstable-pct',type=float,default=10.)
     args=parser.parse_args()
     report=None;tournament=None;startup_error=None
     try:
@@ -742,6 +779,9 @@ def main():
         key=os.environ.get(args.key_env,'')
         if health.get('auth_required') and not key:key=getpass.getpass('API Key（仅输入一次，不保存）：')
         client=Client(url,key);tournament=Tournament(client,identity,args.output,args.duration_minutes)
+        if not (math.isfinite(args.drift_warning_pct) and math.isfinite(args.drift_unstable_pct) and 0<=args.drift_warning_pct<args.drift_unstable_pct):
+            raise ValueError('invalid_drift_thresholds')
+        tournament.drift_thresholds=(args.drift_warning_pct,args.drift_unstable_pct)
         tournament.execute()
     except KeyboardInterrupt:
         if tournament:tournament.report['errors'].append({'code':'USER_INTERRUPTED'})
