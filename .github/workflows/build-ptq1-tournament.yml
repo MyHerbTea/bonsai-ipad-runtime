@@ -1,0 +1,170 @@
+name: Bonsai Build114 PTQ1 One-click Tournament
+
+on:
+  push:
+    branches: [codex/ptq1-oneclick-tournament]
+  workflow_dispatch:
+
+concurrency:
+  group: bonsai-ptq1-tournament-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+env:
+  BUILD_NUMBER: "114"
+  PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Python runtime for reproducible checks
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Behavioral tests and source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/benchmark_session_policy_tests.swift -o "$RUNNER_TEMP/benchmark-policy"
+          "$RUNNER_TEMP/benchmark-policy" | tee build/CI_TESTS.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkSessionManager.swift tools/benchmark_manager_behavior_tests.swift -o "$RUNNER_TEMP/benchmark-manager"
+          "$RUNNER_TEMP/benchmark-manager" | tee -a build/CI_TESTS.txt
+          xcrun swiftc -frontend -parse BonsaiLab/BonsaiEngine.swift BonsaiLab/BenchmarkSessionManager.swift BonsaiLab/BenchmarkTelemetry.swift BonsaiLab/LocalOpenAIServer.swift
+          python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/PTQ1_ONECLICK -p 'test_*.py' -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/package_ptq1_oneclick.py
+          git diff --check
+
+      - name: Install XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen --version
+
+      - name: Build patched Prism XCFramework
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRISM_DIR="$RUNNER_TEMP/prism-build114"
+          git clone --filter=blob:none https://github.com/PrismML-Eng/llama.cpp.git "$PRISM_DIR"
+          git -C "$PRISM_DIR" checkout "$PRISM_COMMIT"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build83_patch_prism_kv_sharding.py" "$PRISM_DIR/src/llama-kv-cache.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build84_patch_prism_native_trace.py" "$PRISM_DIR/src/llama-kv-cache.cpp" "$PRISM_DIR/src/llama-context.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build85_patch_prism_scheduler_trace.py" "$PRISM_DIR/src/llama-context.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build86_patch_prism_crash_forensics.py" "$PRISM_DIR/src/llama-context.cpp" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build87_patch_prism_sched_context.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build88_patch_prism_mmap_recovery.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp" "$PRISM_DIR/src/llama-context.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build89_patch_prism_compact_scheduler.py" "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD89_COMPACT_ALLOC_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+            python3 "$GITHUB_WORKSPACE/tools/rc126_build113_patch_prism_m5_nax_pq2.py" "$PRISM_DIR"
+            python3 "$GITHUB_WORKSPACE/tools/rc126_build113_patch_prism_ptq1_tensorops.py" "$PRISM_DIR"
+            grep -q 'BONSAI_M5_NAX_PQ2_01' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
+            grep -q 'BONSAI_M5_PTQ1_TENSOROPS_01' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
+            grep -q 'kernel_mul_mm_ptq1_tensorops_0_f32' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
+            grep -q 'ggml_metal_library_get_pipeline_mul_mm_ptq1_tensorops' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-device.cpp"
+            grep -q 'use_ptq1_tensorops' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
+            grep -q 'kernel_mul_mm_nax_pq2_0_f32' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mm.metal"
+            grep -q 'ggml_metal_library_get_pipeline_mul_mm_nax_pq2' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-device.cpp"
+            grep -q 'use_pq2_nax' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build114_patch_prism_ptq1_benchmark.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_ptq1_native_benchmark.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
+          grep -q 'BUILD86_FUSED_PROBE_BEGIN' "$PRISM_DIR/src/llama-context.cpp"
+          grep -q 'BUILD85_SCHED_ENTER' "$PRISM_DIR/src/llama-context.cpp"
+          grep -q 'BUILD84_KV_ALLOC_BEGIN' "$PRISM_DIR/src/llama-kv-cache.cpp"
+          grep -q 'BUILD83_METAL_KV_LAYER_SHARD' "$PRISM_DIR/src/llama-kv-cache.cpp"
+          git -C "$PRISM_DIR" diff --check
+          (
+            cd "$PRISM_DIR"
+            bash ./build-xcframework.sh ios-device
+          )
+          test -f "$PRISM_DIR/build-apple/llama.xcframework/ios-arm64/llama.framework/llama"
+          mkdir -p Vendor
+          ditto "$PRISM_DIR/build-apple/llama.xcframework" Vendor/llama.xcframework
+          test -f Vendor/llama.xcframework/ios-arm64/llama.framework/llama
+
+      - name: Embed exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > BonsaiLab/BonsaiCertificationBuildIdentity.swift <<EOF
+          enum BonsaiCertificationBuildIdentity {
+              static let sourceGitSHA = "$GITHUB_SHA"
+              static let workflowRunID = "$GITHUB_RUN_ID"
+          }
+          EOF
+
+      - name: Generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          test -d BonsaiLab.xcodeproj
+
+      - name: Release Xcode build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild \
+            -project BonsaiLab.xcodeproj \
+            -scheme BonsaiLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build | tee build/build.log
+
+      - name: Verify Build114 IPA and native ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
+          test -d "$APP"
+          test -f "$APP/BonsaiLab"
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Info.plist")" = "1.0.0"
+          test "$(plutil -extract CFBundleVersion raw -o - "$APP/Info.plist")" = "$BUILD_NUMBER"
+          FRAMEWORK="$APP/Frameworks/llama.framework/llama"
+          test -f "$FRAMEWORK"
+          nm -gU "$FRAMEWORK" > build/llama-symbols.txt
+          grep -q '_mtmd_init_from_file' build/llama-symbols.txt
+          grep -q '_mtmd_helper_eval_chunks' build/llama-symbols.txt
+          grep -q '_llama_memory_seq_rm' build/llama-symbols.txt
+          grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
+
+          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter; do
+            grep -q "_$symbol" build/llama-symbols.txt
+          done
+          strings "$FRAMEWORK" > build/llama-strings.txt
+          grep -q 'kernel_mul_mv_ptq1_0_f32_bonsai_r5' build/llama-strings.txt
+          grep -q 'kernel_mul_mm_ptq1_tensorops_0_f32' build/llama-strings.txt
+          nm -gU "$APP/BonsaiLab" > build/app-symbols.txt
+          grep -q '_BonsaiBenchmarkConfigure' build/app-symbols.txt
+
+      - name: Package one IPA and portable one-click kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/package_ptq1_oneclick.py
+      - name: Upload combined building artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bonsai-Build114-PTQ1-IPA-and-OneClick
+          path: |
+            build/delivery/BONSAI_BUILD114_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD114_PTQ1_ONECLICK.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

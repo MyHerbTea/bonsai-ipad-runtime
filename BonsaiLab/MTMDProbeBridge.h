@@ -44,3 +44,5 @@ void BonsaiReadPTQ1TensorOpsCounters(
 #include "SystemProbeBridge.h"
 
 #include "StagedVisionBridge.h"
+
+#include "BenchmarkNativeBridge.h"

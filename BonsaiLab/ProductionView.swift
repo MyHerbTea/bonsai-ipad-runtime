@@ -4019,6 +4019,9 @@ applyBuild82LongContextPolicy(
                     ubatch: apiRuntime.ubatch
                 )
 
+                apiServer.configureBenchmark(engine: sharedEngine) {
+                    await sharedVisionSidecar.releaseResidentStateForContextSwitch()
+                }
                 try apiServer.start(port: 8080) {
                     payload,
                     onDelta in

@@ -74,6 +74,25 @@ actor BonsaiEngine {
     private var build84NativeContextTraceActive = false
     private var build84NativeContextTraceNativeEnabled = false
     private var appliedRuntime = RuntimeConfig.safe
+    private var benchmarkOriginal: RuntimeConfig?
+    private var benchmarkConfig: BenchmarkConfiguration?
+    private var benchmarkKV: String?
+    private var benchmarkInvocation = false
+    private var benchmarkAllocations = 0
+    private var benchmarkReuses = 0
+    private var benchmarkLogits: [String: Any] = [:]
+    private var benchmarkRejected = Set<String>()
+
+    private func checkBenchmarkAdmission() throws {
+        if BenchmarkSessionControl.shared.active && !benchmarkInvocation {
+            throw LabError.invalidConfig("BENCHMARK_SESSION_ACTIVE")
+        }
+    }
+    private func benchmarkCheckCancellation() throws {
+        if benchmarkInvocation && BenchmarkSessionControl.shared.isCancelled {
+            throw LabError.invalidConfig("BENCHMARK_CANCELLED")
+        }
+    }
 
     // RC1.23.2 experimental API-only prefix reuse state.
     // This is valid only for the currently resident llama context.
@@ -351,6 +370,7 @@ actor BonsaiEngine {
         allowNAXCandidate: Bool = false,
         allowPTQ1TensorOpsCandidate: Bool = false
     ) throws {
+        try checkBenchmarkAdmission()
         allowNAXCandidateForCurrentModel = allowNAXCandidate
         allowPTQ1TensorOpsCandidateForCurrentModel =
             allowPTQ1TensorOpsCandidate
@@ -584,6 +604,7 @@ actor BonsaiEngine {
     }
 
     func loadModel(url: URL, runtime: RuntimeConfig) throws -> ModelMetrics {
+        try checkBenchmarkAdmission()
         let config = try runtime.validated()
         let modelName = url.lastPathComponent
         let isPTQ1Model = modelName.localizedCaseInsensitiveContains("PTQ1_0")
@@ -883,6 +904,7 @@ actor BonsaiEngine {
     func reconfigureTextContextKeepingModel(
         runtime: RuntimeConfig
     ) throws {
+        try checkBenchmarkAdmission()
         let nextRuntime = try runtime.validated()
         guard let model else {
             throw LabError.noModel
@@ -1025,6 +1047,7 @@ actor BonsaiEngine {
         mmprojURL: URL,
         config: VisionConfig
     ) throws -> VisionLoadMetrics {
+        try checkBenchmarkAdmission()
         guard let model else { throw LabError.noModel }
         let vision = try config.validated()
 
@@ -1155,6 +1178,7 @@ actor BonsaiEngine {
         runtime: RuntimeConfig,
         config: VisionConfig
     ) throws -> VisionBootstrapMetrics {
+        try checkBenchmarkAdmission()
         let baseRuntime = try runtime.validated()
         let vision = try config.validated()
 
@@ -1495,6 +1519,7 @@ actor BonsaiEngine {
         gridY: Int,
         imageMaxTokens: Int
     ) throws -> URL {
+        try checkBenchmarkAdmission()
         guard
             nTokens > 0,
             projectionDimension > 0,
@@ -1661,6 +1686,7 @@ actor BonsaiEngine {
         imageURL: URL,
         vision: VisionConfig
     ) throws -> VisionEmbeddingCacheMetrics {
+        try checkBenchmarkAdmission()
         let validatedVision = try vision.validated()
 
         // RC1.21.1: security scopes must exist BEFORE the cache key is
@@ -1839,6 +1865,7 @@ actor BonsaiEngine {
         enablePrefixReuse: Bool = false,
         onDelta: (@Sendable (String) -> Void)? = nil
     ) throws -> VisionMetrics {
+        try checkBenchmarkAdmission()
         guard
             let model,
             let context,
@@ -2143,6 +2170,7 @@ actor BonsaiEngine {
         resourceGovernorEnabled: Bool = true,
         onDelta: (@Sendable (String) -> Void)? = nil
     ) throws -> StagedVisionMetrics {
+        try checkBenchmarkAdmission()
         let baseRuntime = try runtime.validated()
         let requestedVisionConfig = try vision.validated()
 
@@ -2378,6 +2406,7 @@ actor BonsaiEngine {
         mmprojURL: URL,
         config: VisionConfig
     ) throws -> VisionProbeMetrics {
+        try checkBenchmarkAdmission()
         let vision = try config.validated()
 
         // Clean-room diagnostic: do NOT run mtmd_get_memory_usage first.
@@ -2487,6 +2516,7 @@ actor BonsaiEngine {
         config: VisionConfig,
         linkTextModel: Bool
     ) throws -> CoexistenceProbeMetrics {
+        try checkBenchmarkAdmission()
         guard let model else { throw LabError.noModel }
         let vision = try config.validated()
 
@@ -2670,6 +2700,7 @@ actor BonsaiEngine {
     }
 
     func prepareForAPIVisionEncode() {
+        guard !BenchmarkSessionControl.shared.active || benchmarkInvocation else { return }
         guard let context else {
             return
         }
@@ -2700,6 +2731,7 @@ actor BonsaiEngine {
     }
 
     func finishAPIVisionRequestSuccess() {
+        guard !BenchmarkSessionControl.shared.active || benchmarkInvocation else { return }
         guard let context else {
             return
         }
@@ -2718,6 +2750,7 @@ actor BonsaiEngine {
     }
 
     func cleanupAfterRequestFailure() {
+        guard !BenchmarkSessionControl.shared.active || benchmarkInvocation else { return }
         apiVisionPrefixReuseKey = nil
         apiVisionPrefixPositions = 0
         clearTextKVReuseState(
@@ -2742,6 +2775,7 @@ actor BonsaiEngine {
         onDelta: (@Sendable (String) -> Void)? = nil,
         onPrefillProgress: (@Sendable (String, Int, Int, Int, Double) -> Void)? = nil
     ) throws -> GenerationMetrics {
+        try checkBenchmarkAdmission()
         guard let context, let vocab else {
             throw LabError.noModel
         }
@@ -2991,6 +3025,7 @@ actor BonsaiEngine {
         generation: GenerationConfig,
         onDelta: (@Sendable (String) -> Void)? = nil
     ) throws -> VisionMetrics {
+        try checkBenchmarkAdmission()
         guard let context, let vocab, let visionContext else {
             throw LabError.noVision
         }
@@ -3161,6 +3196,7 @@ actor BonsaiEngine {
     }
 
     func unloadVision() {
+        guard !BenchmarkSessionControl.shared.active || benchmarkInvocation else { return }
         if let visionContext {
             mtmd_free(visionContext)
             self.visionContext = nil
@@ -3175,6 +3211,7 @@ actor BonsaiEngine {
     func unloadAll(
         releaseStagedResident: Bool = true
     ) {
+        guard !BenchmarkSessionControl.shared.active || benchmarkInvocation else { return }
         unsetenv("BONSAI_M5_NAX_PQ2_TRACE_PATH")
         B16RuntimeEvidence.invalidate()
         apiVisionPrefixReuseKey = nil
@@ -3236,6 +3273,11 @@ actor BonsaiEngine {
             params.type_v = GGML_TYPE_Q8_0
             params.flash_attn_type =
                 LLAMA_FLASH_ATTN_TYPE_ENABLED
+        }
+
+        if let benchmarkKV {
+            params.type_k = benchmarkKV == "Q8_0" ? GGML_TYPE_Q8_0 : GGML_TYPE_Q4_0
+            params.type_v = params.type_k
         }
 
         let cpuCount = ProcessInfo.processInfo.processorCount
@@ -3526,9 +3568,15 @@ actor BonsaiEngine {
         var offset = tokenOffset
         let stopOffset = min(tokens.count, endOffset ?? tokens.count)
 
+        let reuse = benchmarkInvocation && (benchmarkConfig?.flags ?? 0) & 4 != 0
+        var storage: llama_batch? = reuse ? llama_batch_init(Int32(batchSize), 0, 1) : nil
+        if reuse { benchmarkAllocations += 1 }
+        defer { if let storage { llama_batch_free(storage) } }
         while offset < stopOffset {
+            try benchmarkCheckCancellation()
             let count = min(batchSize, stopOffset - offset)
-            var batch = llama_batch_init(Int32(count), 0, 1)
+            var batch = storage ?? llama_batch_init(Int32(count), 0, 1)
+            if benchmarkInvocation { if reuse { benchmarkReuses += 1 } else { benchmarkAllocations += 1 } }
             batch.n_tokens = 0
 
             for localIndex in 0..<count {
@@ -3548,7 +3596,7 @@ actor BonsaiEngine {
             let decodeStart = ProcessInfo.processInfo.systemUptime
             let code = llama_decode(context, batch)
             let durationMs = (ProcessInfo.processInfo.systemUptime - decodeStart) * 1_000
-            llama_batch_free(batch)
+            if !reuse { llama_batch_free(batch) } else { storage = batch }
             onProgress?("decode_end", stopOffset - tokenOffset,
                         offset - tokenOffset + (code == 0 ? count : 0),
                         batchIndex, durationMs)
@@ -3636,7 +3684,20 @@ actor BonsaiEngine {
         var firstTokenTime: UInt64?
         var terminationReason: GenerationTerminationReason = .length
 
+        let reuse = benchmarkInvocation && (benchmarkConfig?.flags ?? 0) & 4 != 0
+        var storage: llama_batch? = reuse ? llama_batch_init(1, 0, 1) : nil
+        if reuse { benchmarkAllocations += 1 }
+        defer { if let storage { llama_batch_free(storage) } }
+        if benchmarkInvocation, let logits = llama_get_logits_ith(context, -1) {
+            let n = Int(llama_vocab_n_tokens(vocab))
+            var finite = true
+            var top = 0
+            for i in 0..<n { if !logits[i].isFinite { finite = false }; if logits[i] > logits[top] { top = i } }
+            let sampled = stride(from: 0, to: n, by: max(1, n / 256)).map { logits[$0].isFinite ? Double(logits[$0]) : 0 }
+            benchmarkLogits = ["finite": finite, "top1": top, "sample": sampled, "vocabulary": n]
+        }
         while generated < maxTokens {
+            try benchmarkCheckCancellation()
             let token = llama_sampler_sample(sampler, context, -1)
 
             if llama_vocab_is_eog(vocab, token) {
@@ -3656,7 +3717,8 @@ actor BonsaiEngine {
                 if !valid.isEmpty { onDelta?(valid) }
             }
 
-            var batch = llama_batch_init(1, 0, 1)
+            var batch = storage ?? llama_batch_init(1, 0, 1)
+            if benchmarkInvocation { if reuse { benchmarkReuses += 1 } else { benchmarkAllocations += 1 } }
             batch.n_tokens = 0
             addToken(
                 &batch,
@@ -3666,7 +3728,7 @@ actor BonsaiEngine {
             )
 
             let code = llama_decode(context, batch)
-            llama_batch_free(batch)
+            if !reuse { llama_batch_free(batch) } else { storage = batch }
 
             if code != 0 {
                 mark("\(stagePrefix)_30_DECODE_FAIL_\(code)")
@@ -3742,4 +3804,154 @@ actor BonsaiEngine {
         batch.logits[index] = logits ? 1 : 0
         batch.n_tokens += 1
     }
+    func benchmarkCapabilities() -> [String: Any] {
+        let caps = Int(BonsaiBenchmarkCapabilities())
+        return ["schema": 1, "capabilities": caps, "candidates": BenchmarkCandidateRegistry.json(capabilities: caps),
+                "hardware": BenchmarkTelemetry.hardware(), "evidence": BenchmarkTelemetry.evidence(),
+                "state": BenchmarkSessionControl.shared.snapshot,
+                "actual": benchmarkConfig?.json as Any? ?? NSNull(),
+                "rejected_configurations": Array(benchmarkRejected),
+                "prior_interrupted": UserDefaults.standard.dictionary(forKey: "BonsaiBenchmarkInterrupted") as Any? ?? NSNull()]
+    }
+
+    func benchmarkStart() throws -> [String: Any] {
+        guard benchmarkOriginal == nil, let model, context != nil else { throw LabError.noModel }
+        guard BenchmarkTelemetry.hardware()["eligible"] as? Bool == true else {
+            throw LabError.invalidConfig("ONLY_M5_IPAD_12GB_SUPPORTED")
+        }
+        var type = [CChar](repeating: 0, count: 64)
+        _ = llama_model_meta_val_str(model, "general.file_type", &type, type.count)
+        guard String(cString: type) == "143", llama_model_n_params(model) > 25_000_000_000,
+            llama_model_n_params(model) < 29_000_000_000 else {
+            throw LabError.invalidConfig("OFFICIAL_27B_PTQ1_REQUIRED")
+        }
+        let evidence = BenchmarkTelemetry.evidence()
+        guard let native = evidence["native_context"] as? [String: Any],
+              let identity = native["model_identity"] as? [String: Any],
+              identity["sha256"] as? String == "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+              appliedRuntime.gpuLayers >= 99, appliedRuntime.loadMode == .mmap else {
+            throw LabError.invalidConfig("WAIT_FOR_OFFICIAL_MODEL_HASH_AND_FULL_GPU_MMAP")
+        }
+        benchmarkOriginal = appliedRuntime
+        benchmarkRejected.removeAll()
+        benchmarkInvocation = true
+        unloadVision()
+        BonsaiReleaseStagedResidentModel()
+        stopStagedResidentModelScope()
+        benchmarkInvocation = false
+        // Do not mutate the process-lifetime Metal registry latch.
+        do {
+            return try benchmarkConfigure(BenchmarkConfiguration(context: 16384, batch: 16, kv: "Q4_0", flags: 0))
+        } catch {
+            try? benchmarkRestore()
+            throw error
+        }
+    }
+
+    func benchmarkConfigure(_ candidate: BenchmarkConfiguration) throws -> [String: Any] {
+        guard let model, benchmarkOriginal != nil,
+            candidate.isValid(capabilities: Int(BonsaiBenchmarkCapabilities())),
+            !benchmarkRejected.contains(candidate.identity) else {
+            throw LabError.invalidConfig("BENCHMARK_CONFIGURATION_UNAVAILABLE")
+        }
+        if candidate == benchmarkConfig, context != nil { return benchmarkCapabilities() }
+        let previous = benchmarkConfig
+        if let context { llama_synchronize(context); llama_free(context); self.context = nil }
+        clearTextKVReuseState(reason: "benchmark_switch")
+        apiVisionPrefixReuseKey = nil; apiVisionPrefixPositions = 0
+        BonsaiClearVisionPrefixKVSnapshot()
+        benchmarkKV = candidate.kv
+        var runtime = benchmarkOriginal!
+        runtime.context = candidate.context; runtime.batch = candidate.batch; runtime.ubatch = candidate.batch
+        runtime.flashAttention = true; runtime.kvUnified = false; runtime.swaFull = false
+        runtime.offloadKQV = true; runtime.opOffload = true
+        do {
+            guard BonsaiBenchmarkConfigure(Int32(candidate.flags)) == 1 else {
+                throw LabError.invalidConfig("NATIVE_CANDIDATE_UNAVAILABLE")
+            }
+            let created = try makeContext(model: model, config: runtime)
+            context = created
+            guard Int(llama_n_ctx(created)) == candidate.context,
+                  Int(llama_n_batch(created)) == candidate.batch,
+                  Int(llama_n_ubatch(created)) == candidate.batch,
+                  llama_n_seq_max(created) == 1 else {
+                throw LabError.invalidConfig("NATIVE_CONFIGURATION_MISMATCH")
+            }
+            appliedRuntime = runtime; benchmarkConfig = candidate
+            UserDefaults.standard.set(candidate.json, forKey: "BonsaiBenchmarkInterrupted")
+            return benchmarkCapabilities()
+        } catch {
+            benchmarkRejected.insert(candidate.identity)
+            if let context { llama_synchronize(context); llama_free(context); self.context = nil }
+            benchmarkConfig = nil
+            // Roll back once to the previously working shape; never retry the failed shape.
+            if let previous, previous != candidate { _ = try? benchmarkConfigure(previous) }
+            throw error
+        }
+    }
+
+    @discardableResult
+    func benchmarkRestore() throws -> [String: Any] {
+        guard let original = benchmarkOriginal, let model else { return benchmarkCapabilities() }
+        if let context { llama_synchronize(context); llama_free(context); self.context = nil }
+        clearTextKVReuseState(reason: "benchmark_restore")
+        guard BonsaiBenchmarkConfigure(-1) == 1 else { throw LabError.invalidConfig("NATIVE_RESTORE_FAILED") }
+        benchmarkKV = nil
+        context = try makeContext(model: model, config: original)
+        appliedRuntime = original; benchmarkOriginal = nil; benchmarkConfig = nil
+        UserDefaults.standard.removeObject(forKey: "BonsaiBenchmarkInterrupted")
+        return benchmarkCapabilities()
+    }
+
+    func benchmarkTokenize(system: String, history: [BonsaiTextChatTurn], prompt: String) throws -> Int {
+        guard let vocab else { throw LabError.noModel }
+        return try tokenize(makeSimpleChatPrompt(systemPrompt: system, history: history,
+            userPrompt: prompt, reasoningEffort: "none"), vocab: vocab).count
+    }
+
+    func benchmarkRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
+        maxTokens: Int, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] {
+        guard benchmarkOriginal != nil, let config = benchmarkConfig, context != nil else {
+            throw LabError.invalidConfig("BENCHMARK_NOT_CONFIGURED")
+        }
+        benchmarkInvocation = true
+        defer { benchmarkInvocation = false }
+        benchmarkAllocations = 0; benchmarkReuses = 0; benchmarkLogits = [:]
+        if let context { llama_synchronize(context) }
+        guard BonsaiBenchmarkConfigure(Int32(config.flags)) == 1 else {
+            throw LabError.invalidConfig("PREVIOUS_GPU_WORK_NOT_DRAINED")
+        }
+        let before = BenchmarkTelemetry.counters()
+        let telemetry = BenchmarkTelemetry()
+        let began = ProcessInfo.processInfo.systemUptime
+        var generation = GenerationConfig()
+        generation.maxTokens = maxTokens; generation.temperature = 0
+        generation.topK = 1; generation.topP = 1; generation.repeatPenalty = 1; generation.seed = 1234
+        do {
+            let result = try generateText(systemPrompt: system, history: history, userPrompt: prompt,
+                generation: generation, reasoningEffort: "none", onDelta: onDelta)
+            if let context { llama_synchronize(context) }
+            let drained = BonsaiBenchmarkConfigure(Int32(config.flags)) == 1
+            let after = BenchmarkTelemetry.counters()
+            return ["schema": 1, "candidate": BenchmarkCandidateRegistry.name(config.flags), "actual": config.json,
+                "evidence": BenchmarkTelemetry.evidence(), "counters_before": before, "counters_after": after,
+                "counter_delta": zip(after, before).map { pair in pair.0 >= pair.1 ? pair.0 - pair.1 : 0 },
+                "gpu_completion_drained": drained, "memory": telemetry.finish(), "batch_allocations": benchmarkAllocations,
+                "batch_reuses": benchmarkReuses, "logits_probe": benchmarkLogits,
+                "prompt_tokens": result.promptTokens, "generated_tokens": result.generatedTokens,
+                "effective_max_tokens": result.effectiveMaxTokens,
+                "prefill_s": result.prefillSeconds, "ttft_s": result.ttftSeconds,
+                "decode_to_first_token_s": result.decodeToFirstTokenSeconds,
+                "decode_s": result.generationSeconds, "decode_tps": result.tokensPerSecond,
+                "wall_s": ProcessInfo.processInfo.systemUptime - began,
+                "finish_reason": result.terminationReason.openAIFinishReason,
+                "output_sha256": SHA256.hash(data: Data(result.text.utf8)).map { String(format: "%02x", $0) }.joined(),
+                "text": result.text, "reasoning_effort": "none", "seed": 1234, "temperature": 0]
+        } catch {
+            if let context { llama_synchronize(context); llama_memory_clear(llama_get_memory(context), true) }
+            _ = telemetry.finish()
+            throw error
+        }
+    }
+
 }

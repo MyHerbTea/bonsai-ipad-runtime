@@ -301,6 +301,11 @@ final class LocalOpenAIServer: ObservableObject {
     )
     private var listener: NWListener?
     private var listenerGeneration: UInt64 = 0
+    private var benchmarkManager: BenchmarkSessionManager?
+    func configureBenchmark(engine: BonsaiEngine, beforeStart: @escaping @Sendable () async -> Void) {
+        if benchmarkManager == nil { benchmarkManager = BenchmarkSessionManager(engine: engine, beforeStart: beforeStart) }
+    }
+
     private var handler: (
         @Sendable (
             OpenAIRequestPayload,
@@ -733,6 +738,17 @@ final class LocalOpenAIServer: ObservableObject {
             return
         }
 
+        if request.path.hasPrefix("/debug/benchmark/") {
+            processBenchmark(request, connection: connection)
+            return
+        }
+        // Legacy mutating/debug routes must not change launch/runtime state mid-tournament.
+        if BenchmarkSessionControl.shared.active && request.method == "POST"
+            && request.path != "/v1/chat/completions" {
+            sendJSON(connection, status: 409, object: Self.errorObject("benchmark_active", "Benchmark owns the runtime."))
+            return
+        }
+
         if request.method == "GET",
            request.path == "/debug/b16/evidence" {
             sendJSON(connection, status: 200, object: B16RuntimeEvidence.snapshot(
@@ -1070,6 +1086,11 @@ final class LocalOpenAIServer: ObservableObject {
             return
         }
 
+        guard BenchmarkSessionControl.shared.enterOrdinary() else {
+            sendJSON(connection, status: 409, object: Self.errorObject("benchmark_active", "Benchmark owns the runtime."))
+            return
+        }
+
         DispatchQueue.main.async {
             self.requestCount += 1
             self.status = "正在处理 API 请求…"
@@ -1084,6 +1105,7 @@ final class LocalOpenAIServer: ObservableObject {
             )
 
             Task {
+                defer { BenchmarkSessionControl.shared.leaveOrdinary() }
                 self.forensicsEvent(certificationTrace, phase: "handler_running_stream")
                 _ = self.captureGovernorRequestBoundary(
                     stage: "API_REQUEST_BEGIN"
@@ -1196,6 +1218,7 @@ final class LocalOpenAIServer: ObservableObject {
         }
 
         Task {
+            defer { BenchmarkSessionControl.shared.leaveOrdinary() }
             self.forensicsEvent(certificationTrace, phase: "handler_running_nonstream")
             _ = self.captureGovernorRequestBoundary(
                 stage: "API_REQUEST_BEGIN"
@@ -2858,6 +2881,59 @@ final class LocalOpenAIServer: ObservableObject {
             model: model,
             includeUsage: includeUsage
         )
+    }
+
+    private func processBenchmark(_ request: HTTPRequest, connection: NWConnection) {
+        guard let manager = benchmarkManager else {
+            sendJSON(connection, status: 503, object: Self.errorObject("benchmark_not_ready", "Start the model API first.")); return
+        }
+        let command = String(request.path.dropFirst("/debug/benchmark/".count))
+        guard (["capabilities", "status"].contains(command) && request.method == "GET")
+            || (["start", "configure", "run", "tokenize", "cancel", "restore"].contains(command) && request.method == "POST") else {
+            sendJSON(connection, status: 404, object: Self.errorObject("not_found", "Unknown benchmark endpoint.")); return
+        }
+        let body: [String: Any]
+        if request.method == "POST" {
+            guard let parsed = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] else {
+                sendJSON(connection, status: 400, object: Self.errorObject("invalid_json", "Expected JSON object.")); return
+            }
+            body = parsed
+        } else { body = [:] }
+        let streaming = command == "run" && body["stream"] as? Bool == true
+        if streaming {
+            let headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
+            connection.send(content: Data(headers.utf8), completion: .idempotent)
+            benchmarkEvent(connection, event: "meta", object: ["schema": 1, "request_id": body["request_id"] as? String ?? ""])
+        }
+        Task {
+            do {
+                let result = try await manager.handle(command, body: body) { delta in
+                    if streaming { self.queue.async { self.benchmarkEvent(connection, event: "delta", object: ["content": delta]) } }
+                }
+                self.queue.async {
+                    if streaming { self.benchmarkEvent(connection, event: "result", object: result, final: true) }
+                    else { self.sendJSON(connection, status: 200, object: result) }
+                }
+            } catch {
+                self.queue.async {
+                    let object = Self.errorObject("benchmark_error", String(describing: error))
+                    if streaming { self.benchmarkEvent(connection, event: "error", object: object, final: true) }
+                    else { self.sendJSON(connection, status: 409, object: object) }
+                }
+            }
+        }
+    }
+
+    private func benchmarkEvent(_ connection: NWConnection, event: String, object: [String: Any], final: Bool = false) {
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else { connection.cancel(); return }
+        let payload = Data("event: \(event)\ndata: \(json)\n\n".utf8)
+        connection.send(content: payload, completion: .contentProcessed { error in
+            if error != nil, let id = BenchmarkSessionControl.shared.snapshot["session_id"] as? String {
+                BenchmarkSessionControl.shared.cancel(session: id)
+            }
+            if final || error != nil { connection.cancel() }
+        })
     }
 
     private func beginStream(
