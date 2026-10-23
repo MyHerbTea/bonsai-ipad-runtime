@@ -1,0 +1,106 @@
+{
+  "schema": "bonsai-operator-api-cancel-v1",
+  "provenance": "operator_supplied_files_not_server_receipt",
+  "before": {
+    "evidence": {
+      "source_git_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "process_id": "8DFFF28F-D8E2-488A-9A8F-48E10D588686",
+      "build_number": "119"
+    },
+    "state": {
+      "ordinary_requests": 0,
+      "running": true,
+      "request_id": "45c47063110d6387da4cacea",
+      "cancelled": false,
+      "active": true,
+      "session_id": "AB04B28A-FC04-4FC1-9527-61E941A3FEFD"
+    }
+  },
+  "cancel": {
+    "request_id": "45c47063110d6387da4cacea",
+    "session_id": "AB04B28A-FC04-4FC1-9527-61E941A3FEFD",
+    "ordinary_requests": 0,
+    "cancelled": true,
+    "active": true,
+    "running": true
+  },
+  "after": {
+    "evidence": {
+      "source_git_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "native_context": {
+        "context": 16384,
+        "batch": 8,
+        "ubatch": 8,
+        "kv_k": "Q4_0",
+        "kv_v": "Q4_0",
+        "gpu_layers": 56,
+        "mmap": true,
+        "sequence_max": 1,
+        "text_kv_reuse": false,
+        "flash_attention": true,
+        "kv_unified": true,
+        "offload_kqv": true,
+        "op_offload": true,
+        "swa_full": false,
+        "threads": 6,
+        "threads_batch": 6,
+        "model_identity": {
+          "sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+          "size_bytes": 5946648928
+        }
+      },
+      "process_id": "8DFFF28F-D8E2-488A-9A8F-48E10D588686",
+      "build_number": "119"
+    },
+    "state": {
+      "ordinary_requests": 0,
+      "running": false,
+      "request_id": "restore",
+      "cancelled": false,
+      "active": false,
+      "session_id": null
+    }
+  },
+  "original_runtime": {
+    "context": 16384,
+    "batch": 8,
+    "ubatch": 8,
+    "kv_k": "Q4_0",
+    "kv_v": "Q4_0",
+    "gpu_layers": 56,
+    "mmap": true,
+    "sequence_max": 1,
+    "text_kv_reuse": false,
+    "flash_attention": true,
+    "kv_unified": true,
+    "offload_kqv": true,
+    "op_offload": true,
+    "swa_full": false,
+    "threads": 6,
+    "threads_batch": 6,
+    "model_identity": {
+      "sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+      "size_bytes": 5946648928
+    }
+  },
+  "acknowledged_marker": {
+    "sequence_max": 1,
+    "flash_attention": true,
+    "kv_k": "Q4_0",
+    "interruption_id": "2615C0E0-C2A2-406A-9A23-8B5A6BAD56E6",
+    "ubatch": 8,
+    "context": 16384,
+    "kv_v": "Q4_0",
+    "flags": 0,
+    "batch": 8,
+    "kv_reuse": false
+  },
+  "report_status": "INCOMPLETE",
+  "restoration": "RESTORED",
+  "files_sha256": {
+    "after": "3333333333333333333333333333333333333333333333333333333333333333",
+    "before": "1111111111111111111111111111111111111111111111111111111111111111",
+    "cancel": "2222222222222222222222222222222222222222222222222222222222222222",
+    "report": "4444444444444444444444444444444444444444444444444444444444444444"
+  }
+}

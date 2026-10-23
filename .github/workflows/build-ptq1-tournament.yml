@@ -1,8 +1,8 @@
-name: Bonsai Build119 Observable Prefill Comparison
+name: Bonsai Build120 Audited API Cancellation Recovery
 
 on:
   push:
-    branches: [codex/build119-controlled-recovery]
+    branches: [codex/build120-api-cancel-recovery]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "119"
+  BUILD_NUMBER: "120"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -50,6 +50,11 @@ jobs:
           python3 -m unittest discover -s tools/tests -p "test_build119_recovery.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift tools/build119_recovery_tests.swift -o "$RUNNER_TEMP/recovery-policy"
           "$RUNNER_TEMP/recovery-policy" | tee -a build/CI_TESTS.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift tools/build120_recovery_tests.swift -o "$RUNNER_TEMP/api-cancel-recovery"
+          "$RUNNER_TEMP/api-cancel-recovery" | tee -a build/CI_TESTS.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift BonsaiLab/DiagnosticSnapshotAPI.swift tools/build120_snapshot_tests.swift -o "$RUNNER_TEMP/snapshot-export"
+          "$RUNNER_TEMP/snapshot-export" | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_build120_recovery.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/build118_policy_tests.swift -o "$RUNNER_TEMP/prefill-policy"
           "$RUNNER_TEMP/prefill-policy" | tee -a build/CI_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift BonsaiLab/DiagnosticSessionJournal.swift tools/build117_diagnostics_tests.swift -o "$RUNNER_TEMP/diagnostics"
@@ -157,7 +162,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build119 IPA and native ABI
+      - name: Verify Build120 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -203,20 +208,20 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build119-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build120-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD119_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD119_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD120_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD120_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build119-Symbols
+          name: Bonsai-Build120-Symbols
           path: |
-            build/Bonsai-Build119-Symbols.zip
-            build/Bonsai-Build119-Symbols.zip.sha256
+            build/Bonsai-Build120-Symbols.zip
+            build/Bonsai-Build120-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90
