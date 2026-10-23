@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class IPadBenchmarkAdmissionTests(unittest.TestCase):
     def test_start_preserves_existing_gpu_placement(self):
         engine = (ROOT / 'BonsaiLab/BonsaiEngine.swift').read_text(encoding='utf-8')
-        start = engine[engine.index('    func benchmarkStart()'):engine.index('    func benchmarkConfigure(')]
+        start = engine[engine.index('    func benchmarkStart('):engine.index('    func benchmarkConfigure(')]
         self.assertNotIn('appliedRuntime.gpuLayers >= 99', start,
                          '56-layer production placement must not be rejected by an arbitrary full-offload request')
         self.assertIn('BenchmarkModelAdmission.accepts', start)
