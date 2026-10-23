@@ -1,0 +1,51 @@
+test_all_candidates_measured_in_one_report_without_promotion (test_build118_compare.QuickComparisonTests.test_all_candidates_measured_in_one_report_without_promotion) ... ok
+test_cpu_candidate_requires_real_hits_and_exclusive_branch (test_build118_compare.QuickComparisonTests.test_cpu_candidate_requires_real_hits_and_exclusive_branch) ... ok
+test_quick_old_pending_blocks_before_any_start (test_build118_compare.QuickComparisonTests.test_quick_old_pending_blocks_before_any_start) ... ok
+test_quick_start_is_explicit_and_b8 (test_build118_compare.QuickComparisonTests.test_quick_start_is_explicit_and_b8) ... ok
+test_unknown_outcome_stops_before_next_candidate_without_replay (test_build118_compare.QuickComparisonTests.test_unknown_outcome_stops_before_next_candidate_without_replay) ... ok
+test_unknown_request_retains_quarantine_even_when_restore_succeeds (test_build118_compare.QuickComparisonTests.test_unknown_request_retains_quarantine_even_when_restore_succeeds) ... ok
+test_actual_compiled_scalar_lookup_and_neon_parity (test_build118_cpu.CPUPrefillTests.test_actual_compiled_scalar_lookup_and_neon_parity) ... skipped 'C compiler absent; Apple CI executes actual arm64 C/NEON'
+test_actual_patched_native_strategy_control (test_build118_cpu.CPUPrefillTests.test_actual_patched_native_strategy_control) ... skipped 'C++ compiler absent; Apple CI executes patched strategy control'
+test_all_bytes_lookup_format (test_build118_cpu.CPUPrefillTests.test_all_bytes_lookup_format) ... ok
+test_uuid_architecture_pair_must_match_exactly (test_build117_symbols.SymbolTests.test_uuid_architecture_pair_must_match_exactly) ... ok
+test_app_and_ci_build_numbers_match_build117_package (test_build117_delivery_identity.DeliveryIdentityTests.test_app_and_ci_build_numbers_match_build117_package) ... ok
+test_actual_atomic_profile_control (test_build117_native_profile.ProfilePatchTests.test_actual_atomic_profile_control) ... skipped 'C++ compiler unavailable; run on Apple CI'
+test_patch_has_real_dispatch_and_completion_instrumentation (test_build117_native_profile.ProfilePatchTests.test_patch_has_real_dispatch_and_completion_instrumentation) ... ok
+test_patched_upstream_exposes_profile_abi (test_build117_native_profile.ProfilePatchTests.test_patched_upstream_exposes_profile_abi) ... ok
+test_abba_collection_warms_every_slot_twice_and_never_reuses_partial_round (test_abba_measurement.ABBATests.test_abba_collection_warms_every_slot_twice_and_never_reuses_partial_round) ... ok
+test_decode_target_and_minor_are_separate_from_promotion (test_abba_measurement.ABBATests.test_decode_target_and_minor_are_separate_from_promotion) ... ok
+test_unknown_values_and_mismatches_cannot_pass (test_abba_measurement.ABBATests.test_unknown_values_and_mismatches_cannot_pass) ... ok
+test_one_bad_or_thermal_round_prevents_confirmation (test_drift_detection.DriftTests.test_one_bad_or_thermal_round_prevents_confirmation) ... ok
+test_strict_drift_boundaries (test_drift_detection.DriftTests.test_strict_drift_boundaries) ... ok
+test_candidate_aliases_keep_stable_masks (test_measurement_thresholds.ThresholdTests.test_candidate_aliases_keep_stable_masks) ... ok
+test_decode_threshold_does_not_inherit_balanced_prefill_gate (test_measurement_thresholds.ThresholdTests.test_decode_threshold_does_not_inherit_balanced_prefill_gate) ... ok
+test_levels_and_screen_confirmation_are_distinct (test_measurement_thresholds.ThresholdTests.test_levels_and_screen_confirmation_are_distinct) ... ok
+test_prefill_and_balanced_guardrails (test_measurement_thresholds.ThresholdTests.test_prefill_and_balanced_guardrails) ... ok
+test_generic_orientations_and_storyboard_are_valid_alternatives (test_ipad_bundle_metadata.IPadMetadataTests.test_generic_orientations_and_storyboard_are_valid_alternatives) ... ok
+test_requires_all_ipad_orientations_and_launch_configuration (test_ipad_bundle_metadata.IPadMetadataTests.test_requires_all_ipad_orientations_and_launch_configuration) ... ok
+test_actual_native_control_cpp (test_ptq1_native_benchmark.NativeBenchmarkTests.test_actual_native_control_cpp) ... skipped 'C++ compiler unavailable; macOS CI executes actual native control'
+test_collapsed_byte_dot_matches_reference (test_ptq1_native_benchmark.NativeBenchmarkTests.test_collapsed_byte_dot_matches_reference) ... ok
+test_five_row_dispatch_has_no_missing_or_out_of_bounds_rows (test_ptq1_native_benchmark.NativeBenchmarkTests.test_five_row_dispatch_has_no_missing_or_out_of_bounds_rows) ... ok
+test_patch_and_abi_exist (test_ptq1_native_benchmark.NativeBenchmarkTests.test_patch_and_abi_exist) ... ok
+test_patched_dependency_contracts (test_ptq1_native_benchmark.NativeBenchmarkTests.test_patched_dependency_contracts) ... ok
+test_missing_runtime_reaches_diagnostic_and_pause (test_windows_launcher.WindowsLauncherTests.test_missing_runtime_reaches_diagnostic_and_pause) ... ok
+test_missing_script_reaches_diagnostic_and_pause (test_windows_launcher.WindowsLauncherTests.test_missing_script_reaches_diagnostic_and_pause) ... ok
+test_python_failure_preserves_exit_code_and_pause (test_windows_launcher.WindowsLauncherTests.test_python_failure_preserves_exit_code_and_pause) ... ok
+test_success_returns_from_python_and_reaches_pause (test_windows_launcher.WindowsLauncherTests.test_success_returns_from_python_and_reaches_pause) ... ok
+test_delivery_contains_one_ipa_portable_runtime_and_identity (test_faults_and_packaging.IntegrationTests.test_delivery_contains_one_ipa_portable_runtime_and_identity) ... ok
+test_recovery_quarantines_attempted_shape_not_old_marker (test_faults_and_packaging.IntegrationTests.test_recovery_quarantines_attempted_shape_not_old_marker) ... ok
+test_uncertain_inference_is_cancelled_checkpointed_never_replayed (test_faults_and_packaging.IntegrationTests.test_uncertain_inference_is_cancelled_checkpointed_never_replayed) ... ok
+test_actual_shape_identity_and_model_are_required (test_oneclick.Tests.test_actual_shape_identity_and_model_are_required) ... ok
+test_eof_without_result_is_uncertain (test_oneclick.Tests.test_eof_without_result_is_uncertain) ... ok
+test_execution_proof_is_more_than_enqueue (test_oneclick.Tests.test_execution_proof_is_more_than_enqueue) ... ok
+test_quality_code_exec_is_restricted (test_oneclick.Tests.test_quality_code_exec_is_restricted) ... ok
+test_redaction_and_result_zip (test_oneclick.Tests.test_redaction_and_result_zip) ... ok
+test_sse_meta_is_not_first_content (test_oneclick.Tests.test_sse_meta_is_not_first_content) ... ok
+test_strict_comparison_no_lowered_gates (test_oneclick.Tests.test_strict_comparison_no_lowered_gates) ... ok
+
+----------------------------------------------------------------------
+Ran 44 tests in 1.947s
+
+OK (skipped=4)
+Combined delivery integrity: PASS; device validation: NOT_RUN
+运行 formal fault

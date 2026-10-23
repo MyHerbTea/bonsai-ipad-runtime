@@ -9,6 +9,18 @@
   ],
   "rules": [
     {
+      "pattern": "docs/build118/*",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/superpowers/specs/2026-10-23-build118-prefill-design.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "tools/PTQ1_ONECLICK/PREFILL_COMPARE.md",
+      "status": "REFERENCE"
+    },
+    {
       "pattern": "docs/build117/*",
       "status": "REFERENCE"
     },

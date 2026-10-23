@@ -5,3 +5,5 @@ build/
 Vendor/llama.xcframework/
 *.xcodeproj/
 /deliveries/
+
+.sdd/

@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build118 实验候选：[设计](superpowers/specs/2026-10-23-build118-prefill-design.md)、[执行计划](superpowers/plans/2026-10-23-build118-prefill-plan.md)。同IPA的CPU lookup/NEON候选尚待集中真机对比，不代表收益或发布通过。
+
 Build117 本地实施记录：[执行日志](build117/execution-log.md)、[源码映射](build117/source-map.md)。该阶段尚需 Apple 编译及真机验收，不能作为发行或性能通过证据。
 
 状态：ACTIVE。治理快照：2026-10-14（UTC+08）。现有 GitHub 文档仍是项目资料；本页只导航、分类和解决冲突。

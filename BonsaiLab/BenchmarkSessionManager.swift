@@ -13,24 +13,31 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                 guard let self else { return }
                 if let id = self.control.overdueOperation(after: 1800) { self.control.cancel(session: id) }
                 if let id = self.control.expiredSession(after: 300) {
-                    _ = try? await self.handle("restore", body: ["session_id": id], onDelta: { _ in })
+                    await self.restoreAbandonedSession(id)
                 }
             }
         }
     }
     deinit { watchdog?.cancel() }
+    func restoreAbandonedSession(_ id: String) async {
+        _ = try? await handle("restore", body: ["session_id": id, "preserve_interrupted": true], onDelta: { _ in })
+    }
     func handle(_ command: String, body: [String: Any],
                 onDelta: @escaping @Sendable (String) -> Void) async throws -> [String: Any] {
         if command == "status" { return ["schema": 1, "state": control.snapshot,
             "evidence": BenchmarkTelemetry.evidence(), "hardware": BenchmarkTelemetry.hardware()] }
         if command == "capabilities" { return await engine.benchmarkCapabilities() }
         if command == "start" {
+            guard let mode = BenchmarkSessionMode(rawValue: body["mode"] as? String ?? "full"),
+                  body["mode"] == nil || body["mode"] is String else {
+                throw LabError.invalidConfig("INVALID_BENCHMARK_MODE")
+            }
             guard let id = control.beginSession(), control.beginOperation(session: id, request: "start") else {
                 throw LabError.invalidConfig("BENCHMARK_OR_INFERENCE_BUSY")
             }
             do {
                 await beforeStart()
-                var result = try await engine.benchmarkStart()
+                var result = try await engine.benchmarkStart(mode: mode)
                 control.finishOperation(error: nil)
                 result["session_id"] = id; result["state"] = control.snapshot
                 return result
@@ -63,7 +70,7 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                     batch: body["batch"] as? Int ?? 16, kv: body["kv"] as? String ?? "Q4_0",
                     flags: named.flatMap(BenchmarkCandidateRegistry.flags(named:)) ?? body["flags"] as? Int ?? 0)
                 result = try await engine.benchmarkConfigure(config)
-            case "restore": result = try await engine.benchmarkRestore()
+            case "restore": result = try await engine.benchmarkRestore(preserveInterrupted: body["preserve_interrupted"] as? Bool ?? false)
             default:
                 guard let prompt = body["prompt"] as? String, prompt.utf8.count <= 1_000_000 else {
                     throw LabError.invalidConfig("INVALID_BENCHMARK_PROMPT")

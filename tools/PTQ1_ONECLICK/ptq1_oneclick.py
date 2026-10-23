@@ -35,7 +35,7 @@ if "--check-code" not in sys.argv:
 ROOT = Path(__file__).resolve().parent
 GIB = 1024**3
 MIN_HEADROOM = 512*1024**2
-NAMES = {0:'SAFE_BASELINE',1:'PTQ1_TENSOROPS',2:'PTQ1_MV_R5',4:'PTQ1_BATCH_REUSE'}
+NAMES = {0:'SAFE_BASELINE',1:'PTQ1_TENSOROPS',2:'PTQ1_MV_R5',4:'PTQ1_BATCH_REUSE',8:'PTQ1_CPU_LOOKUP',16:'PTQ1_CPU_NEON'}
 SYSTEM = 'You are a helpful assistant. Follow the requested output format exactly.'
 MICRO = ('Continue an uninterrupted sequence of neutral English words separated by commas. '
          'Do not summarize or conclude. Continue until the output limit. Reference payload:\n')
@@ -80,6 +80,13 @@ def validate_sample(s, config, identity):
             if any(delta[index+j]<=0 for j in range(3)):errors.append(label+'_dispatch')
         elif any(delta[index:index+3]):errors.append('unexpected_'+label)
     if config['flags']&4 and (s.get('batch_reuses',0)<=0 or s.get('batch_allocations',0)>4):errors.append('batch_reuse')
+    if config['flags']&24:
+        cpu=s.get('cpu_dot_delta',[])
+        arm=2 if config['flags']&16 else 1
+        if (s.get('cpu_dot_abi_available') is not True or len(cpu)!=3
+            or any(not isinstance(x,int) or x<0 for x in cpu) or cpu[arm]<=0
+            or any(cpu[i] for i in range(3) if i!=arm)):
+            errors.append('cpu_candidate_not_observed')
     observations={item.get('arm'):item for item in s.get('operation_evidence',[])}
     for mask,arm,pipeline in [(1,'tensor','kernel_mul_mm_ptq1_tensorops_0_f32'),(2,'fused','kernel_mul_mv_ptq1_0_f32_bonsai_r5')]:
         if not config['flags']&mask:continue

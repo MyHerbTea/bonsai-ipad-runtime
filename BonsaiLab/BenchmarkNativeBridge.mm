@@ -1,6 +1,17 @@
 #include "BenchmarkNativeBridge.h"
 #include <dlfcn.h>
 
+extern "C" bool BonsaiCPUAvailable(void) {
+    return dlsym(RTLD_DEFAULT, "BonsaiNativeCPUCounter") != nullptr &&
+        dlsym(RTLD_DEFAULT, "BonsaiNativeCPUConfigure") != nullptr &&
+        dlsym(RTLD_DEFAULT, "BonsaiNativeCPUCapabilities") != nullptr;
+}
+extern "C" uint64_t BonsaiCPUCounter(int index) {
+    using Fn = uint64_t (*)(int);
+    static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeCPUCounter"));
+    return fn ? fn(index) : 0;
+}
+
 extern "C" bool BonsaiProfileAvailable(void) { return dlsym(RTLD_DEFAULT, "BonsaiNativeProfileCounter") != nullptr; }
 extern "C" void BonsaiProfileReset(void) {
     using Fn = void (*)(void);

@@ -5,19 +5,20 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 LAUNCHER=ROOT/'tools/PTQ1_ONECLICK/RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd'
 
 @unittest.skipUnless(os.name=='nt','Actual CMD execution requires Windows')
 class WindowsLauncherTests(unittest.TestCase):
-    def execute_case(self,script,with_runtime=True):
+    def execute_case(self,script,with_runtime=True,script_name='ptq1_oneclick.py'):
         scratch=ROOT/'deliveries';scratch.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='cmd 中文 空格 (test) ! ',dir=scratch) as folder:
             root=Path(folder).resolve()
             self.assertEqual(root.parent,scratch.resolve())
             launcher=root/LAUNCHER.name;launcher.write_bytes(LAUNCHER.read_bytes())
-            if script is not None:(root/'ptq1_oneclick.py').write_text(script,encoding='utf-8')
+            if script is not None:(root/script_name).write_text(script,encoding='utf-8')
             runtime=root/'python'
             if with_runtime:
                 result=subprocess.run(f'"{os.environ["COMSPEC"]}" /d /c mklink /J "{runtime}" "{Path(sys.executable).parent}"',capture_output=True)
@@ -46,5 +47,9 @@ class WindowsLauncherTests(unittest.TestCase):
     def test_missing_script_reaches_diagnostic_and_pause(self):
         code,out,err=self.execute_case(None)
         self.assertEqual(code,2,err);self.assertIn('Missing ptq1_oneclick.py',out)
+    def test_quick_launcher_passes_args_in_unicode_space_directory(self):
+        with patch(__name__+'.LAUNCHER',ROOT/'tools/PTQ1_ONECLICK/RUN_PREFILL_COMPARE.cmd'):
+            code,out,err=self.execute_case('import sys\nprint("QUICK_ENTRY_OK",sys.argv[1:])\n',script_name='prefill_compare.py')
+        self.assertEqual(code,0,err);self.assertIn('QUICK_ENTRY_OK',out);self.assertIn('--help',out)
 
 if __name__=='__main__':unittest.main()

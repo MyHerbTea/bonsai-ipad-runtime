@@ -27,9 +27,10 @@ def build():
     app = ROOT / "build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app"
     assert app.is_dir(), "Release app missing"
     info = plistlib.loads((app / "Info.plist").read_bytes())
-    assert str(info["CFBundleVersion"]) == "117"
+    number = os.environ.get('BUILD_NUMBER','118')
+    assert str(info["CFBundleVersion"]) == number
     source = os.environ["GITHUB_SHA"]
-    kit = ROOT / "build/delivery/Bonsai-Build117-PTQ1"
+    kit = ROOT / f"build/delivery/Bonsai-Build{number}-PTQ1"
     kit.mkdir(parents=True, exist_ok=True)
     assert not any(kit.iterdir()), "Refuse stale delivery directory"
     for file in (ROOT / "tools/PTQ1_ONECLICK").iterdir():
@@ -38,7 +39,7 @@ def build():
                 (kit / file.name).write_bytes(windows_cmd_bytes(file.read_bytes()))
             else:
                 shutil.copy2(file, kit / file.name)
-    ipa = kit / "BonsaiLab-Build117-PTQ1-unsigned.ipa"
+    ipa = kit / f"BonsaiLab-Build{number}-PTQ1-unsigned.ipa"
     with zipfile.ZipFile(ipa, "w", zipfile.ZIP_DEFLATED) as archive:
         for file in sorted(app.rglob("*")):
             if file.is_file():
@@ -54,12 +55,12 @@ def build():
     for filename in ("python.exe", "python312.dll", "python312.zip", "_ssl.pyd", "LICENSE.txt"):
         assert (python_dir / filename).is_file(), filename
     identity = {"schema": "bonsai-ptq1-oneclick-identity-v1", "source_git_sha": source,
-        "testkit_source_sha": source, "build_number": "117", "unsigned_ipa_sha256": sha(ipa),
+        "testkit_source_sha": source, "build_number": number, "unsigned_ipa_sha256": sha(ipa),
         "prism_upstream_sha": os.environ["PRISM_COMMIT"], "workflow_run_id": os.environ["GITHUB_RUN_ID"],
         "official_model": json.loads((ROOT / "tools/ptq1_official_model.json").read_text(encoding="utf-8")),
         "python_archive_url": PYTHON_URL, "python_archive_sha256": PYTHON_SHA,
-        "symbols_artifact": {"file": "Bonsai-Build117-Symbols.zip",
-            "sha256": sha(ROOT / "build/Bonsai-Build117-Symbols.zip"),
+        "symbols_artifact": {"file": f"Bonsai-Build{number}-Symbols.zip",
+            "sha256": sha(ROOT / f"build/Bonsai-Build{number}-Symbols.zip"),
             "uuid_identity": "CI_EVIDENCE/SYMBOL_IDENTITY.json"},
         "device_validation": "NOT_RUN"}
     (kit / "TestKitIdentity.json").write_text(json.dumps(identity, indent=2) + "\n", encoding="utf-8")
@@ -68,7 +69,7 @@ def build():
     for filename in ("CI_TESTS.txt", "build.log", "llama-symbols.txt", "app-symbols.txt", "SYMBOL_IDENTITY.json"):
         shutil.copy2(ROOT / "build" / filename, checks / filename)
     (kit / "BUILD_INFO.txt").write_text(
-        "Build117 PTQ1 one-click tournament candidate\n"
+        f"Build{number} PTQ1 candidates; concentrated prefill comparison included\n"
         f"Source: {source}\nWorkflow: {os.environ['GITHUB_RUN_ID']}\n"
         "Unsigned IPA: sign once with your existing iPad installation method.\n"
         "Target: M5 iPad Pro 12GB; official PTQ1 GGUF only.\n"
@@ -77,7 +78,7 @@ def build():
         "No candidate is a winner until actual device gates pass.\n", encoding="utf-8")
     manifest = {file.relative_to(kit).as_posix(): sha(file) for file in sorted(kit.rglob("*")) if file.is_file()}
     (kit / "DELIVERY_SHA256.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    output = kit.parent / "BONSAI_BUILD117_PTQ1_ONECLICK.zip"
+    output = kit.parent / f"BONSAI_BUILD{number}_PTQ1_ONECLICK.zip"
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         for file in sorted(kit.rglob("*")):
             if file.is_file(): archive.write(file, kit.name + "/" + file.relative_to(kit).as_posix())

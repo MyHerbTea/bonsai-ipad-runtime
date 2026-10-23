@@ -33,10 +33,11 @@ def preserve(root):
         destination=symbols/(name+'.dSYM')
         if destination.exists():raise ValueError('refuse stale symbol artifact')
         shutil.copytree(dsym,destination)
-    identity={'build_number':'117','source_git_sha':os.environ['GITHUB_SHA'],'binaries':records}
+    build_number=os.environ.get('BUILD_NUMBER','118')
+    identity={'build_number':build_number,'source_git_sha':os.environ['GITHUB_SHA'],'binaries':records}
     identity_path=root/'build/SYMBOL_IDENTITY.json'
     identity_path.write_text(json.dumps(identity,indent=2)+'\n',encoding='utf-8')
-    archive=root/'build/Bonsai-Build117-Symbols.zip'
+    archive=root/f'build/Bonsai-Build{build_number}-Symbols.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
         z.write(identity_path,'SYMBOL_IDENTITY.json')
         for path in sorted(symbols.rglob('*')):

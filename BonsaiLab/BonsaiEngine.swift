@@ -75,6 +75,7 @@ actor BonsaiEngine {
     private var build84NativeContextTraceNativeEnabled = false
     private var appliedRuntime = RuntimeConfig.safe
     private var benchmarkOriginal: RuntimeConfig?
+    private var benchmarkMode: BenchmarkSessionMode = .full
     private var benchmarkConfig: BenchmarkConfiguration?
     private var benchmarkKV: String?
     private var benchmarkInvocation = false
@@ -3857,11 +3858,19 @@ actor BonsaiEngine {
                 "state": BenchmarkSessionControl.shared.snapshot,
                 "actual": benchmarkConfig?.json as Any? ?? NSNull(),
                 "rejected_configurations": Array(benchmarkRejected),
-                "prior_interrupted": UserDefaults.standard.dictionary(forKey: "BonsaiBenchmarkInterrupted") as Any? ?? NSNull()]
+                "prior_interrupted": UserDefaults.standard.dictionary(forKey: "BonsaiBenchmarkInterrupted") as Any? ?? NSNull(),
+                "quick_prior_interrupted": UserDefaults.standard.dictionary(forKey: "BonsaiQuickPrefillInterrupted") as Any? ?? NSNull(),
+                "session_mode": benchmarkMode.rawValue, "cpu_dot_abi_available": BonsaiCPUAvailable()]
     }
 
-    func benchmarkStart() throws -> [String: Any] {
+    func benchmarkStart(mode: BenchmarkSessionMode = .full) throws -> [String: Any] {
         guard benchmarkOriginal == nil, let model, context != nil else { throw LabError.noModel }
+        let markers = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }
+        guard !(mode == .full && !markers.isEmpty),
+              !(mode == .quickPrefill && UserDefaults.standard.dictionary(forKey: mode.markerKey) != nil),
+              !BenchmarkSessionMode.quarantined(mode.initial, markers: markers) else {
+            throw LabError.invalidConfig("BASELINE_QUARANTINED_DO_NOT_REPEAT_FAULT")
+        }
         guard BenchmarkTelemetry.hardware()["eligible"] as? Bool == true else {
             throw LabError.invalidConfig("ONLY_M5_IPAD_12GB_SUPPORTED")
         }
@@ -3881,6 +3890,7 @@ actor BonsaiEngine {
         guard backendRegistryMetalTensorDisabledAtFirstInit == true else {
             throw LabError.invalidConfig("SAFE_BASELINE_REQUIRES_PRODUCTION_TENSOR_DISABLED_LAUNCH")
         }
+        benchmarkMode = mode
         benchmarkOriginal = appliedRuntime
         benchmarkRejected.removeAll()
         benchmarkInvocation = true
@@ -3890,9 +3900,9 @@ actor BonsaiEngine {
         benchmarkInvocation = false
         // Do not mutate the process-lifetime Metal registry latch.
         do {
-            return try benchmarkConfigure(BenchmarkConfiguration(context: 16384, batch: 16, kv: "Q4_0", flags: 0))
+            return try benchmarkConfigure(mode.initial)
         } catch {
-            try? benchmarkRestore()
+            try? benchmarkRestore(preserveInterrupted: mode == .quickPrefill)
             throw error
         }
     }
@@ -3900,14 +3910,19 @@ actor BonsaiEngine {
     func benchmarkConfigure(_ candidate: BenchmarkConfiguration) throws -> [String: Any] {
         CrashDiagnostics.shared.recordTimelineEvent("CANDIDATE_SWITCH_REQUEST", details: candidate.json.mapValues(DiagnosticValue.from))
         guard let model, benchmarkOriginal != nil,
+            benchmarkMode.permits(candidate),
             candidate.isValid(capabilities: Int(BonsaiBenchmarkCapabilities())),
             !benchmarkRejected.contains(candidate.identity) else {
             throw LabError.invalidConfig("BENCHMARK_CONFIGURATION_UNAVAILABLE")
         }
         if candidate == benchmarkConfig, context != nil { return benchmarkCapabilities() }
+        let quarantines = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }
+        guard !BenchmarkSessionMode.quarantined(candidate, markers: quarantines) else {
+            throw LabError.invalidConfig("CONFIGURATION_QUARANTINED")
+        }
         // Persist the attempted shape before native allocation, so a process death
         // points to the failing attempt rather than the previously working arm.
-        UserDefaults.standard.set(candidate.json, forKey: "BonsaiBenchmarkInterrupted")
+        UserDefaults.standard.set(candidate.json, forKey: benchmarkMode.markerKey)
         let configureTelemetry = BenchmarkTelemetry()
         let previous = benchmarkConfig
         if let context { llama_synchronize(context); llama_free(context); self.context = nil }
@@ -3933,7 +3948,7 @@ actor BonsaiEngine {
             }
             appliedRuntime = runtime; benchmarkConfig = candidate
             BonsaiProfileReset()
-            UserDefaults.standard.set(candidate.json, forKey: "BonsaiBenchmarkInterrupted")
+            UserDefaults.standard.set(candidate.json, forKey: benchmarkMode.markerKey)
             var evidence = benchmarkCapabilities()
             evidence["configuration_memory"] = configureTelemetry.finish()
             return evidence
@@ -3949,7 +3964,7 @@ actor BonsaiEngine {
     }
 
     @discardableResult
-    func benchmarkRestore() throws -> [String: Any] {
+    func benchmarkRestore(preserveInterrupted: Bool = false) throws -> [String: Any] {
         guard let original = benchmarkOriginal, let model else { return benchmarkCapabilities() }
         if let context { llama_synchronize(context); llama_free(context); self.context = nil }
         clearTextKVReuseState(reason: "benchmark_restore")
@@ -3957,7 +3972,10 @@ actor BonsaiEngine {
         benchmarkKV = nil
         context = try makeContext(model: model, config: original)
         appliedRuntime = original; benchmarkOriginal = nil; benchmarkConfig = nil
-        UserDefaults.standard.removeObject(forKey: "BonsaiBenchmarkInterrupted")
+        if !(preserveInterrupted && benchmarkMode == .quickPrefill) {
+            UserDefaults.standard.removeObject(forKey: benchmarkMode.markerKey)
+        }
+        benchmarkMode = .full
         return benchmarkCapabilities()
     }
 
@@ -3980,6 +3998,7 @@ actor BonsaiEngine {
             throw LabError.invalidConfig("PREVIOUS_GPU_WORK_NOT_DRAINED")
         }
         BonsaiBenchmarkBeginRequest()
+        let cpuBefore = (0..<3).map { BonsaiCPUCounter(Int32($0)) }
         let before = BenchmarkTelemetry.counters()
         let telemetry = BenchmarkTelemetry()
         let began = ProcessInfo.processInfo.systemUptime
@@ -3991,7 +4010,10 @@ actor BonsaiEngine {
                 generation: generation, reasoningEffort: "none", onDelta: onDelta)
             let drained = BonsaiBenchmarkConfigure(Int32(config.flags)) == 1
             let after = BenchmarkTelemetry.counters()
+            let cpuAfter = (0..<3).map { BonsaiCPUCounter(Int32($0)) }
             return ["schema": 1, "candidate": BenchmarkCandidateRegistry.name(config.flags), "actual": config.json,
+                "cpu_dot_delta": zip(cpuAfter, cpuBefore).map { $0.0 >= $0.1 ? $0.0 - $0.1 : 0 },
+                "cpu_dot_abi_available": BonsaiCPUAvailable(), "cpu_dot_scope": "request_calls; baseline,lookup,neon; not_GPU_dispatches",
                 "evidence": BenchmarkTelemetry.evidence(), "counters_before": before, "counters_after": after,
                 "operation_evidence": BenchmarkTelemetry.operationEvidence(), "counter_delta": zip(after, before).map { pair in pair.0 >= pair.1 ? pair.0 - pair.1 : 0 },
                 "gpu_completion_drained": drained, "memory": telemetry.finish(), "batch_allocations": benchmarkAllocations,

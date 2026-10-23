@@ -1,3 +1,7 @@
+Build118 集中Prefill对比
+入口：RUN_PREFILL_COMPARE.cmd --url http://<iPad-IP>:8080
+详细步骤及限制见 PREFILL_COMPARE.md。下方正式Full流程仍使用B16及旧隔离，不可与B8 Quick混用。
+
 Bonsai Build117 PTQ1 一键真机竞赛
 
 1. 完整解压整个交付 ZIP，保留 IPA、TestKitIdentity.json、DELIVERY_SHA256.json 和 python 文件夹。

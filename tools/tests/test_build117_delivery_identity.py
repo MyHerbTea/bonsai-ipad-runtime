@@ -11,6 +11,6 @@ class DeliveryIdentityTests(unittest.TestCase):
         app=re.search(r'CURRENT_PROJECT_VERSION:\s*"(\d+)"',project).group(1)
         ci=re.search(r'BUILD_NUMBER:\s*"(\d+)"',workflow).group(1)
         self.assertEqual(app,ci,'IPA/testkit identity must not disagree')
-        self.assertEqual(app,'117')
+        self.assertEqual(app,'118')
 
 if __name__=='__main__':unittest.main()
