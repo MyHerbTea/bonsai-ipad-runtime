@@ -53,6 +53,12 @@ class QuickTournament(b.Tournament):
                 if row[0].get('valid'):
                     self.report.setdefault('baseline_initial_peak_bytes',row[0]['memory']['sampled_peak_footprint_bytes'])
                 result=compare_abba(rows,flag,screen=rounds<5)
+                observed=[s for row in rows for s in row if s['abba_slot'].startswith('B')]
+                counts=[s.get('cpu_dot_delta') for s in observed]
+                result['observed_cpu_dot_calls']=[sum(x[i] for x in counts) for i in range(3)] if all(
+                    isinstance(x,list) and len(x)==3 and all(isinstance(v,int) and v>=0 for v in x) for x in counts) else None
+                drifts=[abs(v) for r in result['rounds'] for v in r.get('drift_pct',{}).values()]
+                result['max_observed_drift_pct']=max(drifts) if drifts else None
                 result['analysis_classification']=result['status']
                 result['status']='QUICK_MEASURED' if result['valid_rounds']==len(rows) else 'INCOMPLETE'
                 result['automatic_promotion']=False
@@ -68,11 +74,16 @@ class QuickTournament(b.Tournament):
 def write_comparison(directory, report):
     lines=['# Build118 集中对比（batch8）','',
            'Quick探索性结果；不代表Full或默认配置晋级。正数表示改善，负数表示退步。','',
-           '| 候选 | 有效ABBA轮 | Prefill改善% | 首内容改善% | Decode变化% | 状态 |',
-           '|---|---:|---:|---:|---:|---|']
+           '| 候选 | 有效轮 | Prefill改善% | 首内容改善% | Decode变化% | CPU命中(原始/查表/NEON) | 最大漂移% | 峰值增量MiB | 数值一致 | 状态 |',
+           '|---|---:|---:|---:|---:|---|---:|---:|---|---|']
     def number(value):return '不可用' if value is None else f'{value:+.2f}'
     for name,result in report.get('comparisons',{}).items():
-        lines.append(f"| {name} | {result.get('valid_rounds',0)} | {number(result.get('prefill_gain_pct'))} | {number(result.get('ttft_gain_pct'))} | {number(result.get('decode_change_pct'))} | {result['status']} |")
+        calls=result.get('observed_cpu_dot_calls')
+        calls='/'.join(map(str,calls)) if calls is not None else '不可用'
+        peak=result.get('peak_delta_bytes')
+        peak=number(peak/1024**2) if peak is not None else '不可用'
+        parity='通过' if result.get('deterministic_output_hashes_match') else '未证实'
+        lines.append(f"| {name} | {result.get('valid_rounds',0)} | {number(result.get('prefill_gain_pct'))} | {number(result.get('ttft_gain_pct'))} | {number(result.get('decode_change_pct'))} | {calls} | {number(result.get('max_observed_drift_pct'))} | {peak} | {parity} | {result['status']} |")
     lines+=['',f"状态：{report['status']}；恢复：{report.get('restoration')}。",'',
             '完整样本、CPU命中计数、数值校验、内存及漂移见report.json；不足五有效轮不作稳定收益结论。']
     directory.mkdir(parents=True,exist_ok=True)

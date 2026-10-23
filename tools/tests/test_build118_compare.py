@@ -64,7 +64,9 @@ class QuickComparisonTests(unittest.TestCase):
             self.assertFalse(t.report['automatic_promotion'])
             self.assertTrue(all(x['status']=='QUICK_MEASURED' for x in t.report['comparisons'].values()))
             quick.write_comparison(Path(d),t.report)
-            self.assertIn('PTQ1_CPU_NEON',(Path(d)/'COMPARISON.md').read_text(encoding='utf-8'))
+            table=(Path(d)/'COMPARISON.md').read_text(encoding='utf-8')
+            for label in ('PTQ1_CPU_NEON','CPU命中','最大漂移','峰值增量','数值一致'):
+                self.assertIn(label,table)
 
     def test_unknown_outcome_stops_before_next_candidate_without_replay(self):
         with tempfile.TemporaryDirectory() as d:
