@@ -43,7 +43,7 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                 return result
             } catch {
                 // A failed restore retains the lease to prevent unsafe ordinary inference.
-                let restored = (try? await engine.benchmarkRestore()) != nil
+                let restored = (try? await engine.benchmarkRestore(preserveInterrupted: mode == .quickPrefill)) != nil
                 control.finishOperation(error: String(describing: error))
                 if restored { control.endSession(session: id) }
                 throw error

@@ -51,6 +51,8 @@ actor BonsaiEngine {
             _ = try await manager.handle("start", body: ["mode":"quick_prefill"], onDelta: { _ in })
             preconditionFailure("failed start accepted")
         } catch { precondition(!control.active) }
+        let failedStartPreserved = await engine.lastRestorePreserved()
+        precondition(failedStartPreserved)
         await engine.setRestoreFailure(true)
         do {
             _ = try await manager.handle("start", body: ["mode":"quick_prefill"], onDelta: { _ in })
