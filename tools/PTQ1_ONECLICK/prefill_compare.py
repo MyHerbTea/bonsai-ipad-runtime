@@ -16,6 +16,15 @@ class QuickClient(b.Client):
 
     def request(self, command, body=None, **kwargs):
         if command == 'start': body=dict(body or {}, mode='quick_prefill')
+        if command == 'run' and kwargs.get('stream'):
+            observer=kwargs.get('observer')
+            def progress(event,data):
+                if event=='progress':
+                    state=data.get('progress',{})
+                    print('进度',state.get('stage','STARTING'),str(state.get('completed',0))+'/'+str(state.get('total',0)),
+                          'tokens；请求已运行',round(data.get('elapsed_s',0)),'秒',flush=True)
+                if observer:observer(event,data)
+            kwargs['observer']=progress
         if command == 'restore' and self.preserve_interrupted:
             body=dict(body or {}, preserve_interrupted=True)
         try:

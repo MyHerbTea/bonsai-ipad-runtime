@@ -14,6 +14,7 @@ actor BonsaiEngine {
     func setRestoreFailure(_ value: Bool) { failRestore = value }
     func setStartFailure(_ value: Bool) { failStart = value }
     func benchmarkCapabilities() -> [String: Any] { ["capabilities": 7] }
+    func acknowledgeQuickInterruption(_ body: [String: Any]) throws -> [String: Any] { ["acknowledged":true] }
     func benchmarkStart(mode: BenchmarkSessionMode = .full) throws -> [String: Any] {
         if failStart { throw LabError.invalidConfig("TEST_START_FAILURE") }
         return ["capabilities": 31, "mode": mode.rawValue]
@@ -42,6 +43,13 @@ actor BonsaiEngine {
         let control = BenchmarkSessionControl.shared
         let engine = BonsaiEngine()
         let manager = BenchmarkSessionManager(engine: engine, beforeStart: {})
+        precondition(control.enterOrdinary())
+        do {
+            _ = try await manager.handle("acknowledge_interruption",body:[:],onDelta:{ _ in })
+            preconditionFailure("acknowledgement did not acquire exclusive lease")
+        } catch { control.leaveOrdinary() }
+        let acknowledged=try await manager.handle("acknowledge_interruption",body:[:],onDelta:{ _ in })
+        precondition(acknowledged["acknowledged"] as? Bool==true && !control.active)
         do {
             _ = try await manager.handle("start", body: ["mode":"unsupported"], onDelta: { _ in })
             preconditionFailure("invalid mode accepted")

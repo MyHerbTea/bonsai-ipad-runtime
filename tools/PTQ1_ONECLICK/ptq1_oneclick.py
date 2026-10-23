@@ -736,13 +736,20 @@ class Tournament:
     def restore(self):
         if not self.client.session:return
         try:
-            state=self.client.request('status',timeout=10).get('state',{})
+            snapshot=self.client.request('status',timeout=10)
+            state=snapshot.get('state',{})
+            if not self.process or snapshot.get('evidence',{}).get('process_id')!=self.process:
+                raise EvidenceError('APP_RESTARTED_RESTORE_NOT_CONFIRMED')
             if state.get('running'):self.client.cancel_and_wait()
             if state.get('active'):
                 result=self.client.request('restore',{},timeout=240)
                 if result.get('state',{}).get('active'):raise EvidenceError('RESTORE_LEASE_STILL_ACTIVE')
-                actual=result.get('evidence',{}).get('native_context') or {}
-                if self.original_runtime and any(actual.get(k)!=self.original_runtime.get(k) for k in ('context','batch','ubatch','kv_k','kv_v','flash_attention','sequence_max')):raise EvidenceError('ORIGINAL_RUNTIME_RESTORE_MISMATCH')
+                snapshot=result
+            evidence=snapshot.get('evidence',{})
+            actual=evidence.get('native_context') or {}
+            if evidence.get('process_id')!=self.process:raise EvidenceError('APP_RESTARTED_RESTORE_NOT_CONFIRMED')
+            keys=('context','batch','ubatch','kv_k','kv_v','flash_attention','sequence_max','kv_unified','gpu_layers','threads','threads_batch','text_kv_reuse')
+            if not self.original_runtime or any(actual.get(k)!=self.original_runtime.get(k) for k in keys):raise EvidenceError('ORIGINAL_RUNTIME_RESTORE_MISMATCH')
             self.client.session=None;self.current=None;self.inflight=None
             self.report['restoration']='RESTORED';self.save()
         except (APIError,EvidenceError,UncertainRequest):

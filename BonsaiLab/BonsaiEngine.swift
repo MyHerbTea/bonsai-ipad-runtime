@@ -3637,6 +3637,9 @@ actor BonsaiEngine {
             if code != 0 {
                 throw LabError.decodeFailed(code)
             }
+            if benchmarkInvocation {
+                BenchmarkSessionControl.shared.progress(stage: "PREFILL", completed: offset - tokenOffset + count, total: stopOffset - tokenOffset)
+            }
             offset += count
         }
     }
@@ -3776,6 +3779,9 @@ actor BonsaiEngine {
 
             position += 1
             generated += 1
+            if benchmarkInvocation && (generated == 1 || generated % 16 == 0 || generated == maxTokens) {
+                BenchmarkSessionControl.shared.progress(stage: "DECODE", completed: generated, total: maxTokens)
+            }
             if generated % 16 == 0 {
                 if let profile = activeProfile { HealthMonitor.shared.progress(requestID: profile.requestID) }
                 CrashDiagnostics.shared.updateState(["current_operation": .string("INFERENCE_DECODE"), "tokens_generated": .number(Double(generated))])
@@ -3863,6 +3869,19 @@ actor BonsaiEngine {
                 "session_mode": benchmarkMode.rawValue, "cpu_dot_abi_available": BonsaiCPUAvailable()]
     }
 
+    func acknowledgeQuickInterruption(_ body: [String: Any]) throws -> [String: Any] {
+        guard benchmarkOriginal == nil, model != nil, context != nil,
+              let process = BenchmarkTelemetry.evidence()["process_id"] as? String else {
+            throw LabError.invalidConfig("PRODUCTION_RUNTIME_REQUIRED_FOR_ACKNOWLEDGEMENT")
+        }
+        let audit = try BenchmarkInterruptionRecovery.acknowledge(defaults: .standard,
+            source: BonsaiCertificationBuildIdentity.sourceGitSHA, process: process, body: body) { reason, fields in
+                try CrashDiagnostics.shared.snapshot(reason: reason, acknowledgement: fields.mapValues(DiagnosticValue.from))
+            }
+        return ["status":"acknowledged_manual_interruption", "audit_snapshot_id":audit,
+                "legacy_batch16_quarantine_preserved":true]
+    }
+
     func benchmarkStart(mode: BenchmarkSessionMode = .full) throws -> [String: Any] {
         guard benchmarkOriginal == nil, let model, context != nil else { throw LabError.noModel }
         let markers = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }
@@ -3922,7 +3941,9 @@ actor BonsaiEngine {
         }
         // Persist the attempted shape before native allocation, so a process death
         // points to the failing attempt rather than the previously working arm.
-        UserDefaults.standard.set(candidate.json, forKey: benchmarkMode.markerKey)
+        var pendingMarker = candidate.json
+        if benchmarkMode == .quickPrefill { pendingMarker["interruption_id"] = UUID().uuidString }
+        UserDefaults.standard.set(pendingMarker, forKey: benchmarkMode.markerKey)
         let configureTelemetry = BenchmarkTelemetry()
         let previous = benchmarkConfig
         if let context { llama_synchronize(context); llama_free(context); self.context = nil }
@@ -3948,7 +3969,7 @@ actor BonsaiEngine {
             }
             appliedRuntime = runtime; benchmarkConfig = candidate
             BonsaiProfileReset()
-            UserDefaults.standard.set(candidate.json, forKey: benchmarkMode.markerKey)
+            UserDefaults.standard.set(pendingMarker, forKey: benchmarkMode.markerKey)
             var evidence = benchmarkCapabilities()
             evidence["configuration_memory"] = configureTelemetry.finish()
             return evidence

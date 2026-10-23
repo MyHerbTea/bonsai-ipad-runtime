@@ -89,6 +89,7 @@ final class BenchmarkSessionControl: @unchecked Sendable {
     private var cancelled = false
     private var request = ""
     private var lastError: String?
+    private var progressState: [String: Any] = ["stage":"IDLE", "completed":0, "total":0]
     private var touched = ProcessInfo.processInfo.systemUptime
     func enterOrdinary() -> Bool {
         lock.lock(); defer { lock.unlock() }
@@ -107,6 +108,7 @@ final class BenchmarkSessionControl: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard session == id && !running else { return false }
         running = true; cancelled = false; request = value; lastError = nil
+        progressState = ["stage":"STARTING", "completed":0, "total":0]
         touched = ProcessInfo.processInfo.systemUptime; return true
     }
     func finishOperation(error: String?) {
@@ -128,6 +130,12 @@ final class BenchmarkSessionControl: @unchecked Sendable {
         return running && ProcessInfo.processInfo.systemUptime - touched > seconds ? session : nil
     }
     func touch() { lock.lock(); touched = ProcessInfo.processInfo.systemUptime; lock.unlock() }
+    func progress(stage: String, completed: Int, total: Int) {
+        lock.lock(); defer { lock.unlock() }
+        guard session != nil, running, ["PREFILL","DECODE"].contains(stage), total > 0,
+              completed >= 0, completed <= total else { return }
+        progressState = ["stage":stage, "completed":completed, "total":total]
+    }
     func expiredSession(after seconds: Double) -> String? {
         lock.lock(); defer { lock.unlock() }
         return !running && ProcessInfo.processInfo.systemUptime - touched > seconds ? session : nil
@@ -136,6 +144,6 @@ final class BenchmarkSessionControl: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return ["session_id": session as Any? ?? NSNull(), "active": session != nil,
                 "running": running, "cancelled": cancelled, "request_id": request,
-                "error": lastError as Any? ?? NSNull(), "ordinary_requests": ordinary]
+                "error": lastError as Any? ?? NSNull(), "ordinary_requests": ordinary, "progress": progressState]
     }
 }

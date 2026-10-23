@@ -135,6 +135,10 @@
     {
       "pattern": "docs/optimization/PTQ1_BUILD116_DEVICE_ADMISSION.md",
       "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/build119/*.md",
+      "status": "REFERENCE"
     }
   ],
   "unavailable_historical_links": [

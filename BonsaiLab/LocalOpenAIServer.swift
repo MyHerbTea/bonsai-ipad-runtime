@@ -2912,7 +2912,7 @@ final class LocalOpenAIServer: ObservableObject {
         }
         let command = String(request.path.dropFirst("/debug/benchmark/".count))
         guard (["capabilities", "status"].contains(command) && request.method == "GET")
-            || (["start", "configure", "run", "tokenize", "cancel", "restore"].contains(command) && request.method == "POST") else {
+            || (["start", "configure", "run", "tokenize", "cancel", "restore", "acknowledge_interruption"].contains(command) && request.method == "POST") else {
             sendJSON(connection, status: 404, object: Self.errorObject("not_found", "Unknown benchmark endpoint.")); return
         }
         let body: [String: Any]
@@ -2929,6 +2929,18 @@ final class LocalOpenAIServer: ObservableObject {
             benchmarkEvent(connection, event: "meta", object: ["schema": 1, "request_id": body["request_id"] as? String ?? ""])
         }
         Task {
+            let heartbeat = streaming ? DispatchSource.makeTimerSource(queue: self.queue) : nil
+            if let heartbeat {
+                let began = ProcessInfo.processInfo.systemUptime
+                heartbeat.schedule(deadline: .now() + 2, repeating: .seconds(15))
+                heartbeat.setEventHandler { [weak self] in
+                    self?.benchmarkEvent(connection, event: "progress", object: [
+                        "progress": BenchmarkSessionControl.shared.snapshot["progress"] ?? NSNull(),
+                        "elapsed_s": ProcessInfo.processInfo.systemUptime - began])
+                }
+                heartbeat.resume()
+            }
+            defer { heartbeat?.cancel() }
             do {
                 let result = try await manager.handle(command, body: body) { delta in
                     if streaming { self.queue.async { self.benchmarkEvent(connection, event: "delta", object: ["content": delta]) } }

@@ -95,7 +95,7 @@ class IntegrationTests(unittest.TestCase):
             with zipfile.ZipFile(stream,'w') as archive:
                 for name in ('python.exe','python312.dll','python312.zip','_ssl.pyd','LICENSE.txt'):archive.writestr(name,b'synthetic')
             data=stream.getvalue()
-            with patch.object(package,'ROOT',root),patch.object(package,'PYTHON_SHA',hashlib.sha256(data).hexdigest()),patch.object(package.urllib.request,'urlopen',return_value=contextlib.closing(io.BytesIO(data))),patch.dict(os.environ,{'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'1','PRISM_COMMIT':'d'*40}):
+            with patch.object(package,'ROOT',root),patch.object(package,'PYTHON_SHA',hashlib.sha256(data).hexdigest()),patch.object(package.urllib.request,'urlopen',return_value=contextlib.closing(io.BytesIO(data))),patch.dict(os.environ,{'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'1','PRISM_COMMIT':'d'*40,'BUILD_NUMBER':'118'}):
                 package.build()
             output=root/'build/delivery/BONSAI_BUILD118_PTQ1_ONECLICK.zip'
             with zipfile.ZipFile(output) as archive:

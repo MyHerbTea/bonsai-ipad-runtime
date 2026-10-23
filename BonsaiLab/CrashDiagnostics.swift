@@ -147,7 +147,7 @@ final class CrashDiagnostics: @unchecked Sendable {
             "verification_steps": .array([.string("Inspect timeline and resource trend before termination"), .string("Match binary UUID with dSYM before symbolication")]),
             "confidence": .string("insufficient_evidence"), "evidence_refs": .array([])])
     }
-    func snapshot(reason: String = "manual") throws -> String {
+    func snapshot(reason: String = "manual", acknowledgement: [String: DiagnosticValue]? = nil) throws -> String {
         try queue.sync {
             guard let store else { throw DiagnosticStore.StoreError.unsafeFile }
             let id = "SNAPSHOT_" + UUID().uuidString
@@ -158,6 +158,7 @@ final class CrashDiagnostics: @unchecked Sendable {
                 "memory_state": .object(resourceState()), "breadcrumbs": .array(breadcrumbs), "operation_timeline": .array(timeline),
                 "recent_errors": .array(errors), "performance_snapshot": .object(performance), "configuration": .object(state),
                 "kernel_statistics": performance["kernel_stats"] ?? .null, "ai_analysis": analysis(), "binary_images": images]
+            if let acknowledgement { report["operator_acknowledgement"] = .object(acknowledgement) }
             report["diagnostic_error"] = failure.map(DiagnosticValue.string) ?? .null
             try store.save(id: id, report: report); return id
         }

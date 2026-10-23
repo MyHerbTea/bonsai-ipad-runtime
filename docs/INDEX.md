@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build119 受控恢复：[计划](superpowers/plans/2026-10-23-build119-controlled-recovery.md)、[实施记录](build119/execution-log.md)、[Build118 中断派生说明](build119/build118-interruption-interpretation.md)。Apple CI 与新 IPA 真机比较待执行。
+
 Build118 实验候选：[设计](superpowers/specs/2026-10-23-build118-prefill-design.md)、[执行计划](superpowers/plans/2026-10-23-build118-prefill-plan.md)。同IPA的CPU lookup/NEON候选尚待集中真机对比，不代表收益或发布通过。
 
 Build117 本地实施记录：[执行日志](build117/execution-log.md)、[源码映射](build117/source-map.md)。该阶段尚需 Apple 编译及真机验收，不能作为发行或性能通过证据。
