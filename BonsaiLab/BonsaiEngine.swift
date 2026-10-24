@@ -4017,6 +4017,9 @@ actor BonsaiEngine {
         guard benchmarkOriginal != nil, let config = benchmarkConfig, context != nil else {
             throw LabError.invalidConfig("BENCHMARK_NOT_CONFIGURED")
         }
+        guard config.flags != 32 || !countingEnabled else {
+            throw LabError.invalidConfig("UNPACK_REUSE_REQUIRES_COUNTING_OFF")
+        }
         benchmarkInvocation = true
         defer { benchmarkInvocation = false }
         benchmarkAllocations = 0; benchmarkReuses = 0; benchmarkLogits = [:]
@@ -4024,10 +4027,10 @@ actor BonsaiEngine {
         guard BonsaiBenchmarkConfigure(Int32(config.flags)) == 1 else {
             throw LabError.invalidConfig("PREVIOUS_GPU_WORK_NOT_DRAINED")
         }
-        guard BonsaiCPUSamplingAvailable(), BonsaiCPUSamplingConfigure(countingEnabled ? 1 : 0, 10000) == 1 else {
+        guard BonsaiCPUSamplingAvailable(), BonsaiCPUSamplingConfigure(countingEnabled ? 1 : 0, 0) == 1 else {
             throw LabError.invalidConfig("CPU_SAMPLING_ABI_UNAVAILABLE")
         }
-        defer { _ = BonsaiCPUSamplingConfigure(1, 10000) }
+        defer { _ = BonsaiCPUSamplingConfigure(1, 0) }
         BonsaiBenchmarkBeginRequest()
         let cpuBefore = (0..<3).map { BonsaiCPUCounter(Int32($0)) }
         let before = BenchmarkTelemetry.counters()

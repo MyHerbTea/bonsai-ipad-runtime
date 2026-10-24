@@ -16,10 +16,11 @@ struct BenchmarkConfiguration: Equatable, Sendable {
     let flags: Int
     func isValid(capabilities: Int) -> Bool {
         [8192, 16384, 32768].contains(context) && [8, 16, 24].contains(batch)
-            && ["Q4_0", "Q8_0"].contains(kv) && flags >= 0 && flags <= 31
+            && ["Q4_0", "Q8_0"].contains(kv) && flags >= 0 && (flags <= 31 || flags == 32)
             && flags & 24 != 24
             && flags & capabilities == flags
             && (flags & 1 == 0 || batch == 16) // custom Tensor tile needs rows divisible by 16
+            && (flags != 32 || batch == 8)
     }
     var identity: String { "\(flags):\(context):\(batch):\(kv)" }
     var json: [String: Any] {
@@ -34,7 +35,7 @@ enum BenchmarkSessionMode: String {
     var markerKey: String { self == .full ? "BonsaiBenchmarkInterrupted" : "BonsaiQuickPrefillInterrupted" }
     var initial: BenchmarkConfiguration { BenchmarkConfiguration(context: 16384, batch: self == .full ? 16 : 8, kv: "Q4_0", flags: 0) }
     func permits(_ config: BenchmarkConfiguration) -> Bool {
-        self == .full || (config.context == 16384 && config.batch == 8 && config.kv == "Q4_0" && [0,4,8,16].contains(config.flags))
+        self == .full || (config.context == 16384 && config.batch == 8 && config.kv == "Q4_0" && [0,4,8,16,32].contains(config.flags))
     }
     static func quarantined(_ config: BenchmarkConfiguration, markers: [[String: Any]]) -> Bool {
         markers.contains { marker in
@@ -48,7 +49,7 @@ enum BenchmarkCandidateRegistry {
     static let entries: [(String, Int)] = [
         ("SAFE_BASELINE", 0), ("PTQ1_TENSOROPS", 1),
         ("PTQ1_MV_R5", 2), ("PTQ1_BATCH_REUSE", 4),
-        ("PTQ1_CPU_LOOKUP", 8), ("PTQ1_CPU_NEON", 16)
+        ("PTQ1_CPU_LOOKUP", 8), ("PTQ1_CPU_NEON", 16), ("PTQ1_CPU_UNPACK_REUSE", 32)
     ]
     static func flags(named name: String) -> Int? {
         if name == "PTQ1_FUSED_KERNEL" { return 2 }
@@ -56,7 +57,7 @@ enum BenchmarkCandidateRegistry {
         return entries.first(where: { $0.0 == name })?.1
     }
     static func optimizationTarget(_ flags: Int) -> String {
-        flags == 2 ? "DECODE_FOCUSED" : [1,8,16].contains(flags) ? "PREFILL_FOCUSED" : "BALANCED"
+        flags == 2 ? "DECODE_FOCUSED" : [1,8,16,32].contains(flags) ? "PREFILL_FOCUSED" : "BALANCED"
     }
     static func description(_ flags: Int) -> String {
         switch flags {
@@ -66,6 +67,7 @@ enum BenchmarkCandidateRegistry {
         case 4: return "PTQ1 Batch Reuse：复用CPU batch输入数组减少分配；不改变GPU调度、command buffer或同步点；预期端到端<1%为待验证假设"
         case 8: return "PTQ1 CPU Lookup：按原格式查表解码三值权重；整数点积及浮点缩放顺序不变；收益待测"
         case 16: return "PTQ1 CPU NEON：向量解码与精确整数点积；不改变模型精度及放置；收益待测"
+        case 32: return "flag17 PTQ1 CPU Unpack Reuse：B8当前列共享128权重块解包；原整数点积与缩放顺序；仅初筛候选"
         default: return "组合候选：需独立ABBA验证"
         }
     }

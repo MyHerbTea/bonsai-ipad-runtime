@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build123 / flag17：[B8批次内解包复用计划](superpowers/plans/2026-10-24-flag17-unpack-reuse.md)。单一实验候选，基线与候选均关闭原子计数和分段采样；一致性、收益待验证，不代表晋级。
+
 Build122：[低率采样与计数开关对照](build122/plan.md)。仅服务于三次512/1真机请求；尚无测量结论。
 
 Build121：[限时CPU prefill计时范围](build121/plan.md)。仅计时，不改优化逻辑；CPU占比和设备结果待验证。

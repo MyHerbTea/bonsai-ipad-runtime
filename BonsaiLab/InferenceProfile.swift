@@ -67,7 +67,7 @@ final class InferenceProfile {
         guard available && BonsaiCPUSamplingAvailable() else {
             return ["available": false, "valid": false, "unavailable": "requires_serialized_drained_benchmark_scope"]
         }
-        let c = (0..<13).map { BonsaiCPUSamplingCounter(Int32($0)) }
+        let c = (0..<16).map { BonsaiCPUSamplingCounter(Int32($0)) }
         let ready = available && BonsaiCPUSamplingAvailable()
         let rawU = Double(c[4]), rawD = Double(c[5])
         let correction = Double(c[6]) * Double(c[3])
@@ -77,6 +77,7 @@ final class InferenceProfile {
         let expected = c[7] > 0 ? 1 / Double(c[7]) : 0
         let valid = ready && c[9] == 0 && c[1] >= 1000 && c[11] >= 50 && overhead <= 0.20 && expected > 0 && abs(rate / expected - 1) <= 0.20 && u + d > 0
         return ["available": ready, "valid": valid, "counting_on": c[8] == 1,
+                "sampling_enabled": c[7] > 0, "reuse_rows": c[13], "reuse_unpacked_blocks": c[14], "reuse_logical_dot_calls": c[15],
                 "sample_period": c[7], "observed_sample_rate": rate, "seen_calls": c[0], "sampled_calls": c[1],
                 "seen_blocks": c[2], "sampled_blocks": c[3], "timer_interval_overhead_ns": c[6],
                 "unpack_raw_ns": c[4], "dotprod_raw_ns": c[5], "timer_correction_fraction": overhead,

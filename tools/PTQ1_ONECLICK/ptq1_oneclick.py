@@ -35,7 +35,7 @@ if "--check-code" not in sys.argv:
 ROOT = Path(__file__).resolve().parent
 GIB = 1024**3
 MIN_HEADROOM = 512*1024**2
-NAMES = {0:'SAFE_BASELINE',1:'PTQ1_TENSOROPS',2:'PTQ1_MV_R5',4:'PTQ1_BATCH_REUSE',8:'PTQ1_CPU_LOOKUP',16:'PTQ1_CPU_NEON'}
+NAMES = {0:'SAFE_BASELINE',1:'PTQ1_TENSOROPS',2:'PTQ1_MV_R5',4:'PTQ1_BATCH_REUSE',8:'PTQ1_CPU_LOOKUP',16:'PTQ1_CPU_NEON',32:'PTQ1_CPU_UNPACK_REUSE'}
 SYSTEM = 'You are a helpful assistant. Follow the requested output format exactly.'
 MICRO = ('Continue an uninterrupted sequence of neutral English words separated by commas. '
          'Do not summarize or conclude. Continue until the output limit. Reference payload:\n')

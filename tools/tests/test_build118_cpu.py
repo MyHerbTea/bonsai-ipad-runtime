@@ -55,6 +55,12 @@ int main() {
     BonsaiNativeBenchmarkBeginRequest();assert(resets==1);
 }
 '''
+        if 'flags != 32' in control:
+            checks=checks.replace('    int previous=cpu_flags;','''    cpu_caps=56;assert(BonsaiNativeBenchmarkCapabilities()==63);
+    assert(BonsaiNativeBenchmarkConfigure(32)==1 && cpu_flags==32);
+    assert(BonsaiNativeBenchmarkConfigure(33)==0 && cpu_flags==32);
+    cpu_caps=24;assert(BonsaiNativeBenchmarkConfigure(0)==1);
+    int previous=cpu_flags;''')
         with tempfile.TemporaryDirectory() as folder:
             folder=Path(folder);source=folder/'control.cpp';binary=folder/('control.exe' if os.name=='nt' else 'control')
             source.write_text(preamble+control+checks)

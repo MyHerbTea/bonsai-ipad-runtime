@@ -1,8 +1,8 @@
-name: Bonsai Build122 CPU Prefill Timing
+name: Bonsai Build123 flag17 Unpack Reuse
 
 on:
   push:
-    branches: [codex/build122-ptq1-cost-sampling]
+    branches: [codex/build123-flag17-unpack-reuse]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "122"
+  BUILD_NUMBER: "123"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -106,6 +106,8 @@ jobs:
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build121_cpu_timing.py -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 "$GITHUB_WORKSPACE/tools/rc126_build122_patch_sampling.py" "$PRISM_DIR"
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build122_sampling.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build123_patch_unpack_reuse.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build123_unpack_reuse.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_REQUIRE_NEON=1 BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build118_cpu.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build117_native_profile.py -v 2>&1 | tee -a build/CI_TESTS.txt
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -164,7 +166,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build122 IPA and native ABI
+      - name: Verify Build123 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -188,6 +190,9 @@ jobs:
             grep -q "_$symbol" build/llama-symbols.txt
           done
           strings "$FRAMEWORK" > build/llama-strings.txt
+          for symbol in BonsaiNativeCPUReuseEnabled BonsaiNativeCPUReuseRow; do
+            grep -q "_$symbol" build/llama-symbols.txt
+          done
           grep -q 'kernel_mul_mv_ptq1_0_f32_bonsai_r5' build/llama-strings.txt
           grep -q 'BUILD115_SCHED_ALLOC_EXHAUSTED' build/llama-strings.txt
           grep -q 'kernel_mul_mm_ptq1_tensorops_0_f32' build/llama-strings.txt
@@ -210,20 +215,20 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build122-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build123-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD122_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD122_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD123_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD123_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build122-Symbols
+          name: Bonsai-Build123-Symbols
           path: |
-            build/Bonsai-Build122-Symbols.zip
-            build/Bonsai-Build122-Symbols.zip.sha256
+            build/Bonsai-Build123-Symbols.zip
+            build/Bonsai-Build123-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90
