@@ -3,6 +3,11 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools'))
 
+def cpu_chunk(source):
+    a=source.index('static void ggml_compute_forward_mul_mat_one_chunk(')
+    b=source.index('\nvoid ggml_compute_forward_mul_mat(',a)
+    return source[a:b]
+
 class UnpackReuseTests(unittest.TestCase):
     def test_compiled_actual_chunk_float_parity_strides_broadcast_and_reuse(self):
         compiler=shutil.which('clang')
@@ -12,9 +17,9 @@ class UnpackReuseTests(unittest.TestCase):
         native=Path(os.environ['BONSAI_PRISM_TEST_DIR'])
         def raw(file):return subprocess.check_output(['git','-C',str(native),'show','HEAD:ggml/src/ggml-cpu/'+file],text=True)
         q=raw('quants.c');a=q.index('void ggml_vec_dot_ptq1_0_q8_0_generic(');b=q.index('\nvoid ',a+5);generic=q[a:b]
-        s=raw('ggml-cpu.c');a=s.index('static void ggml_compute_forward_mul_mat_one_chunk(');b=s.index('\nstatic void ggml_compute_forward_mul_mat(',a)
-        original=s[a:b].replace('ggml_compute_forward_mul_mat_one_chunk','reference_chunk')
-        changed=patch.instrument_cpu(s);a=changed.index('static void ggml_compute_forward_mul_mat_one_chunk(');b=changed.index('\nstatic void ggml_compute_forward_mul_mat(',a)
+        s=raw('ggml-cpu.c')
+        original=cpu_chunk(s).replace('ggml_compute_forward_mul_mat_one_chunk','reference_chunk')
+        changed=cpu_chunk(patch.instrument_cpu(s))
         program=r'''
 #include <stdint.h>
 #include <stdbool.h>
@@ -50,7 +55,7 @@ static int ggml_is_contiguous(const struct ggml_tensor*t){return t->nb[1]==ggml_
 #define GGML_TENSOR_BINARY_OP_LOCALS \
  const int64_t ne00=src0->ne[0],ne02=src0->ne[2],ne03=src0->ne[3],ne10=src1->ne[0],ne11=src1->ne[1],ne12=src1->ne[2],ne13=src1->ne[3],ne1=dst->ne[1]; \
  const size_t nb00=src0->nb[0],nb01=src0->nb[1],nb02=src0->nb[2],nb03=src0->nb[3],nb11=src1->nb[1],nb12=src1->nb[2],nb13=src1->nb[3],nb0=dst->nb[0],nb1=dst->nb[1],nb2=dst->nb[2],nb3=dst->nb[3];
-''' + original + changed[a:b] + r'''
+''' + original + changed + r'''
 static uint32_t rng=123;
 static uint32_t next(void){rng=rng*1664525u+1013904223u;return rng;}
 static _Float16 scale(void) {
@@ -132,6 +137,8 @@ int main(void) {
         if not native.exists():self.skipTest('pinned native required')
         raw=subprocess.check_output(['git','-C',str(native),'show','HEAD:ggml/src/ggml-cpu/ggml-cpu.c'],text=True,encoding='utf-8')
         result=m.instrument_cpu(raw)
+        self.assertIn('BonsaiNativeCPUReuseRow',cpu_chunk(result))
+        self.assertNotIn('BonsaiNativeCPUReuseRow',cpu_chunk(raw))
         self.assertEqual(result.count('ggml_barrier('),raw.count('ggml_barrier('))
         self.assertIn('BonsaiNativeCPUReuseRow',result)
         self.assertIn('columns >= 2 && columns <= 8',result)
