@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build121：[限时CPU prefill计时范围](build121/plan.md)。仅计时，不改优化逻辑；CPU占比和设备结果待验证。
+
 Build120 最小恢复仅服务于 flag16 真机决策：[当前范围](build120/minimal-execution.md)、[执行记录](build120/execution-log.md)。旧快照导出方案搁置；设备测量待执行，不代表候选通过。
 
 Build119 受控恢复：[计划](superpowers/plans/2026-10-23-build119-controlled-recovery.md)、[实施记录](build119/execution-log.md)、[Build118 中断派生说明](build119/build118-interruption-interpretation.md)。Apple CI 与新 IPA 真机比较待执行。

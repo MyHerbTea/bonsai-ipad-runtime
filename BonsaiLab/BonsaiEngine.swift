@@ -3597,6 +3597,9 @@ actor BonsaiEngine {
         var offset = tokenOffset
         let stopOffset = min(tokens.count, endOffset ?? tokens.count)
 
+        BonsaiCPUTimeEnable(benchmarkInvocation ? 1 : 0)
+        defer { BonsaiCPUTimeEnable(0) }
+
         let reuse = benchmarkInvocation && (benchmarkConfig?.flags ?? 0) & 4 != 0
         var storage: llama_batch? = reuse ? llama_batch_init(Int32(batchSize), 0, 1) : nil
         if reuse { benchmarkAllocations += 1 }

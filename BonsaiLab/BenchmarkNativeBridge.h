@@ -34,6 +34,10 @@ void BonsaiProfileEnable(int enabled);
 uint64_t BonsaiProfileCounter(int index);
 bool BonsaiCPUAvailable(void);
 uint64_t BonsaiCPUCounter(int index);
+bool BonsaiCPUTimeAvailable(void);
+void BonsaiCPUTimeReset(void);
+void BonsaiCPUTimeEnable(int enabled);
+uint64_t BonsaiCPUTimeCounter(int index);
 #ifdef __cplusplus
 }
 #endif

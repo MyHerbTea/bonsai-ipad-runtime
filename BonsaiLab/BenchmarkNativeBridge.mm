@@ -1,6 +1,20 @@
 #include "BenchmarkNativeBridge.h"
 #include <dlfcn.h>
 
+extern "C" bool BonsaiCPUTimeAvailable(void) {
+    return dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeReset") &&
+        dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeEnable") && dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeCounter");
+}
+extern "C" void BonsaiCPUTimeReset(void) {
+    using Fn=void(*)(void); static Fn fn=reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeReset")); if(fn)fn();
+}
+extern "C" void BonsaiCPUTimeEnable(int enabled) {
+    using Fn=void(*)(int); static Fn fn=reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeEnable")); if(fn)fn(enabled);
+}
+extern "C" uint64_t BonsaiCPUTimeCounter(int index) {
+    using Fn=uint64_t(*)(int); static Fn fn=reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeCounter")); return fn?fn(index):0;
+}
+
 extern "C" bool BonsaiCPUAvailable(void) {
     return dlsym(RTLD_DEFAULT, "BonsaiNativeCPUCounter") != nullptr &&
         dlsym(RTLD_DEFAULT, "BonsaiNativeCPUConfigure") != nullptr &&

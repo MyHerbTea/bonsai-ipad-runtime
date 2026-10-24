@@ -23,6 +23,7 @@ final class InferenceProfile {
     init(requestID: String, nativeSerialized: Bool) {
         self.requestID = requestID
         self.nativeSerialized = nativeSerialized
+        if nativeSerialized { BonsaiCPUTimeReset() }
         BonsaiProfileEnable(1)
         before = (0..<9).map { BonsaiProfileCounter(Int32($0)) }
     }
@@ -46,6 +47,7 @@ final class InferenceProfile {
             "m1_operations": count(4), "m_gt1_operations": count(5),
             "scope": "request_delta_of_context_counters;matrix_operations_not_tokens"]
         let snapshot: [String: Any] = ["schema_version": 2, "request_id": requestID, "completed": succeeded,
+            "cpu_prefill_timing": cpuPrefillTiming(available: available),
             "timestamp": ISO8601DateFormatter().string(from: Date()), "wall_ms": (ProcessInfo.processInfo.systemUptime - start) * 1000,
             "breakdown": ["batch_prep_ms": prep, "decode_call_ms": decode, "metal_submit_ms": available ? Double(delta[8]) / 1e6 as Any : NSNull(),
                 "gpu_wait_ms": NSNull(), "result_read_ms": read],
@@ -59,5 +61,19 @@ final class InferenceProfile {
             "timing_relationship": "decode_call_ms includes backend submission and synchronization; do not sum overlapping stages"]
         ProfilingSnapshot.shared.publish(snapshot)
         CrashDiagnostics.shared.updatePerformance(snapshot)
+    }
+    private func cpuPrefillTiming(available: Bool) -> [String: Any] {
+        let ready = available && BonsaiCPUTimeAvailable()
+        let ns = (0..<4).map { BonsaiCPUTimeCounter(Int32($0)) }
+        let nodes = (4..<8).map { BonsaiCPUTimeCounter(Int32($0)) }
+        return ["available": ready, "scope": "prefill_only_cpu_node_group_leader_wall_through_existing_barrier;includes_worker_wait;fused_by_leading_node",
+                "coverage": "ggml_cpu_executor_only;excludes_BLAS_scheduler_backend_copies",
+                "sum_worker_times": false, "not_exclusive_critical_path": true,
+                "ptq1_matmul_ms": ready ? Double(ns[0])/1e6 as Any : NSNull(),
+                "fwht_ms": ready ? Double(ns[1])/1e6 as Any : NSNull(),
+                "other_matmul_ms": ready ? Double(ns[2])/1e6 as Any : NSNull(),
+                "other_cpu_ms": ready ? Double(ns[3])/1e6 as Any : NSNull(),
+                "total_cpu_node_wall_ms": ready ? Double(ns.reduce(0,+))/1e6 as Any : NSNull(),
+                "node_counts": ready ? nodes as Any : NSNull()]
     }
 }
