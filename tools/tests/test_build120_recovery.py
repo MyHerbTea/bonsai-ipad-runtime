@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/PTQ1_ONECLICK'))
@@ -59,18 +60,12 @@ class Device:
             self.posts.append(copy.deepcopy(body))
             if self.fail == 'lost_post':
                 raise b.UncertainRequest('LOST_POST')
-            self.marker = None
-            self.audit = {'operator_acknowledgement': {
-                'operator_reason': body['reason'], 'source_git_sha': 'b' * 40,
-                'process_id': 'new-process', 'acknowledged_marker': body['expected_interruption'],
-                'api_cancel_evidence': body['api_cancel_evidence']}}
-            return {'audit_snapshot_id': 'SNAPSHOT_test'}
-        if command == '/debug/snapshots/SNAPSHOT_test':
-            if self.fail == 'readback':
+            if self.fail == 'server_readback':
                 raise b.APIError('HTTP_500')
-            if self.fail == 'mismatch':
-                return {'operator_acknowledgement': {}}
-            return self.audit
+            self.marker = None
+            return {'audit_snapshot_id': 'SNAPSHOT_test',
+                    'audit_readback_verified': self.fail != 'unverified_response',
+                    'operator_reason': body['reason']}
         raise AssertionError('Unexpected operation: ' + command)
 
 
@@ -115,7 +110,8 @@ class CancellationEvidenceTests(unittest.TestCase):
             device = Device()
             result = recovery.acknowledge(device, {'source_git_sha': 'b' * 40},
                 'operator_confirmed_api_cancel', directory / 'ack.json', directory)
-            self.assertEqual(result['verification'], 'INDEPENDENT_AUDIT_READBACK_VERIFIED')
+            self.assertEqual(result['verification'], 'SERVER_AUDIT_READBACK_AND_QUARANTINE_VERIFIED')
+            self.assertFalse(result['independent_snapshot_export'])
             self.assertEqual(result['result']['audit_snapshot_id'], 'SNAPSHOT_test')
             body = device.posts[0]
             self.assertEqual(body['expected_source_git_sha'], 'b' * 40)
@@ -124,8 +120,8 @@ class CancellationEvidenceTests(unittest.TestCase):
             self.assertNotIn('run', device.commands)
             self.assertNotIn('restore', device.commands)
 
-    def test_lost_response_and_failed_export_preserve_attempt_without_retry(self):
-        for failure in ('lost_post', 'readback', 'mismatch'):
+    def test_lost_response_or_unverified_audit_preserves_attempt_without_retry(self):
+        for failure in ('lost_post', 'server_readback', 'unverified_response'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
                 directory = Path(directory)
                 write_origin(directory)
@@ -155,6 +151,37 @@ class CancellationEvidenceTests(unittest.TestCase):
                     'operator_confirmed_api_cancel', output, directory)
             self.assertEqual(output.read_text(), 'prior evidence')
             self.assertFalse(device.posts)
+
+    def test_attempt_sync_failure_prevents_the_post(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            write_origin(directory)
+            device = Device()
+            with patch.object(recovery.os, 'fsync', side_effect=OSError('synthetic storage failure')):
+                with self.assertRaises(OSError):
+                    recovery.acknowledge(device, {'source_git_sha': 'b' * 40},
+                        'operator_confirmed_api_cancel', directory / 'ack.json', directory)
+            self.assertFalse(device.posts)
+
+    def test_missing_quarantine_observations_never_claim_verified(self):
+        for phase, key in (('before', 'prior_interrupted'), ('after', 'quick_prior_interrupted')):
+            with self.subTest(phase=phase, key=key), tempfile.TemporaryDirectory() as directory:
+                directory = Path(directory)
+                write_origin(directory)
+                class MissingObservation(Device):
+                    def request(self, command, body=None, **kwargs):
+                        response = super().request(command, body, **kwargs)
+                        if command == 'capabilities' and bool(self.posts) == (phase == 'after'):
+                            response.pop(key)
+                        return response
+                device = MissingObservation()
+                output = directory / 'ack.json'
+                with self.assertRaises(b.EvidenceError):
+                    recovery.acknowledge(device, {'source_git_sha': 'b' * 40},
+                        'operator_confirmed_api_cancel', output, directory)
+                self.assertFalse(output.exists())
+                if phase == 'before':
+                    self.assertFalse(device.posts)
 
 
 if __name__ == '__main__':

@@ -9,6 +9,14 @@
   ],
   "rules": [
     {
+      "pattern": "docs/build120/*.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "docs/superpowers/specs/2026-10-23-build120-recovery-design.md",
+      "status": "SUPERSEDED"
+    },
+    {
       "pattern": "docs/build118/*",
       "status": "REFERENCE"
     },

@@ -175,6 +175,12 @@ final class CrashDiagnostics: @unchecked Sendable {
             "metal_allocated_bytes": .number(Double(p.metal_allocated_bytes)), "gpu_utilization": .null, "gpu_fragmentation": .null,
             "unavailable_reason": .string("public_counter_not_available"), "thermal_state": .number(Double(ProcessInfo.processInfo.thermalState.rawValue))]
     }
+    func readSnapshot(_ id: String) throws -> [String: Any]? {
+        try queue.sync {
+            guard id.hasPrefix("SNAPSHOT_"), let store else { throw DiagnosticStore.StoreError.invalidID }
+            return try store.read(id: id)?.mapValues(\.foundation)
+        }
+    }
     func api(method: String, path: String, query: [String: String] = [:]) -> (Int, String, Data) {
         queue.sync {
             func json(_ status: Int, _ values: [String: DiagnosticValue]) -> (Int, String, Data) {

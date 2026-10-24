@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build120 最小恢复仅服务于 flag16 真机决策：[当前范围](build120/minimal-execution.md)、[执行记录](build120/execution-log.md)。旧快照导出方案搁置；设备测量待执行，不代表候选通过。
+
 Build119 受控恢复：[计划](superpowers/plans/2026-10-23-build119-controlled-recovery.md)、[实施记录](build119/execution-log.md)、[Build118 中断派生说明](build119/build118-interruption-interpretation.md)。Apple CI 与新 IPA 真机比较待执行。
 
 Build118 实验候选：[设计](superpowers/specs/2026-10-23-build118-prefill-design.md)、[执行计划](superpowers/plans/2026-10-23-build118-prefill-plan.md)。同IPA的CPU lookup/NEON候选尚待集中真机对比，不代表收益或发布通过。

@@ -1,4 +1,24 @@
-# Build119 集中优化对比
+# Build120：先恢复，再只测 flag16
+
+当前主线只运行 flag16 的一轮独立 Quick ABBA，不使用下方历史三个候选的默认命令。512输入、128正式输出，每槽两次预热，共12次推理；45分钟预算，异常/身份变化/恢复失败立即停止，不自动重试或加轮。
+
+Build119主动API取消造成的Quick隔离，需要安装本包配对Build120后显式确认。保留原App数据，不卸载，不冒用manual_forced_exit。先确认API、模型与源身份，再执行：
+
+```powershell
+.\python\python.exe -X utf8 .\acknowledge_quick_interruption.py --url http://192.168.1.92:8080 --reason operator_confirmed_api_cancel --cancel-evidence D:\codexSpace\iPad27B\docs\build119\device\20261023T080803Z --output D:\codexSpace\iPad27B\docs\build120\device\NEW_RUN\api-cancel-ack.json
+```
+
+工具核对原before/cancel/after/report及完整隔离标记，绑定当前接收确认的源/进程。历史取消与当前IPA身份分别记录。服务端先保存并从DiagnosticStore读回审计，再仅解除匹配Quick标记，B16保留。该读回是服务端内部验证，未提供独立HTTP快照导出。请求丢失或读回失败保留attempt/response文件，不自动重发确认。
+
+解除确认通过后，使用新的输出目录：
+
+```powershell
+.\python\python.exe -X utf8 .\prefill_compare.py --url http://192.168.1.92:8080 --rounds 1 --prompt-tokens 512 --candidates 16 --output D:\codexSpace\iPad27B\docs\build120\device\NEW_RUN\flag16
+```
+
+NEW_RUN必须是本次新目录，不拼接Build119的旧配对，不自动晋级配置。以下Build119说明保留为历史使用参考。
+
+## Build119 集中优化对比（历史）
 
 同一IPA包含原始CPU算法、CPU查表解码（8）、ARM NEON解码/整数点积（16）及已有输入batch缓存复用（4）。生产默认不变。8/16不能同时开启；本入口只比较独立候选，不启用TensorOps或R5，不调整GPU层数/线程/模型精度。
 

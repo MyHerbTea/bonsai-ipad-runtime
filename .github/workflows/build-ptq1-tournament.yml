@@ -48,12 +48,10 @@ jobs:
           python3 -m unittest discover -s tools/tests -p "test_ipad_bundle_metadata.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build118_compare.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build119_recovery.py" -v 2>&1 | tee -a build/CI_TESTS.txt
-          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift tools/build119_recovery_tests.swift -o "$RUNNER_TEMP/recovery-policy"
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift tools/build119_recovery_tests.swift -o "$RUNNER_TEMP/recovery-policy"
           "$RUNNER_TEMP/recovery-policy" | tee -a build/CI_TESTS.txt
-          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift tools/build120_recovery_tests.swift -o "$RUNNER_TEMP/api-cancel-recovery"
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift tools/build120_recovery_tests.swift -o "$RUNNER_TEMP/api-cancel-recovery"
           "$RUNNER_TEMP/api-cancel-recovery" | tee -a build/CI_TESTS.txt
-          xcrun swiftc -swift-version 5 BonsaiLab/DiagnosticModels.swift BonsaiLab/DiagnosticStore.swift BonsaiLab/DiagnosticSnapshotAPI.swift tools/build120_snapshot_tests.swift -o "$RUNNER_TEMP/snapshot-export"
-          "$RUNNER_TEMP/snapshot-export" | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build120_recovery.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/build118_policy_tests.swift -o "$RUNNER_TEMP/prefill-policy"
           "$RUNNER_TEMP/prefill-policy" | tee -a build/CI_TESTS.txt

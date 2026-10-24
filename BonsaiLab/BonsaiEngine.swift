@@ -3875,10 +3875,13 @@ actor BonsaiEngine {
             throw LabError.invalidConfig("PRODUCTION_RUNTIME_REQUIRED_FOR_ACKNOWLEDGEMENT")
         }
         let audit = try BenchmarkInterruptionRecovery.acknowledge(defaults: .standard,
-            source: BonsaiCertificationBuildIdentity.sourceGitSHA, process: process, body: body) { reason, fields in
+            source: BonsaiCertificationBuildIdentity.sourceGitSHA, process: process, body: body,
+            runtime: BenchmarkTelemetry.evidence()["native_context"] as? [String: Any],
+            readAudit: { try CrashDiagnostics.shared.readSnapshot($0) }) { reason, fields in
                 try CrashDiagnostics.shared.snapshot(reason: reason, acknowledgement: fields.mapValues(DiagnosticValue.from))
             }
-        return ["status":"acknowledged_manual_interruption", "audit_snapshot_id":audit,
+        return ["status":"acknowledged_operator_interruption", "audit_snapshot_id":audit,
+                "operator_reason":body["reason"] as? String ?? "", "audit_readback_verified":true,
                 "legacy_batch16_quarantine_preserved":true]
     }
 

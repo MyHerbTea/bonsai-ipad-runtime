@@ -25,7 +25,7 @@ import Foundation
         }
         reset()
         let id = try BenchmarkInterruptionRecovery.acknowledge(defaults: defaults, source: source, process: "new-process",
-            body: body, readAudit: read, saveAudit: save)
+            body: body, runtime: proof["original_runtime"] as? [String: Any], readAudit: read, saveAudit: save)
         precondition(id == "SNAPSHOT_test" && defaults.dictionary(forKey: BenchmarkInterruptionRecovery.key) == nil)
         precondition(NSDictionary(dictionary: defaults.dictionary(forKey: "BonsaiBenchmarkInterrupted")!).isEqual(to: legacy))
         var badBodies: [[String: Any]] = []
@@ -38,13 +38,20 @@ import Foundation
         var bad = body; bad["api_cancel_evidence"] = changedProof; badBodies.append(bad)
         cancelled["cancelled"] = 1; changedProof["cancel"] = cancelled
         bad["api_cancel_evidence"] = changedProof; badBodies.append(bad)
+        var missingSessionProof = proof
+        var missingSessionAfter = proof["after"] as! [String: Any]
+        var missingSessionState = missingSessionAfter["state"] as! [String: Any]
+        missingSessionState.removeValue(forKey: "session_id")
+        missingSessionAfter["state"] = missingSessionState
+        missingSessionProof["after"] = missingSessionAfter
+        bad = body; bad["api_cancel_evidence"] = missingSessionProof; badBodies.append(bad)
         var missingID = marker; missingID.removeValue(forKey: "interruption_id")
         bad = body; bad["expected_interruption"] = missingID; badBodies.append(bad)
         for badBody in badBodies {
             reset()
             do {
                 _ = try BenchmarkInterruptionRecovery.acknowledge(defaults: defaults, source: source, process: "new-process",
-                    body: badBody, readAudit: read) { _, _ in preconditionFailure("invalid proof saved") }
+                    body: badBody, runtime: proof["original_runtime"] as? [String: Any], readAudit: read) { _, _ in preconditionFailure("invalid proof saved") }
                 preconditionFailure("invalid proof accepted")
             } catch { precondition(defaults.dictionary(forKey: BenchmarkInterruptionRecovery.key) != nil) }
         }
@@ -53,7 +60,7 @@ import Foundation
             reset()
             do {
                 _ = try BenchmarkInterruptionRecovery.acknowledge(defaults: defaults, source: source, process: "new-process",
-                    body: body, readAudit: { _ in
+                    body: body, runtime: proof["original_runtime"] as? [String: Any], readAudit: { _ in
                         if mode == "read" { throw Failure.disk }
                         if mode == "mismatch" { return [:] }
                         return try read("SNAPSHOT_test")
