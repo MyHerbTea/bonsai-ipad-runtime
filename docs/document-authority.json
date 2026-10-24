@@ -9,6 +9,10 @@
   ],
   "rules": [
     {
+      "pattern": "docs/build122/*.md",
+      "status": "REFERENCE"
+    },
+    {
       "pattern": "docs/build121/*.md",
       "status": "REFERENCE"
     },

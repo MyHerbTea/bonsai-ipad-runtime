@@ -29,7 +29,7 @@ actor BonsaiEngine {
     }
     func benchmarkTokenize(system: String, history: [BonsaiTextChatTurn], prompt: String) throws -> Int { 23 }
     func benchmarkRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
-        maxTokens: Int, onDelta: @escaping @Sendable (String) -> Void) async throws -> [String: Any] {
+        maxTokens: Int, countingEnabled: Bool = true, onDelta: @escaping @Sendable (String) -> Void) async throws -> [String: Any] {
         for _ in 0..<100 {
             if BenchmarkSessionControl.shared.isCancelled { throw LabError.invalidConfig("BENCHMARK_CANCELLED") }
             try await Task.sleep(nanoseconds: 10_000_000)

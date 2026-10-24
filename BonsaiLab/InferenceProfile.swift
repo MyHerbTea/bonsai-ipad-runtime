@@ -48,6 +48,7 @@ final class InferenceProfile {
             "scope": "request_delta_of_context_counters;matrix_operations_not_tokens"]
         let snapshot: [String: Any] = ["schema_version": 2, "request_id": requestID, "completed": succeeded,
             "cpu_prefill_timing": cpuPrefillTiming(available: available),
+            "cpu_ptq1_sampling": cpuSampling(available: available),
             "timestamp": ISO8601DateFormatter().string(from: Date()), "wall_ms": (ProcessInfo.processInfo.systemUptime - start) * 1000,
             "breakdown": ["batch_prep_ms": prep, "decode_call_ms": decode, "metal_submit_ms": available ? Double(delta[8]) / 1e6 as Any : NSNull(),
                 "gpu_wait_ms": NSNull(), "result_read_ms": read],
@@ -61,6 +62,30 @@ final class InferenceProfile {
             "timing_relationship": "decode_call_ms includes backend submission and synchronization; do not sum overlapping stages"]
         ProfilingSnapshot.shared.publish(snapshot)
         CrashDiagnostics.shared.updatePerformance(snapshot)
+    }
+    private func cpuSampling(available: Bool) -> [String: Any] {
+        guard available && BonsaiCPUSamplingAvailable() else {
+            return ["available": false, "valid": false, "unavailable": "requires_serialized_drained_benchmark_scope"]
+        }
+        let c = (0..<13).map { BonsaiCPUSamplingCounter(Int32($0)) }
+        let ready = available && BonsaiCPUSamplingAvailable()
+        let rawU = Double(c[4]), rawD = Double(c[5])
+        let correction = Double(c[6]) * Double(c[3])
+        let u = max(0, rawU - correction), d = max(0, rawD - correction)
+        let overhead = (rawU + rawD) > 0 ? 2 * correction / (rawU + rawD) : 1
+        let rate = c[0] > 0 ? Double(c[1]) / Double(c[0]) : 0
+        let expected = c[7] > 0 ? 1 / Double(c[7]) : 0
+        let valid = ready && c[9] == 0 && c[1] >= 1000 && c[11] >= 50 && overhead <= 0.20 && expected > 0 && abs(rate / expected - 1) <= 0.20 && u + d > 0
+        return ["available": ready, "valid": valid, "counting_on": c[8] == 1,
+                "sample_period": c[7], "observed_sample_rate": rate, "seen_calls": c[0], "sampled_calls": c[1],
+                "seen_blocks": c[2], "sampled_blocks": c[3], "timer_interval_overhead_ns": c[6],
+                "unpack_raw_ns": c[4], "dotprod_raw_ns": c[5], "timer_correction_fraction": overhead,
+                "worker_slots": c[10], "min_worker_samples": c[11], "overflow": c[9], "graph_worker_flushes": c[12],
+                "unpack_sampled_ratio": valid ? u / (u + d) as Any : NSNull(),
+                "dotprod_sampled_ratio": valid ? d / (u + d) as Any : NSNull(),
+                "unpack_raw_ratio": rawU + rawD > 0 ? rawU / (rawU + rawD) as Any : NSNull(),
+                "scope": "baseline_prefill_sampled_worker_intervals;not_wall_fraction;compiler_perturbation_not_excluded",
+                "validity_rule": "samples>=1000;min_worker>=50;rate_within_20pct;timer_correction<=20pct;no_overflow"]
     }
     private func cpuPrefillTiming(available: Bool) -> [String: Any] {
         let ready = available && BonsaiCPUTimeAvailable()

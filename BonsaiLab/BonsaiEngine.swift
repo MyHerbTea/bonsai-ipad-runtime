@@ -4013,7 +4013,7 @@ actor BonsaiEngine {
     }
 
     func benchmarkRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
-        maxTokens: Int, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] {
+        maxTokens: Int, countingEnabled: Bool = true, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] {
         guard benchmarkOriginal != nil, let config = benchmarkConfig, context != nil else {
             throw LabError.invalidConfig("BENCHMARK_NOT_CONFIGURED")
         }
@@ -4024,6 +4024,10 @@ actor BonsaiEngine {
         guard BonsaiBenchmarkConfigure(Int32(config.flags)) == 1 else {
             throw LabError.invalidConfig("PREVIOUS_GPU_WORK_NOT_DRAINED")
         }
+        guard BonsaiCPUSamplingAvailable(), BonsaiCPUSamplingConfigure(countingEnabled ? 1 : 0, 10000) == 1 else {
+            throw LabError.invalidConfig("CPU_SAMPLING_ABI_UNAVAILABLE")
+        }
+        defer { _ = BonsaiCPUSamplingConfigure(1, 10000) }
         BonsaiBenchmarkBeginRequest()
         let cpuBefore = (0..<3).map { BonsaiCPUCounter(Int32($0)) }
         let before = BenchmarkTelemetry.counters()

@@ -92,8 +92,12 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                 } else {
                     let maxTokens = body["max_tokens"] as? Int ?? 128
                     guard maxTokens > 0 && maxTokens <= 8192 else { throw LabError.invalidConfig("INVALID_OUTPUT_BUDGET") }
+                    let counting = body["counting"] as? String ?? "on"
+                    guard (body["counting"] == nil || body["counting"] is String), ["on", "off"].contains(counting) else {
+                        throw LabError.invalidConfig("INVALID_COUNTING_MODE")
+                    }
                     result = try await engine.benchmarkRun(system: system, history: history, prompt: prompt,
-                        maxTokens: maxTokens, onDelta: onDelta)
+                        maxTokens: maxTokens, countingEnabled: counting == "on", onDelta: onDelta)
                 }
             }
             control.finishOperation(error: nil)

@@ -1,6 +1,15 @@
 #include "BenchmarkNativeBridge.h"
 #include <dlfcn.h>
 
+extern "C" bool BonsaiCPUSamplingAvailable(void) {
+    return dlsym(RTLD_DEFAULT,"BonsaiNativeCPUSamplingConfigure") && dlsym(RTLD_DEFAULT,"BonsaiNativeCPUSamplingCounter");
+}
+extern "C" int BonsaiCPUSamplingConfigure(int counting,int period) {
+    using Fn=int(*)(int,int);static Fn fn=reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT,"BonsaiNativeCPUSamplingConfigure"));return fn?fn(counting,period):0;
+}
+extern "C" uint64_t BonsaiCPUSamplingCounter(int index) {
+    using Fn=uint64_t(*)(int);static Fn fn=reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT,"BonsaiNativeCPUSamplingCounter"));return fn?fn(index):0;
+}
 extern "C" bool BonsaiCPUTimeAvailable(void) {
     return dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeReset") &&
         dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeEnable") && dlsym(RTLD_DEFAULT,"BonsaiNativeCPUTimeCounter");

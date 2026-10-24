@@ -81,6 +81,9 @@ int main() {
         start=source.index('void ggml_vec_dot_ptq1_0_q8_0_generic(')
         end=source.index('\nvoid ',start+5)
         function=source[start:end]
+        sampling='BONSAI_SAMPLING_122' in source
+        if sampling:
+            function='#include \"build122_sampling.h\"\n'+source[source.index('static void bonsai_sampled_ptq1_dot('):start]+function
         program=r'''
 #include <stdint.h>
 #include <stdlib.h>
@@ -126,6 +129,10 @@ int main(void) {
         BonsaiNativeCPUConfigure(0);ggml_vec_dot_ptq1_0_q8_0_generic(blocks*128,&baseline,0,x,0,y,0,1);
         BonsaiNativeCPUConfigure(8);ggml_vec_dot_ptq1_0_q8_0_generic(blocks*128,&lookup,0,x,0,y,0,1);
         assert(memcmp(&baseline,&lookup,sizeof(float))==0);
+#ifdef BONSAI_SAMPLING_TEST
+        float sampled;bonsai_sampled_ptq1_dot(blocks*128,&sampled,0,x,0,y,0,1);
+        assert(memcmp(&baseline,&sampled,sizeof(float))==0);
+#endif
 #if BONSAI_CPU_NEON
         assert(BonsaiNativeCPUCapabilities()&16);
         BonsaiNativeCPUConfigure(16);ggml_vec_dot_ptq1_0_q8_0_generic(blocks*128,&neon,0,x,0,y,0,1);
@@ -141,13 +148,39 @@ int main(void) {
     ggml_vec_dot_ptq1_0_q8_0_generic(128,&result,0,&x,0,y,0,1);
     assert(BonsaiNativeCPUCounter(0)==0);
     assert(BonsaiNativeCPUCounter(-1)==0 && BonsaiNativeCPUCounter(3)==0);
+#ifdef BONSAI_SAMPLING_TEST
+    for(int on=0;on<=1;on++) {
+        assert(BonsaiNativeCPUSamplingConfigure(on,10000)==1);
+        BonsaiNativeCPUBeginRequest();BonsaiNativeCPUConfigure(0);BonsaiNativeCPUSamplingPhase(1);
+        for(int worker=0;worker<6;worker++) {
+            BonsaiNativeCPUSamplingEnter(worker);
+            for(int call=0;call<20000;call++)ggml_vec_dot_ptq1_0_q8_0_generic(128,&result,0,&x,0,y,0,1);
+            BonsaiNativeCPUSamplingLeave();
+        }
+        BonsaiNativeCPUSamplingPhase(0);
+        assert(BonsaiNativeCPUCounter(0)==(on?120000:0));
+        assert(BonsaiNativeCPUSamplingCounter(0)==120000);
+        assert(BonsaiNativeCPUSamplingCounter(1)==12);
+        assert(BonsaiNativeCPUSamplingCounter(3)==12);
+        assert(BonsaiNativeCPUSamplingCounter(8)==(uint64_t)on);
+        assert(BonsaiNativeCPUSamplingCounter(10)==6);
+        assert(BonsaiNativeCPUSamplingCounter(11)==2);
+        assert(BonsaiNativeCPUSamplingConfigure(2,10000)==0);
+    }
+    assert(BonsaiNativeCPUSamplingConfigure(1,10000)==1);
+    BonsaiNativeCPUSamplingEnter(0);
+    ggml_vec_dot_ptq1_0_q8_0_generic(128,&result,0,&x,0,y,0,1);
+    BonsaiNativeCPUSamplingLeave();assert(BonsaiNativeCPUSamplingCounter(0)==0);
+#endif
     puts("Build118 actual scalar/LUT/ARM-NEON integer and float parity, bounds and disable: PASS");
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
             folder=Path(folder)
             shutil.copy(ROOT/'tools/native/build118_ptq1_cpu.h',folder)
+            if sampling:shutil.copy(ROOT/'tools/native/build122_sampling.h',folder)
             (folder/'build118_ptq1_lut.inc').write_text(patch.lookup_table())
+            if sampling:program='#define BONSAI_SAMPLING_TEST 1\n'+program
             (folder/'check.c').write_text(program)
             binary=folder/('check.exe' if os.name=='nt' else 'check')
             subprocess.run([compiler,'-std=c11','-O2','-ffp-contract=off','-fsanitize=address,undefined',str(folder/'check.c'),'-o',str(binary)],check=True,capture_output=True)

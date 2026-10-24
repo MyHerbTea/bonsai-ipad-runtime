@@ -1,8 +1,8 @@
-name: Bonsai Build121 CPU Prefill Timing
+name: Bonsai Build122 CPU Prefill Timing
 
 on:
   push:
-    branches: [codex/build121-prefill-cpu-timing]
+    branches: [codex/build122-ptq1-cost-sampling]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "121"
+  BUILD_NUMBER: "122"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -104,6 +104,8 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/rc126_build118_patch_cpu_prefill.py" "$PRISM_DIR"
           python3 "$GITHUB_WORKSPACE/tools/rc126_build121_patch_cpu_timing.py" "$PRISM_DIR"
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build121_cpu_timing.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build122_patch_sampling.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build122_sampling.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_REQUIRE_NEON=1 BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build118_cpu.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build117_native_profile.py -v 2>&1 | tee -a build/CI_TESTS.txt
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -162,7 +164,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build121 IPA and native ABI
+      - name: Verify Build122 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -182,7 +184,7 @@ jobs:
           grep -q '_llama_memory_seq_rm' build/llama-symbols.txt
           grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
 
-          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter BonsaiNativeBenchmarkBeginRequest BonsaiNativeBenchmarkObservation BonsaiNativeProfileCounter BonsaiNativeProfileReset BonsaiNativeProfileEnable BonsaiNativeCPUConfigure BonsaiNativeCPUCapabilities BonsaiNativeCPUCounter BonsaiNativeCPUBeginRequest BonsaiNativeCPUTimeCounter BonsaiNativeCPUTimeEnable BonsaiNativeCPUTimeReset; do
+          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter BonsaiNativeBenchmarkBeginRequest BonsaiNativeBenchmarkObservation BonsaiNativeProfileCounter BonsaiNativeProfileReset BonsaiNativeProfileEnable BonsaiNativeCPUConfigure BonsaiNativeCPUCapabilities BonsaiNativeCPUCounter BonsaiNativeCPUBeginRequest BonsaiNativeCPUTimeCounter BonsaiNativeCPUTimeEnable BonsaiNativeCPUTimeReset BonsaiNativeCPUSamplingConfigure BonsaiNativeCPUSamplingCounter; do
             grep -q "_$symbol" build/llama-symbols.txt
           done
           strings "$FRAMEWORK" > build/llama-strings.txt
@@ -192,7 +194,7 @@ jobs:
           # App wrappers are directly linked and legitimately localized by ld.
           # Only the framework dlsym targets above require global exports.
           nm -U "$APP/BonsaiLab" > build/app-symbols.txt
-          for symbol in BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation BonsaiProfileAvailable BonsaiProfileCounter BonsaiProfileReset BonsaiProfileEnable BonsaiCrashInstall BonsaiCrashRead BonsaiCPUAvailable BonsaiCPUCounter BonsaiCPUTimeAvailable BonsaiCPUTimeCounter BonsaiCPUTimeEnable BonsaiCPUTimeReset; do
+          for symbol in BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation BonsaiProfileAvailable BonsaiProfileCounter BonsaiProfileReset BonsaiProfileEnable BonsaiCrashInstall BonsaiCrashRead BonsaiCPUAvailable BonsaiCPUCounter BonsaiCPUTimeAvailable BonsaiCPUTimeCounter BonsaiCPUTimeEnable BonsaiCPUTimeReset BonsaiCPUSamplingAvailable BonsaiCPUSamplingConfigure BonsaiCPUSamplingCounter; do
             grep -Eq "[[:space:]][tT][[:space:]]_$symbol$" build/app-symbols.txt
           done
 
@@ -208,20 +210,20 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build121-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build122-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD121_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD121_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD122_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD122_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build121-Symbols
+          name: Bonsai-Build122-Symbols
           path: |
-            build/Bonsai-Build121-Symbols.zip
-            build/Bonsai-Build121-Symbols.zip.sha256
+            build/Bonsai-Build122-Symbols.zip
+            build/Bonsai-Build122-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90

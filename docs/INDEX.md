@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build122：[低率采样与计数开关对照](build122/plan.md)。仅服务于三次512/1真机请求；尚无测量结论。
+
 Build121：[限时CPU prefill计时范围](build121/plan.md)。仅计时，不改优化逻辑；CPU占比和设备结果待验证。
 
 Build120 最小恢复仅服务于 flag16 真机决策：[当前范围](build120/minimal-execution.md)、[执行记录](build120/execution-log.md)。旧快照导出方案搁置；设备测量待执行，不代表候选通过。
