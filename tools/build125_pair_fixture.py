@@ -90,7 +90,7 @@ static void direct_pair(void) {
         (folder/'build118_ptq1_lut.inc').write_text(p118.lookup_table(),encoding='utf-8')
         src=folder/'check.c';src.write_text(program,encoding='utf-8')
         for contraction in ['off','on']:
-            command=['xcrun','clang','-std=c11','-O3','-ffp-contract='+contraction,'-fsanitize=address,undefined',str(src),'-o',str(folder/'check')]
+            command=['xcrun','clang','-std=c11','-O3','-ffp-contract='+contraction,'-fsanitize=address,undefined','-fno-sanitize-recover=all',str(src),'-o',str(folder/'check')]
             cp=subprocess.run(command,capture_output=True,text=True)
             if cp.returncode:raise AssertionError(cp.stderr[-10000:])
             cp=subprocess.run([str(folder/'check')],capture_output=True,text=True,timeout=180)
