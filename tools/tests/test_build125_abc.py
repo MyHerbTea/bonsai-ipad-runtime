@@ -13,6 +13,8 @@ class ABCTests(unittest.TestCase):
     def test_compare_pair_to_build124_not_original(self):
         r=q.decide_abc(self.row())
         self.assertEqual(r['PAIR_VS_BUILD124']['decision'],'STOP_CPU_MICROKERNEL_DIRECTION')
+        self.assertIn('128',r['PAIR_VS_BUILD124']['sdot_evidence'])
+        self.assertIn('pair_chunks',r['PAIR_VS_BUILD124']['sdot_evidence'])
         row=self.row()
         for s in row:
             if s['actual']['flags']==128:

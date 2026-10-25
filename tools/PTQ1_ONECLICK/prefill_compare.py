@@ -225,6 +225,7 @@ def decide_abc(row):
         pairs=[dict(by[k],abba_slot=slot) for k,slot in zip(slots,['A1','B1','B2','A2'])]
         result=decide_sdot(pairs)
         result.update(reference_flags=flags[0],candidate_flags=flags[1],formal_slots=slots)
+        if flags[1]==128:result['sdot_evidence']='原生capability128 + actual flag128 + 本请求pair_chunks/pair_rows正值 + 同源码双行强制分支；非硬件指令追踪'
         if name==names[1]:
             decision=result['decision']
             result['decision']=('PAIR_WORTH_RETAINING_USER_DECISION' if decision=='KEEP_CANDIDATE_SHORT_CONFIRMATION'
@@ -301,14 +302,15 @@ def write_comparison(directory, report):
             'SDOT证据：'+result.get('sdot_evidence','unavailable'),
             'GPU限制：'+result.get('gpu_limits','unavailable'),
             '下一项源码工作：'+result.get('next_engine_step','unavailable')]
-        lines+=['','| 样本 | request_id | 输入/输出token | Prefill秒 | TTFT秒 | Decode tok/s | CPU PTQ1毫秒 | GPU毫秒 |',
-            '|---|---|---|---|---|---|---|---|']
+        lines+=['','| 样本 | request_id | 输入/输出token | Prefill秒 | TTFT秒 | Decode tok/s | CPU PTQ1毫秒 | GPU毫秒 | 双行chunks/rows |',
+            '|---|---|---|---|---|---|---|---|---|']
         for sample in report.get('samples',[]):
             profile=sample.get('profile',{})
             values=[sample.get('abba_slot',sample.get('stage')),sample.get('request_id'),
                 str(sample.get('prompt_tokens'))+'/'+str(sample.get('generated_tokens')),sample.get('prefill_s'),
                 sample.get('client_first_content_s'),sample.get('decode_tps'),
-                profile.get('cpu_prefill_timing',{}).get('ptq1_matmul_ms'),profile.get('gpu_execution_ms')]
+                profile.get('cpu_prefill_timing',{}).get('ptq1_matmul_ms'),profile.get('gpu_execution_ms'),
+                str(profile.get('cpu_ptq1_sampling',{}).get('pair_chunks','unavailable'))+'/'+str(profile.get('cpu_ptq1_sampling',{}).get('pair_rows','unavailable'))]
             lines.append('| '+' | '.join('unavailable' if x is None else str(x) for x in values)+' |')
     lines+=['','主决策：'+str(report.get('primary_decision','见比较结果')),'新候选仅比较C/B，A为参考；不因CPU占比低于30%而覆盖实测收益。','错误：'+json.dumps(report.get('errors',[]),ensure_ascii=False),
         '筛选：改善<3%或未超过组内波动则停止扩展；>=5%、CPU节点明显改善且无退步则建议简短确认；其余不确定。无90秒绝对门槛。']
