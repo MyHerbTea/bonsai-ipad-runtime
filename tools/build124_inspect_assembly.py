@@ -21,8 +21,8 @@ def inspect(text):
         instructions=functions[name];loops=[]
         for address,op,args in instructions:
             if op.startswith('b.') or op in ('b','cbnz','cbz','tbnz','tbz'):
-                targets=re.findall(r'0x([0-9a-fA-F]+)',args)
-                if targets and int(targets[-1],16)<address:loops.append((int(targets[-1],16),address))
+                targets=re.findall(r'0x([0-9a-fA-F]+)',args.split('<',1)[0])
+                if targets and instructions[0][0]<=int(targets[0],16)<address:loops.append((int(targets[0],16),address))
         spills=[hex(address)+': '+op+' '+args for address,op,args in instructions
             if op in ('str','stur','stp','stnp','st1','st2','st3','st4') and re.match(r'(?:[bhsdq]\d+\b|\{\s*v\d+\b)',args) and ('[sp' in args or '[x29' in args)
             and any(start<=address<=end for start,end in loops)]

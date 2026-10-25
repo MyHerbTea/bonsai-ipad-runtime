@@ -42,6 +42,9 @@ class SDOTTests(unittest.TestCase):
         self.assertEqual(inspect(sample)['candidate']['sdot'],1)
         apple=sample.replace('sdot v0.4s, v1.16b, v2.16b','sdot.4s v0, v1, v2')
         self.assertEqual(inspect(apple)['candidate']['sdot'],1)
+        annotated=apple.replace('b.ne 0x100','b.ne 0x100 <_bonsai_sdot_ptq1_dot+0x4c>')
+        self.assertEqual(inspect(annotated)['candidate']['backward_branches'],[('0x100','0x10c')])
+
         with self.assertRaises(ValueError):inspect(apple.replace('100: movi v0.4s, #0','100: st1.16b { v3 }, [sp]'))
 
         with self.assertRaises(ValueError):inspect(sample.replace('sdot','smull'))
