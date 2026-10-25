@@ -17,8 +17,15 @@ def functions(text):
 
 
 def inspect(text):
-    result=inspect124(text)
-    code=functions(text).get('_BonsaiNativeCPUSDOTPair',[])
+    parsed=functions(text)
+    generic='_ggml_vec_dot_ptq1_0_q8_0_generic'
+    baseline='_ggml_vec_dot_ptq1_0_q8_0'
+    # Standalone actual-C fixture keeps the generic name; native Release emits
+    # the architecture wrapper. Require the real body in either case.
+    normalized=text.replace(generic,baseline) if baseline not in parsed and generic in parsed else text
+    result=inspect124(normalized)
+    if baseline not in parsed and generic in parsed:result['baseline']['symbol']=generic
+    code=parsed.get('_BonsaiNativeCPUSDOTPair',[])
     if not code:raise ValueError('actual pair kernel missing')
     loops=[]
     for address,op,args in code:

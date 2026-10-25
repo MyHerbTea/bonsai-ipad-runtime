@@ -19,4 +19,8 @@ class AssemblyTests(unittest.TestCase):
         with self.assertRaises(ValueError):inspect(s.replace('sdot v3.4s, v4.16b, v16.16b','sdot v3.4s, v4.16b, v18.16b'))
         with self.assertRaises(ValueError):inspect(s.replace('ldp q16, q17, [x5, #2]','ldp q16, q17, [sp, #2]'))
         with self.assertRaises(ValueError):inspect(s.replace('b.ne 0x300','bl 0x100'))
+    def test_actual_fixture_generic_symbol_is_supported(self):
+        from build125_inspect_assembly import inspect
+        s=fixture().replace('_ggml_vec_dot_ptq1_0_q8_0>','_ggml_vec_dot_ptq1_0_q8_0_generic>')
+        self.assertEqual(inspect(s)['pair']['shared_q8_load_values'],8)
 if __name__=='__main__':unittest.main()
