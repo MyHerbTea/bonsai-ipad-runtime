@@ -1,0 +1,2 @@
+PTQ1_0_CODEC_REFERENCE_PARITY: PASS (256 byte values x 5 trits; 4096 full 128-value blocks; exact reference row order; fp16 scale/output parity)
+GPU numerical parity: NOT_VERIFIED_PENDING_M5

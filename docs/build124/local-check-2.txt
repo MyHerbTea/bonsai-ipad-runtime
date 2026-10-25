@@ -1,0 +1,11 @@
+test_all_candidates_measured_in_one_report_without_promotion (test_build118_compare.QuickComparisonTests.test_all_candidates_measured_in_one_report_without_promotion) ... ok
+test_cpu_candidate_requires_real_hits_and_exclusive_branch (test_build118_compare.QuickComparisonTests.test_cpu_candidate_requires_real_hits_and_exclusive_branch) ... ok
+test_quick_old_pending_blocks_before_any_start (test_build118_compare.QuickComparisonTests.test_quick_old_pending_blocks_before_any_start) ... ok
+test_quick_start_is_explicit_and_b8 (test_build118_compare.QuickComparisonTests.test_quick_start_is_explicit_and_b8) ... ok
+test_unknown_outcome_stops_before_next_candidate_without_replay (test_build118_compare.QuickComparisonTests.test_unknown_outcome_stops_before_next_candidate_without_replay) ... ok
+test_unknown_request_retains_quarantine_even_when_restore_succeeds (test_build118_compare.QuickComparisonTests.test_unknown_request_retains_quarantine_even_when_restore_succeeds) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.011s
+
+OK

@@ -1,0 +1,165 @@
+FAIL unclassified document: deliveries/BUILD111_COMPLETE/BonsaiLab-v1-RC1.26-Build111-B16-Prefill-TestKit/README.md
+FAIL unclassified document: deliveries/native-ptq1-report.md
+FAIL unclassified document: deliveries/prism-source/.github/pull_request_template.md
+FAIL unclassified document: deliveries/prism-source/.pi/gg/SYSTEM.md
+FAIL unclassified document: deliveries/prism-source/AGENTS.md
+FAIL unclassified document: deliveries/prism-source/benches/dgx-spark/dgx-spark.md
+FAIL unclassified document: deliveries/prism-source/benches/mac-m2-ultra/mac-m2-ultra.md
+FAIL unclassified document: deliveries/prism-source/benches/nemotron/nemotron-dgx-spark.md
+FAIL unclassified document: deliveries/prism-source/ci/README-MUSA.md
+FAIL unclassified document: deliveries/prism-source/ci/README.md
+FAIL unclassified document: deliveries/prism-source/CLAUDE.md
+FAIL unclassified document: deliveries/prism-source/common/jinja/README.md
+FAIL unclassified document: deliveries/prism-source/CONTRIBUTING.md
+FAIL unclassified document: deliveries/prism-source/docs/android.md
+FAIL unclassified document: deliveries/prism-source/docs/autoparser.md
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L367-L388
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L254-L274
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L280-L295
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L176-L194
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L196-L200
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L202-L210
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L212-L217
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L301-L361
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat.cpp#L1280-L1310
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser-helpers.h#L68
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: common/chat-auto-parser.h#L28-L37
+FAIL deliveries\prism-source\docs\autoparser.md: missing link: tests/test-chat.cpp#L947-L1043
+FAIL unclassified document: deliveries/prism-source/docs/backend/BLIS.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/CANN.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/CUDA-FEDORA.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/ET.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/OPENCL.md
+FAIL deliveries\prism-source\docs\backend\OPENCL.md: link escapes repository: /docs/backend/SYCL.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/OPENVINO.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/snapdragon/developer.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/snapdragon/linux.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/snapdragon/README.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/snapdragon/windows.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/SYCL.md
+FAIL deliveries\prism-source\docs\backend\SYCL.md: link escapes repository: /docs/backend/OPENCL.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/VirtGPU/configuration.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/VirtGPU/development.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/VirtGPU.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/zDNN.md
+FAIL unclassified document: deliveries/prism-source/docs/backend/ZenDNN.md
+FAIL unclassified document: deliveries/prism-source/docs/build-riscv64-spacemit.md
+FAIL unclassified document: deliveries/prism-source/docs/build-s390x.md
+FAIL unclassified document: deliveries/prism-source/docs/build.md
+FAIL unclassified document: deliveries/prism-source/docs/completions.md
+FAIL unclassified document: deliveries/prism-source/docs/development/debugging-tests.md
+FAIL unclassified document: deliveries/prism-source/docs/development/hadamard-tied-output.md
+FAIL unclassified document: deliveries/prism-source/docs/development/HOWTO-add-model.md
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /tools/cli/
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /tools/completion/
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /tools/imatrix/
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /tools/quantize/
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /tools/server/
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /convert_hf_to_gguf.py
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /examples/convert_legacy_llama.py
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /conversion
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /gguf-py/gguf/constants.py
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /gguf-py/gguf/tensor_mapping.py
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: link escapes repository: /examples/eval-callback/
+FAIL deliveries\prism-source\docs\development\HOWTO-add-model.md: missing link: tools/mtmd/debug/mtmd-debug.cpp
+FAIL unclassified document: deliveries/prism-source/docs/development/parsing.md
+FAIL deliveries\prism-source\docs\development\parsing.md: link escapes repository: /tests/test-chat-peg-parser.cpp
+FAIL deliveries\prism-source\docs\development\parsing.md: link escapes repository: /common/chat-peg-parser.h
+FAIL unclassified document: deliveries/prism-source/docs/development/token_generation_performance_tips.md
+FAIL deliveries\prism-source\docs\development\token_generation_performance_tips.md: link escapes repository: /docs/build.md#cuda
+FAIL unclassified document: deliveries/prism-source/docs/docker.md
+FAIL unclassified document: deliveries/prism-source/docs/function-calling.md
+FAIL unclassified document: deliveries/prism-source/docs/install.md
+FAIL unclassified document: deliveries/prism-source/docs/kv-mean-center.md
+FAIL unclassified document: deliveries/prism-source/docs/llguidance.md
+FAIL unclassified document: deliveries/prism-source/docs/models.md
+FAIL unclassified document: deliveries/prism-source/docs/multi-gpu.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/gemma3.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/glmedge.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/granitevision.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/llava.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/minicpmo2.6.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/minicpmo4.0.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/minicpmv2.5.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/minicpmv2.6.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/minicpmv4.0.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/minicpmv4.5.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/minicpmv4.6.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal/MobileVLM.md
+FAIL unclassified document: deliveries/prism-source/docs/multimodal.md
+FAIL unclassified document: deliveries/prism-source/docs/ops.md
+FAIL unclassified document: deliveries/prism-source/docs/preset.md
+FAIL unclassified document: deliveries/prism-source/docs/release.md
+FAIL deliveries\prism-source\docs\release.md: missing link: .github/workflows/make-release.yml
+FAIL unclassified document: deliveries/prism-source/docs/speculative.md
+FAIL unclassified document: deliveries/prism-source/docs/xcframework.md
+FAIL unclassified document: deliveries/prism-source/examples/batched/README.md
+FAIL unclassified document: deliveries/prism-source/examples/batched.swift/README.md
+FAIL unclassified document: deliveries/prism-source/examples/convert-llama2c-to-ggml/README.md
+FAIL unclassified document: deliveries/prism-source/examples/debug/README.md
+FAIL unclassified document: deliveries/prism-source/examples/deprecation-warning/README.md
+FAIL unclassified document: deliveries/prism-source/examples/diffusion/README.md
+FAIL unclassified document: deliveries/prism-source/examples/embedding/README.md
+FAIL unclassified document: deliveries/prism-source/examples/eval-callback/README.md
+FAIL unclassified document: deliveries/prism-source/examples/gguf-hash/README.md
+FAIL unclassified document: deliveries/prism-source/examples/idle/README.md
+FAIL unclassified document: deliveries/prism-source/examples/llama-eval/README.md
+FAIL unclassified document: deliveries/prism-source/examples/llama.swiftui/README.md
+FAIL unclassified document: deliveries/prism-source/examples/lookahead/README.md
+FAIL unclassified document: deliveries/prism-source/examples/lookup/README.md
+FAIL unclassified document: deliveries/prism-source/examples/model-conversion/README.md
+FAIL unclassified document: deliveries/prism-source/examples/parallel/README.md
+FAIL unclassified document: deliveries/prism-source/examples/passkey/README.md
+FAIL unclassified document: deliveries/prism-source/examples/retrieval/README.md
+FAIL unclassified document: deliveries/prism-source/examples/simple/README.md
+FAIL unclassified document: deliveries/prism-source/examples/simple-chat/README.md
+FAIL unclassified document: deliveries/prism-source/examples/simple-cmake-pkg/README.md
+FAIL unclassified document: deliveries/prism-source/examples/speculative/README.md
+FAIL unclassified document: deliveries/prism-source/examples/speculative-simple/README.md
+FAIL unclassified document: deliveries/prism-source/examples/sycl/README.md
+FAIL unclassified document: deliveries/prism-source/examples/test-cmake/README.md
+FAIL unclassified document: deliveries/prism-source/examples/training/README.md
+FAIL unclassified document: deliveries/prism-source/gguf-py/README.md
+FAIL unclassified document: deliveries/prism-source/grammars/README.md
+FAIL deliveries\prism-source\grammars\README.md: missing link: ../examples/gbnf-validator/gbnf-validator.cpp
+FAIL unclassified document: deliveries/prism-source/models/templates/README.md
+FAIL unclassified document: deliveries/prism-source/README.md
+FAIL unclassified document: deliveries/prism-source/SECURITY.md
+FAIL unclassified document: deliveries/prism-source/skills/add-new-model/SKILL.md
+FAIL unclassified document: deliveries/prism-source/skills/code-review/SKILL.md
+FAIL unclassified document: deliveries/prism-source/tools/batched-bench/README.md
+FAIL unclassified document: deliveries/prism-source/tools/cli/README.md
+FAIL unclassified document: deliveries/prism-source/tools/completion/README.md
+FAIL unclassified document: deliveries/prism-source/tools/cvector-generator/README.md
+FAIL unclassified document: deliveries/prism-source/tools/export-lora/README.md
+FAIL unclassified document: deliveries/prism-source/tools/fit-params/README.md
+FAIL unclassified document: deliveries/prism-source/tools/gguf-split/README.md
+FAIL unclassified document: deliveries/prism-source/tools/imatrix/README.md
+FAIL unclassified document: deliveries/prism-source/tools/kv-mean-center/README.md
+FAIL unclassified document: deliveries/prism-source/tools/llama-bench/README.md
+FAIL unclassified document: deliveries/prism-source/tools/mtmd/debug/mtmd-debug.md
+FAIL unclassified document: deliveries/prism-source/tools/mtmd/README-dev.md
+FAIL unclassified document: deliveries/prism-source/tools/mtmd/README.md
+FAIL unclassified document: deliveries/prism-source/tools/perplexity/README.md
+FAIL unclassified document: deliveries/prism-source/tools/quantize/README.md
+FAIL unclassified document: deliveries/prism-source/tools/results/README.md
+FAIL unclassified document: deliveries/prism-source/tools/rpc/README.md
+FAIL unclassified document: deliveries/prism-source/tools/server/bench/README.md
+FAIL unclassified document: deliveries/prism-source/tools/server/bench/speed-bench/README.md
+FAIL unclassified document: deliveries/prism-source/tools/server/README-dev.md
+FAIL deliveries\prism-source\tools\server\README-dev.md: missing link: ../ui/docs/
+FAIL unclassified document: deliveries/prism-source/tools/server/README.md
+FAIL deliveries\prism-source\tools\server\README.md: missing link: ../embedding
+FAIL deliveries\prism-source\tools\server\README.md: missing link: chat.mjs
+FAIL deliveries\prism-source\tools\server\README.md: missing link: chat.sh
+FAIL deliveries\prism-source\tools\server\README.md: missing link: ../ui/src/lib/constants/settings-keys.ts
+FAIL unclassified document: deliveries/prism-source/tools/server/tests/README.md
+FAIL unclassified document: deliveries/prism-source/tools/tts/README.md
+FAIL unclassified document: deliveries/prism-source/tools/tuning/README.md
+FAIL unclassified document: deliveries/prism-source/tools/ui/README.md
+FAIL unclassified document: deliveries/prism-source/tools/ui/src/lib/components/app/SKILL.md
+FAIL unclassified document: deliveries/prism-source/tools/ui/src/lib/vendors/decimal.js/LICENCE.md
+FAIL unclassified document: deliveries/prism-source/tools/ui/tests/client/README-perf.md
+FAIL unclassified document: deliveries/prism-source/vendor/hash/rotate-bits/LICENSE.md
+FAIL unclassified document: deliveries/ptq1-progress.md

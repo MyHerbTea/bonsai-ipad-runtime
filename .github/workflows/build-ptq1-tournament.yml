@@ -1,8 +1,8 @@
-name: Bonsai Build123 flag17 Unpack Reuse
+name: Bonsai Build124 SDOT
 
 on:
   push:
-    branches: [codex/build123-flag17-unpack-reuse]
+    branches: [codex/build124-sdot]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "123"
+  BUILD_NUMBER: "124"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -110,6 +110,8 @@ jobs:
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build123_unpack_reuse.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_REQUIRE_NEON=1 BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build118_cpu.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build117_native_profile.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build124_patch_sdot.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build124_sdot.py -v 2>&1 | tee -a build/CI_TESTS.txt
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -123,6 +125,8 @@ jobs:
             bash ./build-xcframework.sh ios-device
           )
           test -f "$PRISM_DIR/build-apple/llama.xcframework/ios-arm64/llama.framework/llama"
+          xcrun llvm-objdump --disassemble --no-show-raw-insn "$PRISM_DIR/build-apple/llama.xcframework/ios-arm64/llama.framework/llama" > build/sdot-analysis/llama-disassembly.txt
+          python3 tools/build124_inspect_assembly.py build/sdot-analysis/llama-disassembly.txt build/sdot-analysis/inspection.json
           mkdir -p Vendor
           ditto "$PRISM_DIR/build-apple/llama.xcframework" Vendor/llama.xcframework
           test -f Vendor/llama.xcframework/ios-arm64/llama.framework/llama
@@ -166,7 +170,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build123 IPA and native ABI
+      - name: Verify Build124 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -212,23 +216,34 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/package_ptq1_oneclick.py
+      - name: Upload SDOT assembly evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bonsai-Build124-SDOT-Analysis
+          path: |
+            build/sdot-analysis/
+            build/CI_TESTS.txt
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build123-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build124-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD123_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD123_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD124_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD124_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build123-Symbols
+          name: Bonsai-Build124-Symbols
           path: |
-            build/Bonsai-Build123-Symbols.zip
-            build/Bonsai-Build123-Symbols.zip.sha256
+            build/Bonsai-Build124-Symbols.zip
+            build/Bonsai-Build124-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90

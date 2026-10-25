@@ -4017,8 +4017,8 @@ actor BonsaiEngine {
         guard benchmarkOriginal != nil, let config = benchmarkConfig, context != nil else {
             throw LabError.invalidConfig("BENCHMARK_NOT_CONFIGURED")
         }
-        guard config.flags != 32 || !countingEnabled else {
-            throw LabError.invalidConfig("UNPACK_REUSE_REQUIRES_COUNTING_OFF")
+        guard ![32,64].contains(config.flags) || !countingEnabled else {
+            throw LabError.invalidConfig(config.flags == 64 ? "SDOT_REQUIRES_COUNTING_OFF" : "UNPACK_REUSE_REQUIRES_COUNTING_OFF")
         }
         benchmarkInvocation = true
         defer { benchmarkInvocation = false }

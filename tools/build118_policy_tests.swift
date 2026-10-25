@@ -23,6 +23,15 @@ import Foundation
         precondition(!BenchmarkConfiguration(context:16384,batch:16,kv:"Q4_0",flags:32).isValid(capabilities:63))
         precondition(!BenchmarkConfiguration(context:16384,batch:8,kv:"Q4_0",flags:33).isValid(capabilities:63))
         precondition(BenchmarkCandidateRegistry.flags(named:"PTQ1_CPU_UNPACK_REUSE")==32)
+        let sdot=BenchmarkConfiguration(context:16384,batch:8,kv:"Q4_0",flags:64)
+        precondition(sdot.isValid(capabilities:127) && quick.permits(sdot))
+        precondition(!BenchmarkSessionMode.full.permits(sdot))
+        precondition(!sdot.isValid(capabilities:63))
+        precondition(!BenchmarkConfiguration(context:16384,batch:16,kv:"Q4_0",flags:64).isValid(capabilities:127))
+        for flag in [65,68,80,96,127] {
+            precondition(!BenchmarkConfiguration(context:16384,batch:8,kv:"Q4_0",flags:flag).isValid(capabilities:127))
+        }
+        precondition(BenchmarkCandidateRegistry.flags(named:"PTQ1_CPU_SDOT")==64)
         print("Build118 CPU flags, B8 Quick scope and quarantine identity policies: PASS")
     }
 }

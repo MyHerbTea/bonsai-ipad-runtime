@@ -1,0 +1,9 @@
+test_actual_native_control_capability_and_exclusive_flags (test_build124_sdot.SDOTTests.test_actual_native_control_capability_and_exclusive_flags) ... skipped 'C++ compiler absent; Apple CI executes patched strategy control'
+test_assembly_gate_rejects_missing_sdot_and_hot_spills (test_build124_sdot.SDOTTests.test_assembly_gate_rejects_missing_sdot_and_hot_spills) ... ok
+test_compiled_actual_arm64_parity_and_assembly (test_build124_sdot.SDOTTests.test_compiled_actual_arm64_parity_and_assembly) ... skipped 'Apple ARM64 CI required; not a local parity PASS'
+test_patch_retains_baseline_math_and_isolates_target (test_build124_sdot.SDOTTests.test_patch_retains_baseline_math_and_isolates_target) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.065s
+
+OK (skipped=2)

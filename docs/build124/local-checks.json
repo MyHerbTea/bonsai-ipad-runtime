@@ -1,0 +1,219 @@
+[
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_build124_sdot.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "log": "local-check-0.txt",
+    "summary": [
+      "Ran 4 tests in 0.066s",
+      "",
+      "OK (skipped=2)"
+    ],
+    "skipped": 2
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_build118_cpu.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "log": "local-check-1.txt",
+    "summary": [
+      "Ran 3 tests in 0.116s",
+      "",
+      "OK (skipped=2)"
+    ],
+    "skipped": 2
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_build118_compare.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "log": "local-check-2.txt",
+    "summary": [
+      "Ran 6 tests in 0.011s",
+      "",
+      "OK"
+    ],
+    "skipped": 0
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_build123_unpack_reuse.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "log": "local-check-3.txt",
+    "summary": [
+      "Ran 2 tests in 0.103s",
+      "",
+      "OK (skipped=1)"
+    ],
+    "skipped": 1
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_build122_sampling.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "log": "local-check-4.txt",
+    "summary": [
+      "Ran 2 tests in 0.191s",
+      "",
+      "OK"
+    ],
+    "skipped": 0
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_documentation_consistency.py",
+      "-v"
+    ],
+    "exit_code": 1,
+    "log": "local-check-5.txt",
+    "summary": [
+      "Ran 10 tests in 6.072s",
+      "",
+      "FAILED (failures=3)"
+    ],
+    "skipped": 0
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/PTQ1_ONECLICK",
+      "-p",
+      "test_*.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "log": "local-check-6.txt",
+    "summary": [
+      "Ran 10 tests in 1.317s",
+      "",
+      "OK"
+    ],
+    "skipped": 0
+  },
+  {
+    "command": [
+      "python",
+      "tools/rc126_build113_ptq1_tensorops_codec_tests.py"
+    ],
+    "exit_code": 0,
+    "log": "local-check-7.txt",
+    "summary": [
+      "PTQ1_0_CODEC_REFERENCE_PARITY: PASS (256 byte values x 5 trits; 4096 full 128-value blocks; exact reference row order; fp16 scale/output parity)",
+      "GPU numerical parity: NOT_VERIFIED_PENDING_M5"
+    ],
+    "skipped": 0
+  },
+  {
+    "command": [
+      "python",
+      "tools/documentation_consistency.py"
+    ],
+    "exit_code": 1,
+    "log": "local-check-8.txt",
+    "summary": [
+      "FAIL unclassified document: deliveries/prism-source/tools/ui/tests/client/README-perf.md",
+      "FAIL unclassified document: deliveries/prism-source/vendor/hash/rotate-bits/LICENSE.md",
+      "FAIL unclassified document: deliveries/ptq1-progress.md"
+    ],
+    "skipped": 0,
+    "failure_count": 165,
+    "non_delivery_failures": []
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "log": "local-check-9.txt",
+    "summary": [],
+    "skipped": 0
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_abba_measurement.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "result": "3 passed; run after SDOT report mapping update"
+  },
+  {
+    "command": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tools/tests",
+      "-p",
+      "test_build118_compare.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "result": "6 passed; rerun after SDOT report mapping update"
+  }
+]

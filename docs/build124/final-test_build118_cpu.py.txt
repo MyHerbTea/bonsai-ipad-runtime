@@ -1,0 +1,8 @@
+test_actual_compiled_scalar_lookup_and_neon_parity (test_build118_cpu.CPUPrefillTests.test_actual_compiled_scalar_lookup_and_neon_parity) ... skipped 'C compiler absent; Apple CI executes actual arm64 C/NEON'
+test_actual_patched_native_strategy_control (test_build118_cpu.CPUPrefillTests.test_actual_patched_native_strategy_control) ... skipped 'C++ compiler absent; Apple CI executes patched strategy control'
+test_all_bytes_lookup_format (test_build118_cpu.CPUPrefillTests.test_all_bytes_lookup_format) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.113s
+
+OK (skipped=2)

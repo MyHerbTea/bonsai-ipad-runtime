@@ -1,0 +1,7 @@
+test_compiled_actual_chunk_float_parity_strides_broadcast_and_reuse (test_build123_unpack_reuse.UnpackReuseTests.test_compiled_actual_chunk_float_parity_strides_broadcast_and_reuse) ... skipped 'Apple CI executes actual C/arm64 parity and sanitizers'
+test_cpu_route_preserves_fallback_and_barriers (test_build123_unpack_reuse.UnpackReuseTests.test_cpu_route_preserves_fallback_and_barriers) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.103s
+
+OK (skipped=1)

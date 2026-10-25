@@ -1,0 +1,7 @@
+test_baseline_sample_clone_preserves_original_math_and_counter_position (test_build122_sampling.SamplingPatchTests.test_baseline_sample_clone_preserves_original_math_and_counter_position) ... ok
+test_tls_flush_precedes_existing_final_barrier (test_build122_sampling.SamplingPatchTests.test_tls_flush_precedes_existing_final_barrier) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.191s
+
+OK
