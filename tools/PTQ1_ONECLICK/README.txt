@@ -1,3 +1,5 @@
+Build125当前入口：双击 RUN_PREFILL_COMPARE.cmd，详见 README_BUILD125_CN.md。A原始/B单行/C双行；各一次预热+ABCCBA共9请求，主要比较C/B。以下旧说明为历史。
+
 Build124 当前任务：双击 RUN_PREFILL_COMPARE.cmd，输入API地址及必要Key。
 先阅读 README_BUILD124_CN.md。固定六请求SDOT ABBA，自动生成统一results.zip；无须手工配置。
 以下旧Full竞赛说明为历史参考，不是本轮测试入口。

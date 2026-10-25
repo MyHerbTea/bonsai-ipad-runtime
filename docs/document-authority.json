@@ -9,6 +9,10 @@
   ],
   "rules": [
     {
+      "pattern": "tools/PTQ1_ONECLICK/README_BUILD125_CN.md",
+      "status": "REFERENCE"
+    },
+    {
       "pattern": "tools/PTQ1_ONECLICK/README_BUILD124_CN.md",
       "status": "REFERENCE"
     },

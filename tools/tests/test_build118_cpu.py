@@ -68,6 +68,13 @@ int main() {
     cpu_caps=56;assert(BonsaiNativeBenchmarkConfigure(64)==0 && cpu_flags==64);
     cpu_caps=24;assert(BonsaiNativeBenchmarkConfigure(0)==1);
     int previous=cpu_flags;''')
+        if 'flags != 128' in control:
+            checks=checks.replace('    int previous=cpu_flags;','''    cpu_caps=248;assert(BonsaiNativeBenchmarkCapabilities()==255);
+    assert(BonsaiNativeBenchmarkConfigure(128)==1 && cpu_flags==128);
+    for(int flag:{129,160,192,255})assert(BonsaiNativeBenchmarkConfigure(flag)==0 && cpu_flags==128);
+    cpu_caps=120;assert(BonsaiNativeBenchmarkConfigure(128)==0 && cpu_flags==128);
+    cpu_caps=24;assert(BonsaiNativeBenchmarkConfigure(0)==1);
+    int previous=cpu_flags;''')
         with tempfile.TemporaryDirectory() as folder:
             folder=Path(folder);source=folder/'control.cpp';binary=folder/('control.exe' if os.name=='nt' else 'control')
             source.write_text(preamble+control+checks)

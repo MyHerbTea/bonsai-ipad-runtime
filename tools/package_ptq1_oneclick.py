@@ -76,15 +76,15 @@ def build():
         "Device runtime compilation, numerical quality and performance: NOT_RUN.\n"
         "All candidates share one IPA. Production defaults are restored after benchmark.\n"
         "No candidate is a winner until actual device gates pass.\n", encoding="utf-8")
-    (kit / "BUILD124_DELIVERY_REPORT_CN.md").write_text(
+    (kit / f"BUILD{number}_DELIVERY_REPORT_CN.md").write_text(
         f"# Build{number} 交付与证据状态\n\n"
-        f"源码：{source}\n\n分支：codex/build124-sdot\n\n"
+        f"源码：{source}\n\n分支：codex/build125-sdot-pair\n\n"
         f"Apple Release CI：[运行记录](https://github.com/MyHerbTea/bonsai-ipad-runtime/actions/runs/{os.environ['GITHUB_RUN_ID']})\n\n"
         f"IPA SHA256：{sha(ipa)}\n\n"
-        "构建及检查记录：同源码专项自动化、Swift策略/语法、ARM64数值parity及ASAN/UBSAN测试、SDOT汇编门禁、Release构建、便携环境与哈希打包。每项实际执行/skip状态以CI_EVIDENCE/CI_TESTS.txt为准，skip不作为通过证据。\n\n"
+        "构建及检查记录：同源码专项自动化、Swift策略/语法、实际ARM64原始/单行/双行数值parity及ASAN/UBSAN测试、双行共享Q8及无spill汇编门禁、Release构建、便携环境与哈希打包。每项实际执行/skip状态以CI_EVIDENCE/CI_TESTS.txt为准，skip不作为通过证据。\n\n"
         "真机性能：NOT_RUN，待用户安装本IPA并双击RUN_PREFILL_COMPARE.cmd。CI成功、数值正确和汇编含SDOT均不证明性能收益。\n\n"
-        "保持生产默认，不晋级SDOT，不创建Stable Release。六请求集中实验会自动输出COMPARISON.md、完整JSON/CSV和统一results.zip。\n\n"
-        "下一项引擎优化需由本次数据决定：CPU PTQ1显著占比且SDOT有收益则确认后检查解包/点积搬运；SDOT无收益则停止扩展，评估B8共享解包的可消除重复量；CPU改善未转化则检查FWHT/后端拷贝/同步；GPU证据不够定位时只安排定向Metal Trace。热点时间不是可实现收益，需评估收益上限、复杂度与回归风险。\n",
+        "保持生产默认，不晋级SDOT，不创建Stable Release。Build125九请求A/B/C集中实验会自动输出COMPARISON.md、完整JSON/CSV和统一results.zip。\n\n"
+        "Build124单行SDOT保留为基线，不另做独立确认。A原始0/B单行64/C双行128，主要比较C/B。待用户提供一次测试结果后，决定保留双行或停止CPU微内核方向转具体GPU算子；不自动执行真机、不新增独立分析阶段、不改生产默认。\n",
         encoding="utf-8")
     manifest = {file.relative_to(kit).as_posix(): sha(file) for file in sorted(kit.rglob("*")) if file.is_file()}
     (kit / "DELIVERY_SHA256.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

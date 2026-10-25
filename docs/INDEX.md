@@ -1,5 +1,7 @@
 # Bonsai 文档索引与权威性
 
+Build125：[双行SDOT执行清单](superpowers/plans/2026-10-25-build125-pair.md)，单行Build124保留为B基线，同IPA A/B/C，等待用户真机测试；不新增独立分析阶段。
+
 Build123 / flag17：[B8批次内解包复用计划](superpowers/plans/2026-10-24-flag17-unpack-reuse.md)。单一实验候选，基线与候选均关闭原子计数和分段采样；一致性、收益待验证，不代表晋级。
 
 Build122：[低率采样与计数开关对照](build122/plan.md)。仅服务于三次512/1真机请求；尚无测量结论。

@@ -129,7 +129,7 @@ def decide_sdot(row):
     if ready and cpu_gain>=5 and gain<3:
         next_step='tools/rc126_build121_patch_cpu_timing.py及ggml后端：核查FWHT、其他CPU节点、后端拷贝/同步；CPU改善未转化，暂停SDOT扩展。'
     cpu_share=100*ca/(am*1000) if ready else None
-    if ready and cpu_share<30:
+    if decision!='KEEP_CANDIDATE_SHORT_CONFIRMATION' and ready and cpu_share<30:
         next_step='ggml/src/ggml-metal/kernels/mul_mv.metal及ggml-metal-ops.cpp：对照本请求PTQ1/FWHT dispatch覆盖，用定向Metal System Trace区分算子、拷贝与同步后选择单一源码候选；CPU PTQ1占比偏小，暂停扩展SDOT。'
     out.update(status='QUICK_MEASURED',decision=decision,baseline_prefill_s=am,candidate_prefill_s=bm,
         prefill_difference_s=am-bm,prefill_gain_pct=gain,baseline_drift_pct=drift_a,candidate_drift_pct=drift_b,
@@ -168,7 +168,18 @@ class SDOTTournament(QuickTournament):
         if count!=512:raise b.EvidenceError('TOKENIZER_EXACT_512_REQUIRED')
         row=[];reference=None
         keys=('context','batch','ubatch','kv_k','kv_v','flash_attention','sequence_max','kv_unified','gpu_layers','threads','threads_batch','text_kv_reuse','mmap','metal_tensor_disabled')
-        for slot,flag in [('warm_A',0),('warm_B',64),('A1',0),('B1',64),('B2',64),('A2',0)]:
+        row=self.execute_sequence([('warm_A',0),('warm_B',64),('A1',0),('B1',64),('B2',64),('A2',0)],prompt)
+        result=decide_sdot(row)
+        self.report['comparisons'][b.NAMES[64]]=result
+        self.report['status']='QUICK_COMPLETE' if result['status']=='QUICK_MEASURED' else 'INCOMPLETE'
+        self.report['recommendations']={'daily':'Keep original production configuration; no automatic promotion',
+            'next_engine_step':result.get('next_engine_step','证据不足，保留当前源码并补齐具体缺口')}
+        self.save()
+
+    def execute_sequence(self,sequence,prompt):
+        row=[];reference=None
+        keys=('context','batch','ubatch','kv_k','kv_v','flash_attention','sequence_max','kv_unified','gpu_layers','threads','threads_batch','text_kv_reuse','mmap','metal_tensor_disabled')
+        for slot,flag in sequence:
             thermal=self.thermal()
             if thermal>=2:raise b.EvidenceError('THERMAL_PRECHECK')
             config=self.config(flag)
@@ -188,16 +199,83 @@ class SDOTTournament(QuickTournament):
                     self.report['baseline_initial_peak_bytes']=sample['memory']['sampled_peak_footprint_bytes']
             self.report['samples'][-1].update(b.scrub(sample));self.save()
             if not slot.startswith('warm'):row.append(sample)
-        result=decide_sdot(row)
-        self.report['comparisons'][b.NAMES[64]]=result
-        self.report['status']='QUICK_COMPLETE' if result['status']=='QUICK_MEASURED' else 'INCOMPLETE'
+        return row
+
+
+def validate_pair_sample(sample):
+    p=sample.get('profile',{}).get('cpu_ptq1_sampling',{})
+    chunks=p.get('pair_chunks');rows=p.get('pair_rows')
+    if sample.get('actual',{}).get('flags')==128:
+        if type(chunks) is not int or type(rows) is not int or chunks<=0 or rows<=0 or rows%2:
+            return ['pair_candidate_not_observed']
+    elif chunks!=0 or rows!=0:return ['unexpected_pair_route']
+    return []
+
+
+def decide_abc(row):
+    names=['BUILD124_VS_ORIGINAL','PAIR_VS_BUILD124','PAIR_VS_ORIGINAL']
+    out={k:dict(status='INCOMPLETE',decision='UNCERTAIN',automatic_promotion=False) for k in names}
+    if len(row)!=6 or [s.get('abba_slot') for s in row]!=['A1','B1','C1','C2','B2','A2']:return out
+    if [s.get('actual',{}).get('flags') for s in row]!=[0,64,128,128,64,0]:return out
+    by={s['abba_slot']:s for s in row}
+    for name,slots,flags in [
+        (names[0],['A1','B1','B2','A2'],(0,64)),
+        (names[1],['B1','C1','C2','B2'],(64,128)),
+        (names[2],['A1','C1','C2','A2'],(0,128))]:
+        pairs=[dict(by[k],abba_slot=slot) for k,slot in zip(slots,['A1','B1','B2','A2'])]
+        result=decide_sdot(pairs)
+        result.update(reference_flags=flags[0],candidate_flags=flags[1],formal_slots=slots)
+        if name==names[1]:
+            decision=result['decision']
+            result['decision']=('PAIR_WORTH_RETAINING_USER_DECISION' if decision=='KEEP_CANDIDATE_SHORT_CONFIRMATION'
+                else 'STOP_CPU_MICROKERNEL_DIRECTION' if decision=='STOP_SDOT_EXPANSION' else 'UNCERTAIN_USER_DECISION')
+            result['next_engine_step']=('保留双行候选，等待用户根据本次结果决定；不自动增加确认测试或晋级。'
+                if result['decision']=='PAIR_WORTH_RETAINING_USER_DECISION' else
+                '若用户接受本次负结果，停止CPU微内核方向，转向ggml-metal-ops.cpp与kernels/mul_mv.metal的具体PTQ1/FWHT算子；不自动开始GPU分析阶段。'
+                if result['decision']=='STOP_CPU_MICROKERNEL_DIRECTION' else '证据不确定，交用户决策；不自动补测或扩展分析。')
+        else:
+            result['decision']='REFERENCE_ONLY'
+            result['next_engine_step']='参考原始路径；新双行候选的投入决策只使用C相对Build124 B。'
+        out[name]=result
+    return out
+
+
+class ABCTournament(SDOTTournament):
+    def prepare(self):
+        caps=self.client.request('capabilities',timeout=30)
+        if caps.get('capabilities',0)&192!=192:raise b.EvidenceError('BUILD125_BOTH_SDOT_CAPABILITIES_REQUIRED')
+        return super().prepare()
+
+    def run(self,*args,**kwargs):
+        result=super().run(*args,**kwargs)
+        errors=validate_pair_sample(result)
+        if errors:
+            result['valid']=False;result['errors']+=errors
+            self.report['samples'][-1].update(b.scrub(result));self.save()
+            raise b.EvidenceError('BUILD125_ROUTE_EVIDENCE_FAILED:'+','.join(errors))
+        return result
+
+    def compare(self,candidates,rounds,target):
+        if candidates!=[0,64,128] or rounds!=1 or target!=512:raise b.EvidenceError('BUILD125_REQUIRES_ONE_512_ABC')
+        if self.capabilities&192!=192:raise b.EvidenceError('BUILD125_BOTH_SDOT_CAPABILITIES_REQUIRED')
+        self.client.sdot_counting_off=True
+        sequence=[('warm_A',0),('warm_B',64),('warm_C',128),('A1',0),('B1',64),('C1',128),('C2',128),('B2',64),('A2',0)]
+        self.report.update(scope='BUILD125_ABC_NINE_REQUEST_SCREEN',automatic_promotion=False,full_regression='NOT_RUN',
+            plan=dict(sequence=[x[0] for x in sequence],primary_reference='Build124 single-row SDOT flags64',
+                input_tokens=512,output_budget=128,counting='off',sampling_period=0,automatic_extra_rounds=False))
+        prompt,count=self.fit_prompt(512)
+        if count!=512:raise b.EvidenceError('TOKENIZER_EXACT_512_REQUIRED')
+        row=self.execute_sequence(sequence,prompt)
+        self.report['comparisons']=decide_abc(row)
+        self.report['primary_decision']=self.report['comparisons']['PAIR_VS_BUILD124']['decision']
+        self.report['status']='QUICK_COMPLETE' if all(x['status']=='QUICK_MEASURED' for x in self.report['comparisons'].values()) else 'INCOMPLETE'
         self.report['recommendations']={'daily':'Keep original production configuration; no automatic promotion',
-            'next_engine_step':result.get('next_engine_step','证据不足，保留当前源码并补齐具体缺口')}
+            'next_engine_step':self.report['comparisons']['PAIR_VS_BUILD124'].get('next_engine_step','证据不足')}
         self.save()
 
 
 def write_comparison(directory, report):
-    lines=['# Build124 集中对比（batch8）','',
+    lines=['# Build125 A/B/C 集中对比（batch8）','',
            'Quick探索性结果；不代表Full或默认配置晋级。正数表示改善，负数表示退步。','',
            '| 候选 | 有效轮 | Prefill改善% | 首内容改善% | Decode变化% | CPU命中(原始/查表/NEON) | 最大漂移% | 峰值增量MiB | 数值一致 | 状态 |',
            '|---|---:|---:|---:|---:|---|---:|---:|---|---|']
@@ -232,26 +310,27 @@ def write_comparison(directory, report):
                 sample.get('client_first_content_s'),sample.get('decode_tps'),
                 profile.get('cpu_prefill_timing',{}).get('ptq1_matmul_ms'),profile.get('gpu_execution_ms')]
             lines.append('| '+' | '.join('unavailable' if x is None else str(x) for x in values)+' |')
-    lines+=['','错误：'+json.dumps(report.get('errors',[]),ensure_ascii=False),
+    lines+=['','主决策：'+str(report.get('primary_decision','见比较结果')),'新候选仅比较C/B，A为参考；不因CPU占比低于30%而覆盖实测收益。','错误：'+json.dumps(report.get('errors',[]),ensure_ascii=False),
         '筛选：改善<3%或未超过组内波动则停止扩展；>=5%、CPU节点明显改善且无退步则建议简短确认；其余不确定。无90秒绝对门槛。']
     directory.mkdir(parents=True,exist_ok=True)
     (directory/'COMPARISON.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
 
 
 def main():
-    parser=argparse.ArgumentParser(description='Build124 M5 SDOT 一键ABBA（保持生产默认）')
+    parser=argparse.ArgumentParser(description='Build125 M5 原始/单行/双行SDOT一键A/B/C（不改生产默认）')
     parser.add_argument('--url',help='iPad API address; prompts if omitted')
     parser.add_argument('--key-env',default='BONSAI_API_KEY')
     parser.add_argument('--rounds',type=int,choices=(1,5),default=1)
     parser.add_argument('--prompt-tokens',type=int,choices=(512,2048),default=512)
-    parser.add_argument('--candidates',default='64')
+    parser.add_argument('--candidates',default='0,64,128')
     parser.add_argument('--output',type=Path,default=b.ROOT/'RESULTS'/('prefill-'+dt.datetime.now().strftime('%Y%m%d-%H%M%S')))
     args=parser.parse_args()
     try:candidates=[int(x) for x in args.candidates.split(',')]
-    except ValueError:parser.error('candidates must be comma-separated flags 4,8,16,64')
-    if not candidates or len(set(candidates))!=len(candidates) or any(x not in (4,8,16,64) for x in candidates):
-        parser.error('choose distinct candidates from 4,8,16,64')
-    if 64 in candidates and (candidates!=[64] or args.rounds!=1 or args.prompt_tokens!=512):parser.error('SDOT uses candidate64 alone, one round, exactly512 tokens')
+    except ValueError:parser.error('candidates must be comma-separated flags 0,4,8,16,64,128')
+    if not candidates or len(set(candidates))!=len(candidates) or any(x not in (0,4,8,16,64,128) for x in candidates):
+        parser.error('choose distinct candidates from 0,4,8,16,64,128')
+    if 128 in candidates and (candidates!=[0,64,128] or args.rounds!=1 or args.prompt_tokens!=512):parser.error('Build125 requires 0,64,128, one round, exactly512 tokens')
+    if 128 not in candidates and 64 in candidates and (candidates!=[64] or args.rounds!=1 or args.prompt_tokens!=512):parser.error('SDOT uses candidate64 alone, one round, exactly512 tokens')
     if args.output.exists():parser.error('output must be a new directory; previous outcomes are not replayed')
     tournament=None; status=None
     try:
@@ -260,7 +339,7 @@ def main():
         client=QuickClient(args.url or input('iPad API 地址（例如 http://192.168.1.92:8080）：').strip(),os.environ.get(args.key_env,''))
         if client.request('/health',timeout=10).get('auth_required') and not client.key:
             client.key=getpass.getpass('API Key（不保存）：')
-        tournament=(SDOTTournament if candidates==[64] else QuickTournament)(client,identity,args.output)
+        tournament=(ABCTournament if candidates==[0,64,128] else SDOTTournament if candidates==[64] else QuickTournament)(client,identity,args.output)
         if tournament.prepare():tournament.compare(candidates,args.rounds,args.prompt_tokens)
     except (b.APIError,b.UncertainRequest,b.EvidenceError,OSError,ValueError,KeyError,TypeError,EOFError,KeyboardInterrupt) as error:
         status=str(error) if isinstance(error,(b.APIError,b.UncertainRequest,b.EvidenceError)) else type(error).__name__

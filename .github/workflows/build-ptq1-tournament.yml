@@ -1,8 +1,8 @@
-name: Bonsai Build124 SDOT
+name: Bonsai Build125 SDOT Pair
 
 on:
   push:
-    branches: [codex/build124-sdot]
+    branches: [codex/build125-sdot-pair]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "124"
+  BUILD_NUMBER: "125"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -40,6 +40,8 @@ jobs:
           python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/PTQ1_ONECLICK -p 'test_*.py' -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build124_oneclick.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_build125_abc.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_build125_assembly.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/package_ptq1_oneclick.py
           python3 -m unittest discover -s tools/tests -p "test_abba_measurement.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_drift_detection.py" -v 2>&1 | tee -a build/CI_TESTS.txt
@@ -113,6 +115,9 @@ jobs:
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build117_native_profile.py -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 "$GITHUB_WORKSPACE/tools/rc126_build124_patch_sdot.py" "$PRISM_DIR"
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build124_sdot.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build125_patch_sdot_pair.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build125_pair.py -v 2>&1 | tee -a build/CI_TESTS.txt
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build118_cpu.py -k actual_patched_native_strategy_control -v 2>&1 | tee -a build/CI_TESTS.txt
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -127,7 +132,7 @@ jobs:
           )
           test -f "$PRISM_DIR/build-apple/llama.xcframework/ios-arm64/llama.framework/llama"
           xcrun llvm-objdump --disassemble --no-show-raw-insn "$PRISM_DIR/build-apple/llama.xcframework/ios-arm64/llama.framework/llama" > build/sdot-analysis/llama-disassembly.txt
-          python3 tools/build124_inspect_assembly.py build/sdot-analysis/llama-disassembly.txt build/sdot-analysis/inspection.json
+          python3 tools/build125_inspect_assembly.py build/sdot-analysis/llama-disassembly.txt build/sdot-analysis/inspection.json
           mkdir -p Vendor
           ditto "$PRISM_DIR/build-apple/llama.xcframework" Vendor/llama.xcframework
           test -f Vendor/llama.xcframework/ios-arm64/llama.framework/llama
@@ -171,7 +176,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build124 IPA and native ABI
+      - name: Verify Build125 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -195,7 +200,7 @@ jobs:
             grep -q "_$symbol" build/llama-symbols.txt
           done
           strings "$FRAMEWORK" > build/llama-strings.txt
-          for symbol in BonsaiNativeCPUReuseEnabled BonsaiNativeCPUReuseRow; do
+          for symbol in BonsaiNativeCPUReuseEnabled BonsaiNativeCPUReuseRow BonsaiNativeCPUSDOTPair BonsaiNativeCPUSDOTPairEnabled BonsaiNativeCPUSDOTPairObserve; do
             grep -q "_$symbol" build/llama-symbols.txt
           done
           grep -q 'kernel_mul_mv_ptq1_0_f32_bonsai_r5' build/llama-strings.txt
@@ -221,9 +226,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build124-SDOT-Analysis
+          name: Bonsai-Build125-SDOT-Analysis
           path: |
             build/sdot-analysis/
+            build/pair-analysis/
             build/CI_TESTS.txt
           if-no-files-found: warn
           retention-days: 30
@@ -231,20 +237,20 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build124-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build125-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD124_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD124_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD125_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD125_PTQ1_ONECLICK.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build124-Symbols
+          name: Bonsai-Build125-Symbols
           path: |
-            build/Bonsai-Build124-Symbols.zip
-            build/Bonsai-Build124-Symbols.zip.sha256
+            build/Bonsai-Build125-Symbols.zip
+            build/Bonsai-Build125-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90
