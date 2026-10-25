@@ -18,6 +18,8 @@ Build117 本地实施记录：[执行日志](build117/execution-log.md)、[源�
 
 新会话顺序：[AGENTS.md](../AGENTS.md) → 本页 → [CURRENT_STATE.md](optimization/CURRENT_STATE.md) → [DECISION_LOG.md](optimization/DECISION_LOG.md)。先核对工作区与 Git，再选任务；文档快照不是实时状态。
 
+Build124 一键闭环：[当前执行计划](superpowers/plans/2026-10-25-build124-oneclick.md)。固定512/128六请求SDOT ABBA；新IPA真机性能待执行，保留生产默认。
+
 ## 项目目标与权威顺序
 
 目标：在 iPad Pro M 系列运行本地 Bonsai 27B 文本／图文推理及 OpenAI 兼容 LAN API，按源码、构建产物、设备、性能四层证据逐步提高可靠性。32K 配置能力不等于实际满输入、稳定性或性能认证。

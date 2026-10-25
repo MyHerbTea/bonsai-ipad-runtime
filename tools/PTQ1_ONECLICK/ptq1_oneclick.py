@@ -290,7 +290,10 @@ def write_reports(directory, report):
     doc+='<p>本报告仅包含连接设备实测。CI 构建不代表性能收益。内存峰值为 50ms 采样观察值。128 token 仅用于微基准；质量任务单独验收。首 SSE 元数据与首内容时间分别记录。</p>'
     doc+='<p>日常配置：'+escape(clean.get('recommendations',{}).get('daily','待验收'))+'；长输入配置：'+escape(clean.get('recommendations',{}).get('long','待验收'))+'</p>'
     doc+='<p>恢复状态：'+escape(clean.get('restoration','未确认'))+'；稳定性：'+escape(clean.get('stability',{}))+'</p>'
-    doc+='<p>ABBA 配对：正收益表示改善；漂移 >5% 警告，>10% 不稳定。Decode目标 ≥3%；Prefill目标 ≥5% 且解码回退 ≤10%；Balanced目标预填充 ≥15%、TTFT ≥10%、解码回退 ≤5%。确认需5个有效轮及95%配对均值区间下界大于0；质量、身份和内存保护继续生效。</p>'
+    if clean.get('scope')=='BUILD124_SDOT_SIX_REQUEST_SCREEN':
+        doc+='<p>Build124 单轮筛选：Prefill改善小于3%或未超过组内波动时停止扩展；至少5%、CPU节点明显改善且无退步时建议简短确认，其余不确定。生产默认保持不变，不能据此认证。详见 <a href="COMPARISON.md">中文统一决策报告</a>。</p>'
+    else:
+        doc+='<p>ABBA 配对：正收益表示改善；漂移 >5% 警告，>10% 不稳定。Decode目标 ≥3%；Prefill目标 ≥5% 且解码回退 ≤10%；Balanced目标预填充 ≥15%、TTFT ≥10%、解码回退 ≤5%。确认需5个有效轮及95%配对均值区间下界大于0；质量、身份和内存保护继续生效。</p>'
     doc+='<h2>参数调优观察（通过全门槛才可采用）</h2><pre>'+escape(json.dumps(clean.get('tuning',{}),ensure_ascii=False,indent=2))+'</pre>'
     doc+='<h2>比较结果</h2><pre>'+comparisons+'</pre><h2>质量结果</h2><pre>'+escape(json.dumps(clean.get('quality',{}),ensure_ascii=False,indent=2))+'</pre>'
     doc+='<h2>请求样本</h2><div class="scroll"><table><tr>'+''.join('<th>'+escape(k)+'</th>' for k in fields)+'</tr>'+table+'</table></div>'

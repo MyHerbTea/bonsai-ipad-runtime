@@ -9,6 +9,10 @@
   ],
   "rules": [
     {
+      "pattern": "tools/PTQ1_ONECLICK/README_BUILD124_CN.md",
+      "status": "REFERENCE"
+    },
+    {
       "pattern": "docs/build124/*.md",
       "status": "REFERENCE"
     },

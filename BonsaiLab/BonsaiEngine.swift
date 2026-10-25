@@ -4045,6 +4045,11 @@ actor BonsaiEngine {
             let drained = BonsaiBenchmarkConfigure(Int32(config.flags)) == 1
             let after = BenchmarkTelemetry.counters()
             let cpuAfter = (0..<3).map { BonsaiCPUCounter(Int32($0)) }
+            let profile = ProfilingSnapshot.shared.read()
+            guard profile["request_id"] as? String == BenchmarkSessionControl.shared.snapshot["request_id"] as? String,
+                  profile["completed"] as? Bool == true else {
+                throw LabError.invalidConfig("BENCHMARK_PROFILE_REQUEST_MISMATCH")
+            }
             return ["schema": 1, "candidate": BenchmarkCandidateRegistry.name(config.flags), "actual": config.json,
                 "cpu_dot_delta": zip(cpuAfter, cpuBefore).map { $0.0 >= $0.1 ? $0.0 - $0.1 : 0 },
                 "cpu_dot_abi_available": BonsaiCPUAvailable(), "cpu_dot_scope": "request_calls; baseline,lookup,neon; not_GPU_dispatches",
@@ -4052,9 +4057,10 @@ actor BonsaiEngine {
                 "operation_evidence": BenchmarkTelemetry.operationEvidence(), "counter_delta": zip(after, before).map { pair in pair.0 >= pair.1 ? pair.0 - pair.1 : 0 },
                 "gpu_completion_drained": drained, "memory": telemetry.finish(), "batch_allocations": benchmarkAllocations,
                 "batch_reuses": benchmarkReuses, "logits_probe": benchmarkLogits,
-                "request_id": ProfilingSnapshot.shared.read()["request_id"] ?? NSNull(),
-                "coverage": ProfilingSnapshot.shared.read()["kernel_stats"] ?? NSNull(),
-                "stage_coverage": ProfilingSnapshot.shared.read()["coverage"] ?? NSNull(),
+                "request_id": profile["request_id"] ?? NSNull(),
+                "profile": profile, "counting": countingEnabled ? "on" : "off", "sampling_period": 0,
+                "coverage": profile["kernel_stats"] ?? NSNull(),
+                "stage_coverage": profile["coverage"] ?? NSNull(),
                 "prompt_tokens": result.promptTokens, "generated_tokens": result.generatedTokens,
                 "effective_max_tokens": result.effectiveMaxTokens,
                 "prefill_s": result.prefillSeconds, "ttft_s": result.ttftSeconds,

@@ -39,7 +39,8 @@ jobs:
           xcrun swiftc -frontend -parse BonsaiLab/BonsaiEngine.swift BonsaiLab/BenchmarkSessionManager.swift BonsaiLab/BenchmarkTelemetry.swift BonsaiLab/LocalOpenAIServer.swift
           python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/PTQ1_ONECLICK -p 'test_*.py' -v 2>&1 | tee -a build/CI_TESTS.txt
-          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/package_ptq1_oneclick.py
+          python3 -m unittest discover -s tools/tests -p "test_build124_oneclick.py" -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/package_ptq1_oneclick.py
           python3 -m unittest discover -s tools/tests -p "test_abba_measurement.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_drift_detection.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_measurement_thresholds.py" -v 2>&1 | tee -a build/CI_TESTS.txt

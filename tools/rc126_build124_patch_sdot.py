@@ -21,7 +21,13 @@ def instrument_quants(source):
     clone=clone.replace(old,new,1)
     anchor='    const int bonsai_flags = atomic_load_explicit(&bonsai_cpu_flags, memory_order_relaxed);'
     if original.count(anchor)!=1:raise ValueError('unexpected baseline control')
-    original=original.replace(anchor,anchor+'\n'+ROUTE,1)
+    # Both arms traverse identical counting and disabled-sampling checks.
+    # Previously SDOT returned before these checks, confounding attribution.
+    original=original.replace('bonsai_flags == 0 && bonsai_sample_next(n)',
+        '(bonsai_flags == 0 || bonsai_flags == 64) && bonsai_sample_next(n)',1)
+    sampled='    if (bonsai_take_sample) { bonsai_sampled_ptq1_dot(n,s,bs,vx,bx,vy,by,nrc); return; }'
+    if original.count(sampled)!=1:raise ValueError('unexpected sampling control')
+    original=original.replace(sampled,sampled+'\n'+ROUTE,1)
     return source[:start]+'// BONSAI_SDOT_124\n#if BONSAI_CPU_SDOT\n'+clone+'\n#endif\n// BONSAI_SDOT_124_END\n'+original+source[end:]
 
 def apply(root):
