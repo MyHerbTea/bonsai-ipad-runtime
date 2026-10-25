@@ -12,7 +12,9 @@ def inspect(text):
             continue
         instruction=re.match(r'^\s*([0-9a-fA-F]+):\s+([a-z][a-z0-9.]*)\s*(.*)$',line)
         if instruction and current:
-            functions[current].append((int(instruction.group(1),16),instruction.group(2),instruction.group(3)))
+            op=instruction.group(2)
+            if not op.startswith('b.'):op=op.split('.')[0]
+            functions[current].append((int(instruction.group(1),16),op,instruction.group(3)))
     report={}
     for kind,name in [('candidate','_bonsai_sdot_ptq1_dot'),('baseline','_ggml_vec_dot_ptq1_0_q8_0')]:
         if name not in functions or not functions[name]:raise ValueError('missing instructions for '+name)
@@ -22,7 +24,7 @@ def inspect(text):
                 targets=re.findall(r'0x([0-9a-fA-F]+)',args)
                 if targets and int(targets[-1],16)<address:loops.append((int(targets[-1],16),address))
         spills=[hex(address)+': '+op+' '+args for address,op,args in instructions
-            if op in ('str','stur','stp','stnp','st1','st2','st3','st4') and re.match(r'(?:[bhsdq]\d+|\{\s*v\d+\.)',args) and ('[sp' in args or '[x29' in args)
+            if op in ('str','stur','stp','stnp','st1','st2','st3','st4') and re.match(r'(?:[bhsdq]\d+\b|\{\s*v\d+\b)',args) and ('[sp' in args or '[x29' in args)
             and any(start<=address<=end for start,end in loops)]
         report[kind]={'symbol':name,'instructions':len(instructions),'sdot':sum(op=='sdot' for _,op,_ in instructions),
             'hot_vector_spills':spills,'backward_branches':[(hex(a),hex(b)) for a,b in loops]}

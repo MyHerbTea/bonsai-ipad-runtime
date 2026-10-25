@@ -40,6 +40,10 @@ class SDOTTests(unittest.TestCase):
  204: ret
 """
         self.assertEqual(inspect(sample)['candidate']['sdot'],1)
+        apple=sample.replace('sdot v0.4s, v1.16b, v2.16b','sdot.4s v0, v1, v2')
+        self.assertEqual(inspect(apple)['candidate']['sdot'],1)
+        with self.assertRaises(ValueError):inspect(apple.replace('100: movi v0.4s, #0','100: st1.16b { v3 }, [sp]'))
+
         with self.assertRaises(ValueError):inspect(sample.replace('sdot','smull'))
         with self.assertRaises(ValueError):inspect(sample.replace('100: movi v0.4s, #0','100: str q3, [sp, #16]'))
         for store in ['str d3, [sp, #16]','stp d3, d4, [sp, #16]',
