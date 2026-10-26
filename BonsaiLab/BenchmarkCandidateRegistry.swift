@@ -16,11 +16,12 @@ struct BenchmarkConfiguration: Equatable, Sendable {
     let flags: Int
     func isValid(capabilities: Int) -> Bool {
         [8192, 16384, 32768].contains(context) && [8, 16, 24].contains(batch)
-            && ["Q4_0", "Q8_0"].contains(kv) && flags >= 0 && (flags <= 31 || flags == 32 || flags == 64 || flags == 128)
+            && ["Q4_0", "Q8_0"].contains(kv) && flags >= 0 && (flags <= 31 || flags == 32 || flags == 64 || flags == 128 || flags == 320)
             && flags & 24 != 24
             && flags & capabilities == flags
             && (flags & 1 == 0 || batch == 16) // custom Tensor tile needs rows divisible by 16
-            && (![32,64,128].contains(flags) || batch == 8)
+            && (![32,64,128,320].contains(flags) || batch == 8)
+            && (flags != 320 || (context == 16384 && batch == 8 && kv == "Q8_0"))
     }
     var identity: String { "\(flags):\(context):\(batch):\(kv)" }
     var json: [String: Any] {
@@ -36,8 +37,8 @@ enum BenchmarkSessionMode: String {
     var markerKey: String { self == .q8Baseline ? "BonsaiQ8BaselineInterrupted" : (self == .full ? "BonsaiBenchmarkInterrupted" : "BonsaiQuickPrefillInterrupted") }
     var initial: BenchmarkConfiguration { if self == .q8Baseline { return BenchmarkConfiguration(context: 16384, batch: 8, kv: "Q8_0", flags: 64) }; return BenchmarkConfiguration(context: 16384, batch: self == .full ? 16 : 8, kv: "Q4_0", flags: 0) }
     func permits(_ config: BenchmarkConfiguration) -> Bool {
-        if self == .q8Baseline { return config == initial }
-        return (self == .full && ![64,128].contains(config.flags)) || (self == .quickPrefill && config.context == 16384 && config.batch == 8 && config.kv == "Q4_0" && [0,4,8,16,32,64,128].contains(config.flags))
+        if self == .q8Baseline { return config == initial || config == BenchmarkConfiguration(context: 16384, batch: 8, kv: "Q8_0", flags: 320) }
+        return (self == .full && ![64,128,320].contains(config.flags)) || (self == .quickPrefill && config.context == 16384 && config.batch == 8 && config.kv == "Q4_0" && [0,4,8,16,32,64,128].contains(config.flags))
     }
     func operationTimeout(stage: String?) -> Double {
         self == .q8Baseline && stage == "capacity" ? 14_400 : 1800
@@ -54,7 +55,7 @@ enum BenchmarkCandidateRegistry {
     static let entries: [(String, Int)] = [
         ("SAFE_BASELINE", 0), ("PTQ1_TENSOROPS", 1),
         ("PTQ1_MV_R5", 2), ("PTQ1_BATCH_REUSE", 4),
-        ("PTQ1_CPU_LOOKUP", 8), ("PTQ1_CPU_NEON", 16), ("PTQ1_CPU_UNPACK_REUSE", 32), ("PTQ1_CPU_SDOT", 64), ("PTQ1_CPU_SDOT_PAIR", 128)
+        ("PTQ1_CPU_LOOKUP", 8), ("PTQ1_CPU_NEON", 16), ("PTQ1_CPU_UNPACK_REUSE", 32), ("PTQ1_CPU_SDOT", 64), ("PTQ1_CPU_SDOT_PAIR", 128), ("PTQ1_METAL_B8", 320)
     ]
     static func flags(named name: String) -> Int? {
         if name == "PTQ1_FUSED_KERNEL" { return 2 }
@@ -62,7 +63,7 @@ enum BenchmarkCandidateRegistry {
         return entries.first(where: { $0.0 == name })?.1
     }
     static func optimizationTarget(_ flags: Int) -> String {
-        flags == 2 ? "DECODE_FOCUSED" : [1,8,16,32,64,128].contains(flags) ? "PREFILL_FOCUSED" : "BALANCED"
+        flags == 2 ? "DECODE_FOCUSED" : [1,8,16,32,64,128,320].contains(flags) ? "PREFILL_FOCUSED" : "BALANCED"
     }
     static func description(_ flags: Int) -> String {
         switch flags {
@@ -75,6 +76,7 @@ enum BenchmarkCandidateRegistry {
         case 32: return "flag17 PTQ1 CPU Unpack Reuse：B8当前列共享128权重块解包；原整数点积与缩放顺序；仅初筛候选"
         case 64: return "PTQ1 CPU SDOT：保留基线解包、遍历和缩放顺序，仅替换整数点积；B8独立候选，收益待测"
         case 128: return "Build125双行SDOT：逐列共享Q8加载；奇数尾行回单行；仅Quick B8/counting off；收益待测"
+        case 320: return "PTQ1 Metal B8: fixed 16K/B8/Q8_0 M5 Quick candidate; native dispatch evidence required"
         default: return "组合候选：需独立ABBA验证"
         }
     }

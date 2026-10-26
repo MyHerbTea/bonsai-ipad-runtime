@@ -78,6 +78,51 @@ class IntegrationTests(unittest.TestCase):
                     self.assertIn(tournament.config_id(config),tournament.blacklist)
                     self.assertNotIn(tournament.config_id(CONFIG),tournament.blacklist)
 
+    def test_build127_delivery_contains_fixed_q8_metal_b8_testkit(self):
+        script=Path(__file__).resolve().parents[1]/'package_ptq1_oneclick.py'
+        spec=importlib.util.spec_from_file_location('package_build127_under_test',script)
+        package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);app=root/'build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app';app.mkdir(parents=True)
+            (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleVersion':'127'}));(app/'BonsaiLab').write_bytes(b'synthetic executable')
+            tools=root/'tools';kit=tools/'PTQ1_ONECLICK';kit.mkdir(parents=True)
+            for name in ('RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd','RUN_Q8_METAL_B8_QUICK.cmd','RUN_Q8_BASELINE.cmd','RUN_Q8_FULL.cmd','RUN_Q8_ACKNOWLEDGE.cmd'):
+                (kit/name).write_bytes(b'@echo off\necho synthetic\npause\n')
+            for name in ('ptq1_oneclick.py','kv_baseline.py','q8_metal_b8.py','README_BUILD127_CN.md','acknowledge_q8_interruption.py'):
+                (kit/name).write_text('synthetic test')
+            (tools/'ptq1_official_model.json').write_text(json.dumps(IDENTITY['official_model']))
+            for name in ('CI_TESTS.txt','BUILD127_POLICY.txt','BUILD127_TESTS.txt','build.log','llama-symbols.txt','app-symbols.txt','SYMBOL_IDENTITY.json'):
+                (root/'build'/name).write_text('SYNTHETIC TEST FIXTURE')
+            (root/'build/Bonsai-Build127-Symbols.zip').write_bytes(b'SYNTHETIC SYMBOL ARTIFACT')
+            for name in ('docs/superpowers/specs/2026-10-27-build127-q8-metal-b8-design.md',
+                         'docs/superpowers/plans/2026-10-27-build127-q8-metal-b8.md'):
+                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('synthetic source audit')
+            stream=io.BytesIO()
+            with zipfile.ZipFile(stream,'w') as archive:
+                for name in ('python.exe','python312.dll','python312.zip','_ssl.pyd','LICENSE.txt'):archive.writestr(name,b'synthetic')
+            data=stream.getvalue()
+            env={'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'127','PRISM_COMMIT':'d'*40,
+                 'GITHUB_REF_NAME':'codex/build127-q8-metal-b8','BUILD_NUMBER':'127'}
+            with patch.object(package,'ROOT',root),patch.object(package,'PYTHON_SHA',hashlib.sha256(data).hexdigest()),patch.object(package.urllib.request,'urlopen',return_value=contextlib.closing(io.BytesIO(data))),patch.dict(os.environ,env):
+                package.build()
+            full=root/'build/delivery/BONSAI_BUILD127_PTQ1_ONECLICK.zip'
+            standalone=root/'build/delivery/BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip'
+            with zipfile.ZipFile(full) as archive:
+                self.assertIsNone(archive.testzip())
+                names=archive.namelist()
+                prefix='Bonsai-Build127-PTQ1/'
+                self.assertIn(prefix+'RUN_Q8_METAL_B8_QUICK.cmd',names)
+                self.assertNotIn(prefix+'RUN_Q8_BASELINE.cmd',names)
+                self.assertNotIn(prefix+'RUN_Q8_FULL.cmd',names)
+                self.assertEqual(len([n for n in names if n.endswith('.ipa')]),1)
+            with zipfile.ZipFile(standalone) as archive:
+                self.assertIsNone(archive.testzip())
+                names=archive.namelist()
+                self.assertTrue(any(n.endswith('q8_metal_b8.py') for n in names))
+                self.assertTrue(any(n.endswith('README_BUILD127_CN.md') for n in names))
+                self.assertTrue(any(n.endswith('RUN_Q8_METAL_B8_QUICK.cmd') for n in names))
+                self.assertFalse(any(n.endswith('.ipa') for n in names))
+
     def test_delivery_contains_one_ipa_portable_runtime_and_identity(self):
         script=Path(__file__).resolve().parents[1]/'package_ptq1_oneclick.py'
         spec=importlib.util.spec_from_file_location('package_under_test',script)

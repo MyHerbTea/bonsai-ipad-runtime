@@ -1,8 +1,8 @@
-name: Bonsai Build126 Fixed Q8 Baseline
+name: Bonsai Build127 Fixed Q8 Metal B8 Quick Candidate
 
 on:
   push:
-    branches: [codex/build126-fixed-q8]
+    branches: [codex/build127-q8-metal-b8]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "126"
+  BUILD_NUMBER: "127"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -37,6 +37,10 @@ jobs:
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift tools/build126_q8_interruption_recovery_tests.swift -o "$RUNNER_TEMP/q8-recovery"
           "$RUNNER_TEMP/q8-recovery" | tee -a build/BUILD126_POLICY.txt
           python3 -m unittest discover -s tools/tests -p "test_build126*.py" -v 2>&1 | tee build/BUILD126_TESTS.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/build127_q8_metal_b8_policy_tests.swift -o "$RUNNER_TEMP/build127-policy"
+          "$RUNNER_TEMP/build127-policy" | tee build/BUILD127_POLICY.txt
+          python3 -m unittest discover -s tools/tests -p "test_build127_q8_metal_b8.py" -v 2>&1 | tee build/BUILD127_TESTS.txt
+          python3 tools/PTQ1_ONECLICK/q8_metal_b8.py --dry-run | tee -a build/BUILD127_TESTS.txt
           xcrun clang++ -std=c++17 -fsyntax-only -x objective-c++ -I BonsaiLab BonsaiLab/BenchmarkNativeBridge.mm
           python3 tools/PTQ1_ONECLICK/kv_baseline.py --dry-run
           python3 tools/documentation_consistency.py
@@ -51,7 +55,7 @@ jobs:
           python3 -m unittest discover -s tools/tests -p "test_build124_oneclick.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_abc.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_assembly.py" -v 2>&1 | tee -a build/CI_TESTS.txt
-          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/PTQ1_ONECLICK/kv_baseline.py tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py tools/package_ptq1_oneclick.py
+          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/PTQ1_ONECLICK/kv_baseline.py tools/PTQ1_ONECLICK/q8_metal_b8.py tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py tools/rc126_build127_patch_prism_q8_metal_b8.py tools/package_ptq1_oneclick.py
           python3 -m unittest discover -s tools/tests -p "test_abba_measurement.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_drift_detection.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_measurement_thresholds.py" -v 2>&1 | tee -a build/CI_TESTS.txt
@@ -128,6 +132,11 @@ jobs:
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build125_pair.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build118_cpu.py -k actual_patched_native_strategy_control -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 "$GITHUB_WORKSPACE/tools/rc126_build126_patch_kv_observation.py" "$PRISM_DIR"
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build127_patch_prism_q8_metal_b8.py" "$PRISM_DIR"
+          BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build127_q8_metal_b8.py -v 2>&1 | tee -a build/BUILD127_TESTS.txt
+          grep -q 'kernel_mul_mv_ext_ptq1_0_f32_r1_8' "$PRISM_DIR/ggml/src/ggml-metal/kernels/mul_mv.metal"
+          grep -q 'BonsaiNativeBenchmarkIncrement(12)' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-ops.cpp"
+          grep -q '| 256u' "$PRISM_DIR/ggml/src/ggml-metal/ggml-metal-device.m"
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -186,7 +195,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build126 IPA and native ABI
+      - name: Verify Build127 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -214,6 +223,7 @@ jobs:
             grep -q "_$symbol" build/llama-symbols.txt
           done
           grep -q 'kernel_mul_mv_ptq1_0_f32_bonsai_r5' build/llama-strings.txt
+          grep -q 'kernel_mul_mv_ext_ptq1_0_f32_r1_8' build/llama-strings.txt
           grep -q 'BUILD115_SCHED_ALLOC_EXHAUSTED' build/llama-strings.txt
           grep -q 'kernel_mul_mm_ptq1_tensorops_0_f32' build/llama-strings.txt
           # App wrappers are directly linked and legitimately localized by ld.
@@ -236,35 +246,38 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build126-SDOT-Analysis
+          name: Bonsai-Build127-Q8-Metal-B8-Analysis
           path: |
             build/sdot-analysis/
             build/pair-analysis/
             build/CI_TESTS.txt
             build/BUILD126_POLICY.txt
             build/BUILD126_TESTS.txt
+            build/BUILD127_POLICY.txt
+            build/BUILD127_TESTS.txt
+            build/llama-strings.txt
           if-no-files-found: warn
           retention-days: 30
 
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build126-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build127-Q8-Metal-B8-IPA-and-TestKit
           path: |
-            build/delivery/BONSAI_BUILD126_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD126_PTQ1_ONECLICK.zip.sha256
-            build/delivery/BONSAI_BUILD126_Q8_TESTKIT.zip
-            build/delivery/BONSAI_BUILD126_Q8_TESTKIT.zip.sha256
+            build/delivery/BONSAI_BUILD127_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD127_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip
+            build/delivery/BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build126-Symbols
+          name: Bonsai-Build127-Symbols
           path: |
-            build/Bonsai-Build126-Symbols.zip
-            build/Bonsai-Build126-Symbols.zip.sha256
+            build/Bonsai-Build127-Symbols.zip
+            build/Bonsai-Build127-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90

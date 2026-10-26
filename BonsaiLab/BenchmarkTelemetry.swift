@@ -42,7 +42,7 @@ final class BenchmarkTelemetry: @unchecked Sendable {
                 "interval_ms": 50, "max_thermal_state": thermal]
     }
     deinit { timer?.cancel() }
-    static func counters() -> [UInt64] { (0..<10).map { BonsaiBenchmarkCounter(Int32($0)) } }
+    static func counters() -> [UInt64] { (0..<14).map { BonsaiBenchmarkCounter(Int32($0)) } }
     static func operationEvidence() -> [[String: Any]] {
         (0..<2).compactMap { arm in
             let values = (0..<10).map { BonsaiBenchmarkObservation(Int32(arm * 10 + $0)) }

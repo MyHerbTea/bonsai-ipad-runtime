@@ -86,7 +86,7 @@ def verify_failure_archive(directory, identity):
     if not isinstance(marker, dict) or canonical(marker) != canonical(after.get("q8_prior_interrupted")):
         raise b.EvidenceError("Q8_MARKER_ARCHIVE_MISMATCH")
     if marker.get("context") != 16384 or marker.get("batch") != 8 or marker.get("ubatch") != 8 \
-        or marker.get("kv_k") != "Q8_0" or marker.get("kv_v") != "Q8_0" or marker.get("flags") != 64:
+        or marker.get("kv_k") != "Q8_0" or marker.get("kv_v") != "Q8_0" or marker.get("flags") not in (64, 320):
         raise b.EvidenceError("Q8_MARKER_SHAPE_MISMATCH")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
     for name, digest in manifest.items():

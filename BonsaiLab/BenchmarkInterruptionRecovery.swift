@@ -66,7 +66,7 @@ enum BenchmarkInterruptionRecovery {
               let expected = body["expected_interruption"] as? [String: Any], equal(marker, expected),
               marker["context"] as? Int == 16384, marker["batch"] as? Int == 8,
               marker["ubatch"] as? Int == 8, marker["kv_k"] as? String == "Q8_0",
-              marker["kv_v"] as? String == "Q8_0", marker["flags"] as? Int == 64,
+              marker["kv_v"] as? String == "Q8_0", [64, 320].contains(marker["flags"] as? Int ?? -1),
               marker["flash_attention"] as? Bool == true, marker["sequence_max"] as? Int == 1,
               marker["kv_reuse"] as? Bool == false,
               let interruption = marker["interruption_id"] as? String, UUID(uuidString: interruption) != nil,

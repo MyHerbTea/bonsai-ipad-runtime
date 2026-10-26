@@ -48,6 +48,14 @@ import Foundation
         precondition(BenchmarkInterruptionRecovery.equal(store.dictionary(forKey:"BonsaiQuickPrefillInterrupted")!,oldQuick))
         precondition(saved?["results_zip_sha256"] as? String == String(repeating:"b",count:64))
 
+        var candidateMarker = marker; candidateMarker["flags"] = 320
+        let candidateStore = defaults(); candidateStore.set(candidateMarker, forKey:"BonsaiQ8BaselineInterrupted")
+        let candidateRequest = payload(marker:candidateMarker)
+        let candidateAudit = try BenchmarkInterruptionRecovery.acknowledgeQ8(defaults:candidateStore,source:source,process:process,
+            body:candidateRequest,runtime:runtime,readAudit:{ _ in ["operator_acknowledgement":candidateRequest] },
+            saveAudit:{ _,_ in "candidate-audit" })
+        precondition(candidateAudit == "candidate-audit" && candidateStore.dictionary(forKey:"BonsaiQ8BaselineInterrupted") == nil)
+
         rejectedCase({ var x=$0; x.removeValue(forKey:"results_zip_sha256"); return x },"requires result archive hash")
         rejectedCase({ var x=$0; x["expected_process_id"]="stale"; return x },"rejects stale process")
         rejectedCase({ var x=$0; x["correction_sha256"]="bad"; return x },"rejects malformed correction hash")
@@ -72,6 +80,6 @@ import Foundation
                 body:payload(),runtime:runtime,readAudit:{ _ in nil },saveAudit:{ _,_ in "" })
         },"requires durable audit")
         precondition(saveStore.dictionary(forKey:"BonsaiQ8BaselineInterrupted") != nil)
-        print("Build126 Q8 interruption recovery: 9 cases PASS")
+        print("Q8 interruption recovery: baseline and Build127 candidate PASS; 9 rejection cases PASS")
     }
 }
