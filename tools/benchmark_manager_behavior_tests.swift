@@ -15,6 +15,7 @@ actor BonsaiEngine {
     func setStartFailure(_ value: Bool) { failStart = value }
     func benchmarkCapabilities() -> [String: Any] { ["capabilities": 7] }
     func acknowledgeQuickInterruption(_ body: [String: Any]) throws -> [String: Any] { ["acknowledged":true] }
+    func acknowledgeQ8Interruption(_ body: [String: Any]) throws -> [String: Any] { ["status":"acknowledged_preserved_q8_interruption"] }
     func benchmarkStart(mode: BenchmarkSessionMode = .full) throws -> [String: Any] {
         if failStart { throw LabError.invalidConfig("TEST_START_FAILURE") }
         return ["capabilities": 31, "mode": mode.rawValue]
