@@ -34,6 +34,13 @@ final class BenchmarkSessionManager: @unchecked Sendable {
             defer { control.finishOperation(error: nil); control.endSession(session: id) }
             return try await engine.acknowledgeQuickInterruption(body)
         }
+        if command == "acknowledge_q8_interruption" {
+            guard let id = control.beginSession(), control.beginOperation(session: id, request: command) else {
+                throw LabError.invalidConfig("BENCHMARK_OR_INFERENCE_BUSY")
+            }
+            defer { control.finishOperation(error: nil); control.endSession(session: id) }
+            return try await engine.acknowledgeQ8Interruption(body)
+        }
         if command == "start" {
             guard let mode = BenchmarkSessionMode(rawValue: body["mode"] as? String ?? "full"),
                   body["mode"] == nil || body["mode"] is String else {

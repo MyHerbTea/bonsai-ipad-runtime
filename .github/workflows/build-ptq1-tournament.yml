@@ -34,6 +34,8 @@ jobs:
           mkdir -p build
           xcrun swiftc -swift-version 5 BonsaiLab/KVCachePolicy.swift BonsaiLab/BenchmarkCandidateRegistry.swift tools/build126_kv_policy_tests.swift -o "$RUNNER_TEMP/kv-policy"
           "$RUNNER_TEMP/kv-policy" | tee build/BUILD126_POLICY.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift tools/build126_q8_interruption_recovery_tests.swift -o "$RUNNER_TEMP/q8-recovery"
+          "$RUNNER_TEMP/q8-recovery" | tee -a build/BUILD126_POLICY.txt
           python3 -m unittest discover -s tools/tests -p "test_build126*.py" -v 2>&1 | tee build/BUILD126_TESTS.txt
           xcrun clang++ -std=c++17 -fsyntax-only -x objective-c++ -I BonsaiLab BonsaiLab/BenchmarkNativeBridge.mm
           python3 tools/PTQ1_ONECLICK/kv_baseline.py --dry-run
@@ -49,7 +51,7 @@ jobs:
           python3 -m unittest discover -s tools/tests -p "test_build124_oneclick.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_abc.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_assembly.py" -v 2>&1 | tee -a build/CI_TESTS.txt
-          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/package_ptq1_oneclick.py
+          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/PTQ1_ONECLICK/kv_baseline.py tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py tools/package_ptq1_oneclick.py
           python3 -m unittest discover -s tools/tests -p "test_abba_measurement.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_drift_detection.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_measurement_thresholds.py" -v 2>&1 | tee -a build/CI_TESTS.txt

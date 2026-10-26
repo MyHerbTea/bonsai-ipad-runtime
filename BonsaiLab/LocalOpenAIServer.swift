@@ -2912,7 +2912,7 @@ final class LocalOpenAIServer: ObservableObject {
         }
         let command = String(request.path.dropFirst("/debug/benchmark/".count))
         guard (["capabilities", "status"].contains(command) && request.method == "GET")
-            || (["start", "configure", "run", "tokenize", "cancel", "restore", "acknowledge_interruption"].contains(command) && request.method == "POST") else {
+            || (["start", "configure", "run", "tokenize", "cancel", "restore", "acknowledge_interruption", "acknowledge_q8_interruption"].contains(command) && request.method == "POST") else {
             sendJSON(connection, status: 404, object: Self.errorObject("not_found", "Unknown benchmark endpoint.")); return
         }
         let body: [String: Any]

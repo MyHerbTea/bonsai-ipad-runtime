@@ -3925,6 +3925,22 @@ actor BonsaiEngine {
                 "legacy_batch16_quarantine_preserved":true]
     }
 
+    func acknowledgeQ8Interruption(_ body: [String: Any]) throws -> [String: Any] {
+        guard benchmarkOriginal == nil, model != nil, context != nil,
+              let evidence = BenchmarkTelemetry.evidence(),
+              let process = evidence["process_id"] as? String,
+              let native = evidence["native_context"] as? [String: Any] else {
+            throw LabError.invalidConfig("PRODUCTION_RUNTIME_REQUIRED_FOR_Q8_ACKNOWLEDGEMENT")
+        }
+        let audit = try BenchmarkInterruptionRecovery.acknowledgeQ8(defaults: .standard,
+            source: BonsaiCertificationBuildIdentity.sourceGitSHA, process: process, body: body,
+            runtime: native, readAudit: { try CrashDiagnostics.shared.readSnapshot($0) }) { reason, fields in
+                try CrashDiagnostics.shared.snapshot(reason: reason, acknowledgement: fields.mapValues(DiagnosticValue.from))
+            }
+        return ["status":"acknowledged_preserved_q8_interruption", "audit_snapshot_id":audit,
+                "audit_readback_verified":true, "inference_launched":false,
+                "results_zip_sha256":body["results_zip_sha256"] as? String ?? ""]
+    }
     func benchmarkStart(mode: BenchmarkSessionMode = .full) throws -> [String: Any] {
         guard benchmarkOriginal == nil, let model, context != nil else { throw LabError.noModel }
         let markers = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted", "BonsaiQ8BaselineInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }

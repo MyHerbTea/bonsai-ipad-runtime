@@ -45,4 +45,60 @@ enum BenchmarkInterruptionRecovery {
         defaults.removeObject(forKey: key)
         return audit
     }
+
+    static func acknowledgeQ8(defaults: UserDefaults, source: String, process: String,
+                              body: [String: Any], runtime: [String: Any]?,
+                              readAudit: ((String) throws -> [String: Any]?)?,
+                              saveAudit: (String, [String: Any]) throws -> String) throws -> String {
+        let key = "BonsaiQ8BaselineInterrupted"
+        let reason = "operator_reviewed_preserved_failed_result"
+        guard source.utf8.count == 40, source.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) || (65...70).contains($0) }),
+              UUID(uuidString: process) != nil,
+              body["reason"] as? String == reason,
+              body["expected_source_git_sha"] as? String == source,
+              let failureSource = body["failure_source_git_sha"] as? String, isGitSHA(failureSource),
+              failureSource == source || failureSource == "2d5b75430ac152da7b03c0e4f0edb18b1a9ac5f2",
+              body["expected_process_id"] as? String == process,
+              let archiveSHA = body["results_zip_sha256"] as? String, isSHA256(archiveSHA),
+              let reportSHA = body["report_sha256"] as? String, isSHA256(reportSHA),
+              let correctionSHA = body["correction_sha256"] as? String, isSHA256(correctionSHA),
+              let marker = defaults.dictionary(forKey: key),
+              let expected = body["expected_interruption"] as? [String: Any], equal(marker, expected),
+              marker["context"] as? Int == 16384, marker["batch"] as? Int == 8,
+              marker["ubatch"] as? Int == 8, marker["kv_k"] as? String == "Q8_0",
+              marker["kv_v"] as? String == "Q8_0", marker["flags"] as? Int == 64,
+              marker["flash_attention"] as? Bool == true, marker["sequence_max"] as? Int == 1,
+              marker["kv_reuse"] as? Bool == false,
+              let interruption = marker["interruption_id"] as? String, UUID(uuidString: interruption) != nil,
+              let runtime, runtime["context"] as? Int == 16384,
+              runtime["batch"] as? Int == 8, runtime["ubatch"] as? Int == 8,
+              runtime["kv_k"] as? String == "Q8_0", runtime["kv_v"] as? String == "Q8_0",
+              runtime["kv_policy"] as? String == "Q8_0",
+              runtime["kv_observation_source"] as? String == "allocated_native_kv_tensors",
+              runtime["kv_unified"] as? Bool == true,
+              let identity = runtime["model_identity"] as? [String: Any],
+              identity["sha256"] as? String == "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+              let readAudit else { throw Failure.acknowledgementRejected }
+
+        let auditFields: [String: Any] = ["operator_reason":reason, "source_git_sha":source,
+            "process_id":process, "failure_source_git_sha":failureSource, "acknowledged_marker":marker, "results_zip_sha256":archiveSHA,
+            "report_sha256":reportSHA, "correction_sha256":correctionSHA]
+        let audit = try saveAudit("operator_acknowledged_q8_interruption", auditFields)
+        guard !audit.isEmpty, let report = try readAudit(audit),
+              let fields = report["operator_acknowledgement"] as? [String: Any], equal(fields, auditFields),
+              let latest = defaults.dictionary(forKey: key), equal(latest, marker) else {
+            throw Failure.acknowledgementRejected
+        }
+        // The old result archive remains untouched; its marker is copied into a durable audit before unquarantining.
+        defaults.removeObject(forKey: key)
+        return audit
+    }
+
+    private static func isGitSHA(_ value: String) -> Bool {
+        value.utf8.count == 40 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) || (65...70).contains($0) }
+    }
+
+    private static func isSHA256(_ value: String) -> Bool {
+        value.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) || (65...70).contains($0) }
+    }
 }

@@ -58,6 +58,7 @@ def build():
         "testkit_source_sha": source, "build_number": number, "unsigned_ipa_sha256": sha(ipa),
         "prism_upstream_sha": os.environ["PRISM_COMMIT"], "workflow_run_id": os.environ["GITHUB_RUN_ID"],
         "official_model": json.loads((ROOT / "tools/ptq1_official_model.json").read_text(encoding="utf-8")),
+        "acknowledge_failure_source_shas": ["2d5b75430ac152da7b03c0e4f0edb18b1a9ac5f2"] if number == "126" else [],
         "python_archive_url": PYTHON_URL, "python_archive_sha256": PYTHON_SHA,
         "symbols_artifact": {"file": f"Bonsai-Build{number}-Symbols.zip",
             "sha256": sha(ROOT / f"build/Bonsai-Build{number}-Symbols.zip"),
@@ -94,7 +95,7 @@ def build():
             f"# Build126 固定 Q8_0 候选\n\n源码：{source}\n\n"
             f"CI：https://github.com/MyHerbTea/bonsai-ipad-runtime/actions/runs/{os.environ['GITHUB_RUN_ID']}\n\n"
             f"IPA SHA256：{sha(ipa)}\n\n"
-            "入口RUN_Q8_BASELINE.cmd；Full独立入口RUN_Q8_FULL.cmd。先读README_BUILD126_CN.md。\n"
+            "入口RUN_Q8_BASELINE.cmd；Full独立入口RUN_Q8_FULL.cmd；中断标记仅可经RUN_Q8_ACKNOWLEDGE.cmd显式归档确认。先读README_BUILD126_CN.md。\n"
             "实际已执行/skip以CI_EVIDENCE/CI_TESTS.txt为准，skip不计通过。\n"
             "M5真机NOT_RUN；生产默认不变；32K未开放；未晋级Certified Stable。\n", encoding="utf-8")
         (kit / "BUILD_INFO.txt").write_text(
@@ -113,6 +114,8 @@ def build():
         for name, digest in manifest.items():
             assert hashlib.sha256(archive.read(kit.name + "/" + name)).hexdigest() == digest, name
         assert any(name.endswith("RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd") for name in archive.namelist())
+        if number == "126":
+            assert any(name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
         assert len([name for name in archive.namelist() if name.endswith(".ipa")]) == 1
     Path(str(output) + ".sha256").write_text(sha(output) + "  " + output.name + "\n", encoding="utf-8")
     if number == "126":
@@ -125,6 +128,7 @@ def build():
             archive.writestr(kit.name + "/DELIVERY_SHA256.json", json.dumps(separate, indent=2) + "\n")
         with zipfile.ZipFile(standalone) as archive:
             assert archive.testzip() is None
+            assert any(name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
             for name, digest in separate.items():
                 assert hashlib.sha256(archive.read(kit.name + "/" + name)).hexdigest() == digest
         Path(str(standalone) + ".sha256").write_text(sha(standalone) + "  " + standalone.name + "\n")

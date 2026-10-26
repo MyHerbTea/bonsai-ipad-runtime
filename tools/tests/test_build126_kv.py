@@ -77,7 +77,7 @@ class KVValidationTests(unittest.TestCase):
             (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleVersion':'126'}))
             (app/'BonsaiLab').write_bytes(b'SYNTHETIC APP')
             kit=root/'tools/PTQ1_ONECLICK';kit.mkdir(parents=True)
-            for name in ('RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd','RUN_Q8_BASELINE.cmd','RUN_Q8_FULL.cmd'):
+            for name in ('RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd','RUN_Q8_BASELINE.cmd','RUN_Q8_FULL.cmd','RUN_Q8_ACKNOWLEDGE.cmd'):
                 (kit/name).write_bytes(b'@echo off\n')
             (kit/'kv_baseline.py').write_text('# synthetic')
             (root/'tools/ptq1_official_model.json').write_text('{"sha256":"model"}')
@@ -100,6 +100,7 @@ class KVValidationTests(unittest.TestCase):
                     manifest=json.loads(z.read(base+'DELIVERY_SHA256.json'))
                     for file,sha in manifest.items():self.assertEqual(hashlib.sha256(z.read(base+file)).hexdigest(),sha)
                     self.assertIn(base+'RUN_Q8_BASELINE.cmd',z.namelist())
+                    self.assertIn(base+'RUN_Q8_ACKNOWLEDGE.cmd',z.namelist())
                     self.assertIn(base+'CI_EVIDENCE/BUILD126_TESTS.txt',z.namelist())
                     self.assertIn('NOT_RUN',z.read(base+'BUILD126_DELIVERY_REPORT_CN.md').decode())
 
