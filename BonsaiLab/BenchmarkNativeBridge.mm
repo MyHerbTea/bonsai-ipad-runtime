@@ -1,5 +1,16 @@
 #include "BenchmarkNativeBridge.h"
 #include <dlfcn.h>
+extern "C" int32_t BonsaiKVCacheType(void * context, int32_t which) {
+    using Fn=int32_t(*)(void *,int32_t);
+    static Fn fn=reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT,"BonsaiNativeKVCacheType"));
+    return fn ? fn(context,which) : -1;
+}
+extern "C" const char * BonsaiContextFailure(void) {
+    using Fn=const char *(*)(void);
+    static Fn fn=reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT,"BonsaiNativeContextFailure"));
+    return fn ? fn() : "NATIVE_FAILURE_DIAGNOSTIC_UNAVAILABLE";
+}
+
 
 extern "C" bool BonsaiCPUSamplingAvailable(void) {
     return dlsym(RTLD_DEFAULT,"BonsaiNativeCPUSamplingConfigure") && dlsym(RTLD_DEFAULT,"BonsaiNativeCPUSamplingCounter");

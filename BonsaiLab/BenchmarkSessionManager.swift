@@ -39,7 +39,7 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                   body["mode"] == nil || body["mode"] is String else {
                 throw LabError.invalidConfig("INVALID_BENCHMARK_MODE")
             }
-            guard let id = control.beginSession(), control.beginOperation(session: id, request: "start") else {
+            guard let id = control.beginSession(mode: mode), control.beginOperation(session: id, request: "start") else {
                 throw LabError.invalidConfig("BENCHMARK_OR_INFERENCE_BUSY")
             }
             do {
@@ -50,7 +50,7 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                 return result
             } catch {
                 // A failed restore retains the lease to prevent unsafe ordinary inference.
-                let restored = (try? await engine.benchmarkRestore(preserveInterrupted: mode == .quickPrefill)) != nil
+                let restored = (try? await engine.benchmarkRestore(preserveInterrupted: mode != .full)) != nil
                 control.finishOperation(error: String(describing: error))
                 if restored { control.endSession(session: id) }
                 throw error
@@ -64,7 +64,8 @@ final class BenchmarkSessionManager: @unchecked Sendable {
             return ["schema": 1, "state": control.snapshot]
         }
         guard ["configure", "run", "tokenize", "restore"].contains(command),
-              control.beginOperation(session: id, request: body["request_id"] as? String ?? command) else {
+              control.beginOperation(session: id, request: body["request_id"] as? String ?? command,
+                  stage: command == "run" ? body["stage"] as? String : nil) else {
             throw LabError.invalidConfig("BENCHMARK_BUSY_OR_UNKNOWN_COMMAND")
         }
         do {

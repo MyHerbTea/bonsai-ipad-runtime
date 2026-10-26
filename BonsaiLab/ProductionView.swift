@@ -926,6 +926,7 @@ private enum RC1232PerformanceDiagnostics {
     private var apiRuntimeProfile = "accelerated"
     @AppStorage("BonsaiRC1235APIContextProfile")
     private var apiContextProfile = "4096"
+    @AppStorage("BonsaiBuild126APIKVPolicy") private var apiKVPolicy = "legacy"
 
     @State private var output = ""
     @State private var status = "准备就绪"
@@ -1018,7 +1019,8 @@ private enum RC1232PerformanceDiagnostics {
                 forKey: "BonsaiRC1233ActiveAPIRuntimeProfile"
             ) ?? "none"
 
-        return activeContext == selectedAPIContextValue
+        return (defaults.string(forKey: "BonsaiBuild126ActiveAPIKVPolicy") ?? "legacy") == apiKVPolicy
+            && activeContext == selectedAPIContextValue
             && activeProfile == selectedAPIRuntimeProfileValue
     }
 
@@ -1032,7 +1034,7 @@ private enum RC1232PerformanceDiagnostics {
                                 .font(.title2.bold())
                             Text("本地 · 离线 · Vision")
                                 .foregroundStyle(.secondary)
-                            Text("1.0 · RC1.26 Build116 PTQ1 Tournament")
+                            Text("1.0 · RC1.26 Build126 Q8 Candidate")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1565,6 +1567,14 @@ private enum RC1232PerformanceDiagnostics {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
+                        Picker("KV Cache", selection: $apiKVPolicy) {
+                            Text("兼容策略（原默认）").tag("legacy")
+                            Text("固定 Q8_0 · 候选待验证").tag("Q8_0")
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(apiServer.isRunning || busy || benchmarkSessionActive)
+                        Text("固定 Q8_0 仅在创建或重建上下文时生效；资源不足明确失败，不自动降为 Q4_0。PTQ1_0 是主模型权重量化。")
+                            .font(.footnote)
                         Picker(
                             "API Context",
                             selection: $apiContextProfile
@@ -1574,18 +1584,18 @@ private enum RC1232PerformanceDiagnostics {
                             Text("1024 · legacy").tag("1024")
                             Text("2048 · baseline").tag("2048")
                             Text("3072 · transition").tag("3072")
-                            Text("4096 · verified F16").tag("4096")
-                            Text("6144 · Q8 KV").tag("6144")
-                            Text("8192 · Q8 KV").tag("8192")
-                            Text("16K · Q4 KV").tag("16384")
-                            Text("32K · Q4 + mmap").tag("32768")
-                            Text("64K · Q4 + storage").tag("65536")
+                            Text("4096 · baseline").tag("4096")
+                            Text("6144").tag("6144")
+                            Text("8192").tag("8192")
+                            Text("16K").tag("16384")
+                            Text("32K").tag("32768")
+                            Text("64K").tag("65536")
                         }
                         .pickerStyle(.menu)
-                        .disabled(apiServer.isRunning)
+                        .disabled(apiServer.isRunning || busy || benchmarkSessionActive)
 
                         Text(
-                            "Build 79 Long Context：4096 只是回归基线。6144/8192 使用 Q8 KV；16K/32K/64K 使用 Q4 KV。32K/64K 逐步减少 Metal 常驻层，让更多 GGUF 权重保持 file-backed mmap，由 SSD 作为可回收页的后备来源。"
+                            "兼容策略保持旧行为：≤4096 F16、6144/8192 Q8_0、≥16K Q4_0；固定 Q8_0 与容量独立。容量档位不代表真机稳定认证。"
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -3643,6 +3653,7 @@ private enum RC1232PerformanceDiagnostics {
             return
         }
 
+        let selectedKVPolicy: KVCachePolicy = apiKVPolicy == "Q8_0" ? .q8 : .legacy
         let selectedRuntime = runtime
         let selectedAPIRuntimeProfile =
             selectedAPIRuntimeProfileValue
@@ -3666,6 +3677,7 @@ private enum RC1232PerformanceDiagnostics {
             allowNAXCandidate: allowNAXCandidateForModel
         )
         apiRuntime.context = selectedAPIContext
+        apiRuntime.kvCachePolicy = selectedKVPolicy
         apiRuntime.batch = 8
         apiRuntime.ubatch = 8
 
@@ -3783,6 +3795,7 @@ applyBuild82LongContextPolicy(
                 let after =
                     await sharedEngine.apiAdmissionSnapshot()
 
+                UserDefaults.standard.set(selectedKVPolicy.rawValue, forKey: "BonsaiBuild126ActiveAPIKVPolicy")
                 UserDefaults.standard.set(
                     selectedAPIContext,
                     forKey:
@@ -3841,6 +3854,7 @@ applyBuild82LongContextPolicy(
 
         let selectedMLXVisionWeightsURL =
             mlxVisionWeightsURL
+        let selectedKVPolicy: KVCachePolicy = apiKVPolicy == "Q8_0" ? .q8 : .legacy
         let selectedRuntime = runtime
         let selectedAPIRuntimeProfile =
             selectedAPIRuntimeProfileValue
@@ -3897,10 +3911,10 @@ applyBuild82LongContextPolicy(
                 : selectedModelURL.pathExtension.uppercased()
         )
         busy = true
-        status = "正在启动 Build112 B16 默认 API Runtime…"
+        status = "正在启动 API Runtime…"
         detail = """
         Build 60 的 API/视觉路径保持不变。
-        Build 82 保留已验证 16K 路径；32K/64K 改为统一 Metal 后端：Q4 KV、mmap、全层 Metal、KQV/Op offload 与小 batch，避免 partial-offload graph split。
+        KV 策略：\(selectedKVPolicy.rawValue)。固定 Q8_0 不按容量降级；容量选择不代表稳定认证。其余后端参数沿用现有路径。
         /v1/models 会公布当前 context_length、vision 与 unsupported tool/reasoning 能力。
         """
 
@@ -3945,6 +3959,7 @@ applyBuild82LongContextPolicy(
                     allowNAXCandidate: allowNAXCandidateForModel
                 )
                 apiRuntime.context = selectedAPIContext
+                apiRuntime.kvCachePolicy = selectedKVPolicy
                 apiRuntime.batch = 8
                 apiRuntime.ubatch = 8
 
@@ -4028,6 +4043,7 @@ applyBuild82LongContextPolicy(
                 B16RuntimeEvidence.registerVisionAsset(selectedMLXVisionWeightsURL)
                 RC126APIStartupLifecycle.mark("MODEL_READY")
 
+                UserDefaults.standard.set(selectedKVPolicy.rawValue, forKey: "BonsaiBuild126ActiveAPIKVPolicy")
                 UserDefaults.standard.set(
                     selectedAPIContext,
                     forKey:

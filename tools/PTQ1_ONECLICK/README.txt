@@ -1,3 +1,5 @@
+Build126当前入口：RUN_Q8_BASELINE.cmd，16K + 固定Q8_0。先读README_BUILD126_CN.md。Quick/Full分别标记，均未执行真机。以下Build125及更早说明为历史。
+
 Build125当前入口：双击 RUN_PREFILL_COMPARE.cmd，详见 README_BUILD125_CN.md。A原始/B单行/C双行；各一次预热+ABCCBA共9请求，主要比较C/B。以下旧说明为历史。
 
 Build124 当前任务：双击 RUN_PREFILL_COMPARE.cmd，输入API地址及必要Key。

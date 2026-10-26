@@ -77,7 +77,6 @@ actor BonsaiEngine {
     private var benchmarkOriginal: RuntimeConfig?
     private var benchmarkMode: BenchmarkSessionMode = .full
     private var benchmarkConfig: BenchmarkConfiguration?
-    private var benchmarkKV: String?
     private var benchmarkInvocation = false
     private var benchmarkAllocations = 0
     private var benchmarkReuses = 0
@@ -653,6 +652,11 @@ actor BonsaiEngine {
         hasModelScope = scoped
         mark("MODEL_04_FILE_SCOPE_DONE")
 
+        let coldLoadTelemetry = BenchmarkTelemetry()
+        defer {
+            UserDefaults.standard.set(coldLoadTelemetry.finish(), forKey: "BonsaiBuild126ColdLoadMemory")
+            UserDefaults.standard.synchronize()
+        }
         var modelParams = llama_model_default_params()
         modelParams.n_gpu_layers = Int32(config.gpuLayers)
         UserDefaults.standard.set(config.gpuLayers, forKey: "BonsaiBuild82EngineModelGPULayers")
@@ -744,28 +748,7 @@ actor BonsaiEngine {
             ? LLAMA_FLASH_ATTN_TYPE_ENABLED
             : LLAMA_FLASH_ATTN_TYPE_DISABLED
 
-        // Build 79: reduce the only n_ctx-linear state first instead of
-        // accepting 4096 as the device ceiling.
-        let build79KVCacheType: String
-        if config.context >= 16_384 {
-            contextParams.type_k = GGML_TYPE_Q4_0
-            contextParams.type_v = GGML_TYPE_Q4_0
-            contextParams.flash_attn_type =
-                LLAMA_FLASH_ATTN_TYPE_ENABLED
-            build79KVCacheType = "Q4_0"
-        } else if config.context > 4096 {
-            contextParams.type_k = GGML_TYPE_Q8_0
-            contextParams.type_v = GGML_TYPE_Q8_0
-            contextParams.flash_attn_type =
-                LLAMA_FLASH_ATTN_TYPE_ENABLED
-            build79KVCacheType = "Q8_0"
-        } else {
-            build79KVCacheType = "F16"
-        }
-        UserDefaults.standard.set(
-            build79KVCacheType,
-            forKey: "BonsaiBuild79KVCacheType"
-        )
+        let selectedKV = configureKV(&contextParams, config: config)
         UserDefaults.standard.set(
             config.context,
             forKey: "BonsaiBuild79RequestedContext"
@@ -825,7 +808,15 @@ actor BonsaiEngine {
             mark("MODEL_07_CONTEXT_CREATE_NULL")
             llama_model_free(loadedModel)
             stopModelScope()
-            throw LabError.contextCreateFailed
+            throw kvCreationFailure(config: config, stage: "load_model")
+        }
+        let observedKV = observedKVTypes(loadedContext)
+        recordObservedKV(observedKV)
+        if selectedKV == .q8 && (observedKV.0 != "Q8_0" || observedKV.1 != "Q8_0") {
+            llama_free(loadedContext)
+            llama_model_free(loadedModel)
+            stopModelScope()
+            throw kvCreationFailure(config: config, stage: "verify_allocated_kv", reason: "Q8_ALLOCATION_TYPE_UNPROVEN")
         }
         recordBuild113NativeContextCreated(
             context: Int(llama_n_ctx(loadedContext)),
@@ -836,12 +827,15 @@ actor BonsaiEngine {
         enableBuild113NaxRouteTrace(contextLength: config.context)
         mark("MODEL_08_CONTEXT_CREATE_DONE")
         B16RuntimeEvidence.created(parameters: [
-            "context": Int(contextParams.n_ctx),
-            "batch": Int(contextParams.n_batch),
-            "ubatch": Int(contextParams.n_ubatch),
+            "context": Int(llama_n_ctx(loadedContext)),
+            "batch": Int(llama_n_batch(loadedContext)),
+            "ubatch": Int(llama_n_ubatch(loadedContext)),
             "sequence_max": Int(contextParams.n_seq_max),
-            "kv_k": contextParams.type_k == GGML_TYPE_Q4_0 ? "Q4_0" : (contextParams.type_k == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
-            "kv_v": contextParams.type_v == GGML_TYPE_Q4_0 ? "Q4_0" : (contextParams.type_v == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
+            "kv_k": observedKV.0,
+            "kv_v": observedKV.1,
+            "kv_policy": config.kvCachePolicy.rawValue,
+            "kv_requested": selectedKV.rawValue,
+            "kv_observation_source": "allocated_native_kv_tensors",
             "gpu_layers": config.gpuLayers,
             "flash_attention": contextParams.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_ENABLED,
             "threads": Int(contextParams.n_threads),
@@ -3269,6 +3263,51 @@ actor BonsaiEngine {
         }
     }
 
+    private func configureKV(_ params: inout llama_context_params, config: RuntimeConfig) -> KVCachePolicy {
+        let selected = config.kvCachePolicy.resolved(context: config.context)
+        UserDefaults.standard.set("UNAVAILABLE_CREATING", forKey: "BonsaiBuild79KVCacheType")
+        params.type_k = selected == .q8 ? GGML_TYPE_Q8_0 : (selected == .q4 ? GGML_TYPE_Q4_0 : GGML_TYPE_F16)
+        params.type_v = params.type_k
+        if selected != .f16 { params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED }
+        let attempt: [String: Any] = ["context": config.context, "kv_policy": config.kvCachePolicy.rawValue,
+            "kv_requested": selected.rawValue, "batch": config.batch, "ubatch": config.ubatch,
+            "at": Date().timeIntervalSince1970, "resources": String(describing: currentSystemDiagnostics())]
+        UserDefaults.standard.set(attempt, forKey: "BonsaiBuild126KVAttempt")
+        UserDefaults.standard.synchronize()
+        recordAPIStartupNativeTrace("BUILD126_KV_ATTEMPT context=\(config.context) kv=\(selected.rawValue)")
+        return selected
+    }
+
+    private func recordObservedKV(_ types: (String, String)) {
+        UserDefaults.standard.set(types.0 == types.1 ? types.0 : "K=\(types.0),V=\(types.1)", forKey: "BonsaiBuild79KVCacheType")
+        UserDefaults.standard.synchronize()
+        recordAPIStartupNativeTrace("BUILD126_KV_ALLOCATED k=\(types.0) v=\(types.1)")
+    }
+
+    private func observedKVTypes(_ context: OpaquePointer) -> (String, String) {
+        func name(_ value: Int32) -> String {
+            switch value {
+            case Int32(GGML_TYPE_F16.rawValue): return "F16"
+            case Int32(GGML_TYPE_Q8_0.rawValue): return "Q8_0"
+            case Int32(GGML_TYPE_Q4_0.rawValue): return "Q4_0"
+            default: return "UNAVAILABLE_\(value)"
+            }
+        }
+        return (name(BonsaiKVCacheType(UnsafeMutableRawPointer(context), 0)),
+                name(BonsaiKVCacheType(UnsafeMutableRawPointer(context), 1)))
+    }
+
+    private func kvCreationFailure(config: RuntimeConfig, stage: String, reason: String? = nil) -> LabError {
+        let cause = reason ?? String(cString: BonsaiContextFailure())
+        let fields: [String: Any] = ["stage": stage, "context": config.context,
+            "kv_policy": config.kvCachePolicy.rawValue, "kv_requested": config.kvCachePolicy.resolved(context: config.context).rawValue,
+            "reason": cause, "resources": String(describing: currentSystemDiagnostics()), "at": Date().timeIntervalSince1970]
+        UserDefaults.standard.set(fields, forKey: "BonsaiBuild126LastKVFailure")
+        UserDefaults.standard.synchronize()
+        CrashDiagnostics.shared.recordTimelineEvent("BUILD126_KV_CREATE_FAILED", details: fields.mapValues(DiagnosticValue.from))
+        return LabError.invalidConfig("KV_CONTEXT_CREATE_FAILED stage=\(stage) context=\(config.context) kv=\(config.kvCachePolicy.resolved(context: config.context).rawValue) reason=\(cause). No Q4 downgrade; see native trace and resource snapshot.")
+    }
+
     private func makeContext(
         model: OpaquePointer,
         config: RuntimeConfig
@@ -3292,22 +3331,7 @@ actor BonsaiEngine {
             ? LLAMA_FLASH_ATTN_TYPE_ENABLED
             : LLAMA_FLASH_ATTN_TYPE_DISABLED
 
-        if validated.context >= 16_384 {
-            params.type_k = GGML_TYPE_Q4_0
-            params.type_v = GGML_TYPE_Q4_0
-            params.flash_attn_type =
-                LLAMA_FLASH_ATTN_TYPE_ENABLED
-        } else if validated.context > 4096 {
-            params.type_k = GGML_TYPE_Q8_0
-            params.type_v = GGML_TYPE_Q8_0
-            params.flash_attn_type =
-                LLAMA_FLASH_ATTN_TYPE_ENABLED
-        }
-
-        if let benchmarkKV {
-            params.type_k = benchmarkKV == "Q8_0" ? GGML_TYPE_Q8_0 : GGML_TYPE_Q4_0
-            params.type_v = params.type_k
-        }
+        let selectedKV = configureKV(&params, config: validated)
 
         let cpuCount = ProcessInfo.processInfo.processorCount
         let build81ThreadCap: Int
@@ -3339,7 +3363,13 @@ actor BonsaiEngine {
         )
         defer { endBuild84NativeContextTrace() }
         guard let created = llama_init_from_model(model, params) else {
-            throw LabError.contextCreateFailed
+            throw kvCreationFailure(config: validated, stage: "make_context")
+        }
+        let observedKV = observedKVTypes(created)
+        recordObservedKV(observedKV)
+        if selectedKV == .q8 && (observedKV.0 != "Q8_0" || observedKV.1 != "Q8_0") {
+            llama_free(created)
+            throw kvCreationFailure(config: validated, stage: "verify_allocated_kv", reason: "Q8_ALLOCATION_TYPE_UNPROVEN")
         }
         recordBuild113NativeContextCreated(
             context: Int(llama_n_ctx(created)),
@@ -3349,12 +3379,15 @@ actor BonsaiEngine {
         )
         enableBuild113NaxRouteTrace(contextLength: validated.context)
         B16RuntimeEvidence.created(parameters: [
-            "context": Int(params.n_ctx),
-            "batch": Int(params.n_batch),
-            "ubatch": Int(params.n_ubatch),
+            "context": Int(llama_n_ctx(created)),
+            "batch": Int(llama_n_batch(created)),
+            "ubatch": Int(llama_n_ubatch(created)),
             "sequence_max": Int(params.n_seq_max),
-            "kv_k": params.type_k == GGML_TYPE_Q4_0 ? "Q4_0" : (params.type_k == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
-            "kv_v": params.type_v == GGML_TYPE_Q4_0 ? "Q4_0" : (params.type_v == GGML_TYPE_Q8_0 ? "Q8_0" : "F16"),
+            "kv_k": observedKV.0,
+            "kv_v": observedKV.1,
+            "kv_policy": validated.kvCachePolicy.rawValue,
+            "kv_requested": selectedKV.rawValue,
+            "kv_observation_source": "allocated_native_kv_tensors",
             "gpu_layers": validated.gpuLayers,
             "flash_attention": params.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_ENABLED,
             "threads": Int(params.n_threads),
@@ -3868,7 +3901,11 @@ actor BonsaiEngine {
                 "actual": benchmarkConfig?.json as Any? ?? NSNull(),
                 "rejected_configurations": Array(benchmarkRejected),
                 "prior_interrupted": UserDefaults.standard.dictionary(forKey: "BonsaiBenchmarkInterrupted") as Any? ?? NSNull(),
+                "q8_prior_interrupted": UserDefaults.standard.dictionary(forKey: "BonsaiQ8BaselineInterrupted") as Any? ?? NSNull(),
                 "quick_prior_interrupted": UserDefaults.standard.dictionary(forKey: "BonsaiQuickPrefillInterrupted") as Any? ?? NSNull(),
+                "kv_cold_load_memory": UserDefaults.standard.dictionary(forKey: "BonsaiBuild126ColdLoadMemory") as Any? ?? NSNull(),
+                "kv_last_failure": UserDefaults.standard.dictionary(forKey: "BonsaiBuild126LastKVFailure") as Any? ?? NSNull(),
+                "kv_attempt": UserDefaults.standard.dictionary(forKey: "BonsaiBuild126KVAttempt") as Any? ?? NSNull(),
                 "session_mode": benchmarkMode.rawValue, "cpu_dot_abi_available": BonsaiCPUAvailable()]
     }
 
@@ -3890,9 +3927,9 @@ actor BonsaiEngine {
 
     func benchmarkStart(mode: BenchmarkSessionMode = .full) throws -> [String: Any] {
         guard benchmarkOriginal == nil, let model, context != nil else { throw LabError.noModel }
-        let markers = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }
+        let markers = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted", "BonsaiQ8BaselineInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }
         guard !(mode == .full && !markers.isEmpty),
-              !(mode == .quickPrefill && UserDefaults.standard.dictionary(forKey: mode.markerKey) != nil),
+              !(mode != .full && UserDefaults.standard.dictionary(forKey: mode.markerKey) != nil),
               !BenchmarkSessionMode.quarantined(mode.initial, markers: markers) else {
             throw LabError.invalidConfig("BASELINE_QUARANTINED_DO_NOT_REPEAT_FAULT")
         }
@@ -3927,7 +3964,7 @@ actor BonsaiEngine {
         do {
             return try benchmarkConfigure(mode.initial)
         } catch {
-            try? benchmarkRestore(preserveInterrupted: mode == .quickPrefill)
+            try? benchmarkRestore(preserveInterrupted: mode != .full)
             throw error
         }
     }
@@ -3941,24 +3978,24 @@ actor BonsaiEngine {
             throw LabError.invalidConfig("BENCHMARK_CONFIGURATION_UNAVAILABLE")
         }
         if candidate == benchmarkConfig, context != nil { return benchmarkCapabilities() }
-        let quarantines = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }
+        let quarantines = ["BonsaiBenchmarkInterrupted", "BonsaiQuickPrefillInterrupted", "BonsaiQ8BaselineInterrupted"].compactMap { UserDefaults.standard.dictionary(forKey: $0) }
         guard !BenchmarkSessionMode.quarantined(candidate, markers: quarantines) else {
             throw LabError.invalidConfig("CONFIGURATION_QUARANTINED")
         }
         // Persist the attempted shape before native allocation, so a process death
         // points to the failing attempt rather than the previously working arm.
         var pendingMarker = candidate.json
-        if benchmarkMode == .quickPrefill { pendingMarker["interruption_id"] = UUID().uuidString }
+        if benchmarkMode != .full { pendingMarker["interruption_id"] = UUID().uuidString }
         UserDefaults.standard.set(pendingMarker, forKey: benchmarkMode.markerKey)
         let configureTelemetry = BenchmarkTelemetry()
         let previous = benchmarkConfig
-        if let context { llama_synchronize(context); llama_free(context); self.context = nil }
+        if let context { B16RuntimeEvidence.invalidate(); llama_synchronize(context); llama_free(context); self.context = nil }
         clearTextKVReuseState(reason: "benchmark_switch")
         apiVisionPrefixReuseKey = nil; apiVisionPrefixPositions = 0
         BonsaiClearVisionPrefixKVSnapshot()
-        benchmarkKV = candidate.kv
         var runtime = benchmarkOriginal!
         runtime.context = candidate.context; runtime.batch = candidate.batch; runtime.ubatch = candidate.batch
+        runtime.kvCachePolicy = candidate.kv == "Q8_0" ? .q8 : .q4
         runtime.flashAttention = true; runtime.kvUnified = false; runtime.swaFull = false
         runtime.offloadKQV = true; runtime.opOffload = true
         do {
@@ -3982,7 +4019,7 @@ actor BonsaiEngine {
         } catch {
             _ = configureTelemetry.finish()
             benchmarkRejected.insert(candidate.identity)
-            if let context { llama_synchronize(context); llama_free(context); self.context = nil }
+            if let context { B16RuntimeEvidence.invalidate(); llama_synchronize(context); llama_free(context); self.context = nil }
             benchmarkConfig = nil
             // Roll back once to the previously working shape; never retry the failed shape.
             if let previous, previous != candidate { _ = try? benchmarkConfigure(previous) }
@@ -3993,13 +4030,12 @@ actor BonsaiEngine {
     @discardableResult
     func benchmarkRestore(preserveInterrupted: Bool = false) throws -> [String: Any] {
         guard let original = benchmarkOriginal, let model else { return benchmarkCapabilities() }
-        if let context { llama_synchronize(context); llama_free(context); self.context = nil }
+        if let context { B16RuntimeEvidence.invalidate(); llama_synchronize(context); llama_free(context); self.context = nil }
         clearTextKVReuseState(reason: "benchmark_restore")
         guard BonsaiBenchmarkConfigure(-1) == 1 else { throw LabError.invalidConfig("NATIVE_RESTORE_FAILED") }
-        benchmarkKV = nil
         context = try makeContext(model: model, config: original)
         appliedRuntime = original; benchmarkOriginal = nil; benchmarkConfig = nil
-        if !(preserveInterrupted && benchmarkMode == .quickPrefill) {
+        if !(preserveInterrupted && benchmarkMode != .full) {
             UserDefaults.standard.removeObject(forKey: benchmarkMode.markerKey)
         }
         benchmarkMode = .full
@@ -4016,6 +4052,12 @@ actor BonsaiEngine {
         maxTokens: Int, countingEnabled: Bool = true, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] {
         guard benchmarkOriginal != nil, let config = benchmarkConfig, context != nil else {
             throw LabError.invalidConfig("BENCHMARK_NOT_CONFIGURED")
+        }
+        if config.kv == "Q8_0", let context {
+            let observed = observedKVTypes(context)
+            guard observed.0 == "Q8_0", observed.1 == "Q8_0" else {
+                throw kvCreationFailure(config: appliedRuntime, stage: "inference_kv_verify", reason: "ALLOCATED_Q8_TYPE_CHANGED")
+            }
         }
         guard ![32,64,128].contains(config.flags) || !countingEnabled else {
             throw LabError.invalidConfig([64,128].contains(config.flags) ? "SDOT_REQUIRES_COUNTING_OFF" : "UNPACK_REUSE_REQUIRES_COUNTING_OFF")

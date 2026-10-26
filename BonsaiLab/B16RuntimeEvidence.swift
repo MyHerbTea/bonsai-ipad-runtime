@@ -54,7 +54,7 @@ enum B16RuntimeEvidence {
         var values = parameters
         values["context_id"] = id
         values["text_kv_reuse"] = false
-        values["observation_source"] = "successful_native_creation_parameters"
+        values["observation_source"] = parameters["kv_observation_source"] ?? "successful_native_creation_parameters"
         gate.lock()
         native = values
         modelIdentity = nil

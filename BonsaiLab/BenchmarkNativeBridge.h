@@ -4,6 +4,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+int32_t BonsaiKVCacheType(void * context, int32_t which);
+const char * BonsaiContextFailure(void);
 // Caller serializes inference, synchronizes GPU, and frees the old context first.
 // -1 production; 0 baseline; bits 1 TensorOps, 2 five-row fused matvec,
 // 4 app batch reuse. Returns 0 if unavailable, invalid or GPU work is in flight.

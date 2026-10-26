@@ -9,6 +9,7 @@ enum ModelLoadMode: String, CaseIterable, Identifiable, Sendable {
 
 struct RuntimeConfig: Equatable, Sendable {
     var context: Int = 256
+    var kvCachePolicy: KVCachePolicy = .legacy
     var batch: Int = 16
     var ubatch: Int = 16
     var gpuLayers: Int = 99
@@ -64,7 +65,7 @@ struct RuntimeConfig: Equatable, Sendable {
     }
 
     var summary: String {
-        "ctx=\(context), batch=\(batch), ubatch=\(ubatch), gpu=\(gpuLayers), FA=\(flashAttention ? "ON" : "OFF"), SWA=\(swaFull ? "ON" : "OFF"), KV_UNIFIED=\(kvUnified ? "ON" : "OFF"), LOAD=\(loadMode.rawValue)"
+        "ctx=\(context), KV_POLICY=\(kvCachePolicy.rawValue), KV=\(kvCachePolicy.resolved(context: context).rawValue), batch=\(batch), ubatch=\(ubatch), gpu=\(gpuLayers), FA=\(flashAttention ? "ON" : "OFF"), SWA=\(swaFull ? "ON" : "OFF"), KV_UNIFIED=\(kvUnified ? "ON" : "OFF"), LOAD=\(loadMode.rawValue)"
     }
 }
 

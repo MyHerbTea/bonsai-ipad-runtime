@@ -52,4 +52,12 @@ class WindowsLauncherTests(unittest.TestCase):
             code,out,err=self.execute_case('import sys\nprint("QUICK_ENTRY_OK",sys.argv[1:])\n',script_name='prefill_compare.py')
         self.assertEqual(code,0,err);self.assertIn('QUICK_ENTRY_OK',out);self.assertIn('--help',out)
 
+    def test_q8_launchers_preserve_arguments_and_exit(self):
+        for entry,extra in [('RUN_Q8_BASELINE.cmd',''),('RUN_Q8_FULL.cmd','--mode')]:
+            with patch(__name__+'.LAUNCHER',ROOT/'tools/PTQ1_ONECLICK'/entry):
+                code,out,err=self.execute_case('import sys\nprint("Q8_ENTRY_OK",sys.argv[1:])\n',script_name='kv_baseline.py')
+            self.assertEqual(code,0,err)
+            self.assertIn('Q8_ENTRY_OK',out);self.assertIn('--help',out)
+            if extra:self.assertIn(extra,out)
+
 if __name__=='__main__':unittest.main()

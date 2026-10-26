@@ -9,6 +9,14 @@
   ],
   "rules": [
     {
+      "pattern": "docs/build126/*.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": "tools/PTQ1_ONECLICK/README_BUILD126_CN.md",
+      "status": "REFERENCE"
+    },
+    {
       "pattern": "tools/PTQ1_ONECLICK/README_BUILD125_CN.md",
       "status": "REFERENCE"
     },

@@ -31,11 +31,16 @@ struct BenchmarkConfiguration: Equatable, Sendable {
 
 enum BenchmarkSessionMode: String {
     case full
+    case q8Baseline = "q8_baseline"
     case quickPrefill = "quick_prefill"
-    var markerKey: String { self == .full ? "BonsaiBenchmarkInterrupted" : "BonsaiQuickPrefillInterrupted" }
-    var initial: BenchmarkConfiguration { BenchmarkConfiguration(context: 16384, batch: self == .full ? 16 : 8, kv: "Q4_0", flags: 0) }
+    var markerKey: String { self == .q8Baseline ? "BonsaiQ8BaselineInterrupted" : (self == .full ? "BonsaiBenchmarkInterrupted" : "BonsaiQuickPrefillInterrupted") }
+    var initial: BenchmarkConfiguration { if self == .q8Baseline { return BenchmarkConfiguration(context: 16384, batch: 8, kv: "Q8_0", flags: 64) }; return BenchmarkConfiguration(context: 16384, batch: self == .full ? 16 : 8, kv: "Q4_0", flags: 0) }
     func permits(_ config: BenchmarkConfiguration) -> Bool {
-        (self == .full && ![64,128].contains(config.flags)) || (self == .quickPrefill && config.context == 16384 && config.batch == 8 && config.kv == "Q4_0" && [0,4,8,16,32,64,128].contains(config.flags))
+        if self == .q8Baseline { return config == initial }
+        return (self == .full && ![64,128].contains(config.flags)) || (self == .quickPrefill && config.context == 16384 && config.batch == 8 && config.kv == "Q4_0" && [0,4,8,16,32,64,128].contains(config.flags))
+    }
+    func operationTimeout(stage: String?) -> Double {
+        self == .q8Baseline && stage == "capacity" ? 14_400 : 1800
     }
     static func quarantined(_ config: BenchmarkConfiguration, markers: [[String: Any]]) -> Bool {
         markers.contains { marker in
@@ -88,6 +93,8 @@ final class BenchmarkSessionControl: @unchecked Sendable {
     static let changed = Notification.Name("BonsaiBenchmarkSessionChanged")
     private let lock = NSLock()
     private var session: String?
+    private var sessionMode: BenchmarkSessionMode = .full
+    private var operationBudget: Double = 1800
     private var ordinary = 0
     private var running = false
     private var cancelled = false
@@ -101,17 +108,18 @@ final class BenchmarkSessionControl: @unchecked Sendable {
         ordinary += 1; return true
     }
     func leaveOrdinary() { lock.lock(); ordinary = max(0, ordinary - 1); lock.unlock() }
-    func beginSession() -> String? {
+    func beginSession(mode: BenchmarkSessionMode = .full) -> String? {
         lock.lock(); defer { lock.unlock() }
         guard session == nil && ordinary == 0 else { return nil }
-        let id = UUID().uuidString; session = id; touched = ProcessInfo.processInfo.systemUptime
+        let id = UUID().uuidString; session = id; sessionMode = mode; touched = ProcessInfo.processInfo.systemUptime
         DispatchQueue.main.async { NotificationCenter.default.post(name: Self.changed, object: nil) }
         return id
     }
-    func beginOperation(session id: String, request value: String) -> Bool {
+    func beginOperation(session id: String, request value: String, stage: String? = nil) -> Bool {
         lock.lock(); defer { lock.unlock() }
         guard session == id && !running else { return false }
         running = true; cancelled = false; request = value; lastError = nil
+        operationBudget = sessionMode.operationTimeout(stage: stage)
         progressState = ["stage":"STARTING", "completed":0, "total":0]
         touched = ProcessInfo.processInfo.systemUptime; return true
     }
@@ -125,13 +133,13 @@ final class BenchmarkSessionControl: @unchecked Sendable {
     func endSession(session id: String) {
         lock.lock(); defer { lock.unlock() }
         if session == id && !running {
-            session = nil; cancelled = false
+            session = nil; cancelled = false; sessionMode = .full
             DispatchQueue.main.async { NotificationCenter.default.post(name: Self.changed, object: nil) }
         }
     }
     func overdueOperation(after seconds: Double) -> String? {
         lock.lock(); defer { lock.unlock() }
-        return running && ProcessInfo.processInfo.systemUptime - touched > seconds ? session : nil
+        return running && ProcessInfo.processInfo.systemUptime - touched > max(seconds, operationBudget) ? session : nil
     }
     func touch() { lock.lock(); touched = ProcessInfo.processInfo.systemUptime; lock.unlock() }
     func progress(stage: String, completed: Int, total: Int) {
@@ -147,7 +155,7 @@ final class BenchmarkSessionControl: @unchecked Sendable {
     var snapshot: [String: Any] {
         lock.lock(); defer { lock.unlock() }
         return ["session_id": session as Any? ?? NSNull(), "active": session != nil,
-                "running": running, "cancelled": cancelled, "request_id": request,
+                "running": running, "operation_deadline_s": operationBudget, "cancelled": cancelled, "request_id": request,
                 "error": lastError as Any? ?? NSNull(), "ordinary_requests": ordinary, "progress": progressState]
     }
 }

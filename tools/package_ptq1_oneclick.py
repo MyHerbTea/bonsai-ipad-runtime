@@ -68,6 +68,9 @@ def build():
     checks.mkdir()
     for filename in ("CI_TESTS.txt", "build.log", "llama-symbols.txt", "app-symbols.txt", "SYMBOL_IDENTITY.json"):
         shutil.copy2(ROOT / "build" / filename, checks / filename)
+    for filename in ("BUILD126_POLICY.txt", "BUILD126_TESTS.txt"):
+        if number == "126":
+            shutil.copy2(ROOT / "build" / filename, checks / filename)
     (kit / "BUILD_INFO.txt").write_text(
         f"Build{number} PTQ1 candidates; concentrated prefill comparison included\n"
         f"Source: {source}\nWorkflow: {os.environ['GITHUB_RUN_ID']}\n"
@@ -78,7 +81,7 @@ def build():
         "No candidate is a winner until actual device gates pass.\n", encoding="utf-8")
     (kit / f"BUILD{number}_DELIVERY_REPORT_CN.md").write_text(
         f"# Build{number} 交付与证据状态\n\n"
-        f"源码：{source}\n\n分支：codex/build125-sdot-pair\n\n"
+        f"源码：{source}\n\n分支：{os.environ.get('GITHUB_REF_NAME', 'UNKNOWN')}\n\n"
         f"Apple Release CI：[运行记录](https://github.com/MyHerbTea/bonsai-ipad-runtime/actions/runs/{os.environ['GITHUB_RUN_ID']})\n\n"
         f"IPA SHA256：{sha(ipa)}\n\n"
         "构建及检查记录：同源码专项自动化、Swift策略/语法、实际ARM64原始/单行/双行数值parity及ASAN/UBSAN测试、双行共享Q8及无spill汇编门禁、Release构建、便携环境与哈希打包。每项实际执行/skip状态以CI_EVIDENCE/CI_TESTS.txt为准，skip不作为通过证据。\n\n"
@@ -86,6 +89,19 @@ def build():
         "保持生产默认，不晋级SDOT，不创建Stable Release。Build125九请求A/B/C集中实验会自动输出COMPARISON.md、完整JSON/CSV和统一results.zip。\n\n"
         "Build124单行SDOT保留为基线，不另做独立确认。A原始0/B单行64/C双行128，主要比较C/B。待用户提供一次测试结果后，决定保留双行或停止CPU微内核方向转具体GPU算子；不自动执行真机、不新增独立分析阶段、不改生产默认。\n",
         encoding="utf-8")
+    if number == "126":
+        (kit / f"BUILD{number}_DELIVERY_REPORT_CN.md").write_text(
+            f"# Build126 固定 Q8_0 候选\n\n源码：{source}\n\n"
+            f"CI：https://github.com/MyHerbTea/bonsai-ipad-runtime/actions/runs/{os.environ['GITHUB_RUN_ID']}\n\n"
+            f"IPA SHA256：{sha(ipa)}\n\n"
+            "入口RUN_Q8_BASELINE.cmd；Full独立入口RUN_Q8_FULL.cmd。先读README_BUILD126_CN.md。\n"
+            "实际已执行/skip以CI_EVIDENCE/CI_TESTS.txt为准，skip不计通过。\n"
+            "M5真机NOT_RUN；生产默认不变；32K未开放；未晋级Certified Stable。\n", encoding="utf-8")
+        (kit / "BUILD_INFO.txt").write_text(
+            f"Build126 fixed Q8 candidate; source {source}; CI {os.environ['GITHUB_RUN_ID']}\n"
+            "16K/Q8_0/B8/8/GPU56/threads6/mmap, flag64 existing single-row path.\n"
+            "Model PTQ1_0 is independent of KV Q8_0. Device NOT_RUN. No default promotion.\n", encoding="utf-8")
+        shutil.copy2(ROOT / "docs/build126/audit-and-plan.md", kit / "SOURCE_AUDIT_AND_PLAN.md")
     manifest = {file.relative_to(kit).as_posix(): sha(file) for file in sorted(kit.rglob("*")) if file.is_file()}
     (kit / "DELIVERY_SHA256.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     output = kit.parent / f"BONSAI_BUILD{number}_PTQ1_ONECLICK.zip"
@@ -99,6 +115,19 @@ def build():
         assert any(name.endswith("RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd") for name in archive.namelist())
         assert len([name for name in archive.namelist() if name.endswith(".ipa")]) == 1
     Path(str(output) + ".sha256").write_text(sha(output) + "  " + output.name + "\n", encoding="utf-8")
+    if number == "126":
+        standalone = kit.parent / f"BONSAI_BUILD{number}_Q8_TESTKIT.zip"
+        separate = {name: digest for name, digest in manifest.items()
+                    if not name.endswith((".ipa", ".ipa.sha256"))}
+        with zipfile.ZipFile(standalone, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name in separate:
+                archive.write(kit / name, kit.name + "/" + name)
+            archive.writestr(kit.name + "/DELIVERY_SHA256.json", json.dumps(separate, indent=2) + "\n")
+        with zipfile.ZipFile(standalone) as archive:
+            assert archive.testzip() is None
+            for name, digest in separate.items():
+                assert hashlib.sha256(archive.read(kit.name + "/" + name)).hexdigest() == digest
+        Path(str(standalone) + ".sha256").write_text(sha(standalone) + "  " + standalone.name + "\n")
     print("Combined delivery integrity: PASS; device validation: NOT_RUN")
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
-name: Bonsai Build125 SDOT Pair
+name: Bonsai Build126 Fixed Q8 Baseline
 
 on:
   push:
-    branches: [codex/build125-sdot-pair]
+    branches: [codex/build126-fixed-q8]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "125"
+  BUILD_NUMBER: "126"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -32,6 +32,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
+          xcrun swiftc -swift-version 5 BonsaiLab/KVCachePolicy.swift BonsaiLab/BenchmarkCandidateRegistry.swift tools/build126_kv_policy_tests.swift -o "$RUNNER_TEMP/kv-policy"
+          "$RUNNER_TEMP/kv-policy" | tee build/BUILD126_POLICY.txt
+          python3 -m unittest discover -s tools/tests -p "test_build126*.py" -v 2>&1 | tee build/BUILD126_TESTS.txt
+          xcrun clang++ -std=c++17 -fsyntax-only -x objective-c++ -I BonsaiLab BonsaiLab/BenchmarkNativeBridge.mm
+          python3 tools/PTQ1_ONECLICK/kv_baseline.py --dry-run
+          python3 tools/documentation_consistency.py
+          python3 -m unittest discover -s tools/tests -p test_documentation_consistency.py -v
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/benchmark_session_policy_tests.swift -o "$RUNNER_TEMP/benchmark-policy"
           "$RUNNER_TEMP/benchmark-policy" | tee build/CI_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkSessionManager.swift tools/benchmark_manager_behavior_tests.swift -o "$RUNNER_TEMP/benchmark-manager"
@@ -118,6 +125,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/rc126_build125_patch_sdot_pair.py" "$PRISM_DIR"
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build125_pair.py -v 2>&1 | tee -a build/CI_TESTS.txt
           BONSAI_PRISM_TEST_DIR="$PRISM_DIR" python3 -m unittest discover -s tools/tests -p test_build118_cpu.py -k actual_patched_native_strategy_control -v 2>&1 | tee -a build/CI_TESTS.txt
+          python3 "$GITHUB_WORKSPACE/tools/rc126_build126_patch_kv_observation.py" "$PRISM_DIR"
           grep -q 'BUILD89_META_USED' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD88_MMAP_SUCCESS' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
           grep -q 'BUILD87_SPLIT_GGML_INIT_BEGIN' "$PRISM_DIR/ggml/src/ggml-backend.cpp"
@@ -176,7 +184,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build125 IPA and native ABI
+      - name: Verify Build126 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -196,7 +204,7 @@ jobs:
           grep -q '_llama_memory_seq_rm' build/llama-symbols.txt
           grep -q "$GITHUB_SHA" BonsaiLab/BonsaiCertificationBuildIdentity.swift
 
-          for symbol in BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter BonsaiNativeBenchmarkBeginRequest BonsaiNativeBenchmarkObservation BonsaiNativeProfileCounter BonsaiNativeProfileReset BonsaiNativeProfileEnable BonsaiNativeCPUConfigure BonsaiNativeCPUCapabilities BonsaiNativeCPUCounter BonsaiNativeCPUBeginRequest BonsaiNativeCPUTimeCounter BonsaiNativeCPUTimeEnable BonsaiNativeCPUTimeReset BonsaiNativeCPUSamplingConfigure BonsaiNativeCPUSamplingCounter; do
+          for symbol in BonsaiNativeKVCacheType BonsaiNativeContextFailure BonsaiNativeBenchmarkConfigure BonsaiNativeBenchmarkCapabilities BonsaiNativeBenchmarkCounter BonsaiNativeBenchmarkBeginRequest BonsaiNativeBenchmarkObservation BonsaiNativeProfileCounter BonsaiNativeProfileReset BonsaiNativeProfileEnable BonsaiNativeCPUConfigure BonsaiNativeCPUCapabilities BonsaiNativeCPUCounter BonsaiNativeCPUBeginRequest BonsaiNativeCPUTimeCounter BonsaiNativeCPUTimeEnable BonsaiNativeCPUTimeReset BonsaiNativeCPUSamplingConfigure BonsaiNativeCPUSamplingCounter; do
             grep -q "_$symbol" build/llama-symbols.txt
           done
           strings "$FRAMEWORK" > build/llama-strings.txt
@@ -209,7 +217,7 @@ jobs:
           # App wrappers are directly linked and legitimately localized by ld.
           # Only the framework dlsym targets above require global exports.
           nm -U "$APP/BonsaiLab" > build/app-symbols.txt
-          for symbol in BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation BonsaiProfileAvailable BonsaiProfileCounter BonsaiProfileReset BonsaiProfileEnable BonsaiCrashInstall BonsaiCrashRead BonsaiCPUAvailable BonsaiCPUCounter BonsaiCPUTimeAvailable BonsaiCPUTimeCounter BonsaiCPUTimeEnable BonsaiCPUTimeReset BonsaiCPUSamplingAvailable BonsaiCPUSamplingConfigure BonsaiCPUSamplingCounter; do
+          for symbol in BonsaiKVCacheType BonsaiContextFailure BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation BonsaiProfileAvailable BonsaiProfileCounter BonsaiProfileReset BonsaiProfileEnable BonsaiCrashInstall BonsaiCrashRead BonsaiCPUAvailable BonsaiCPUCounter BonsaiCPUTimeAvailable BonsaiCPUTimeCounter BonsaiCPUTimeEnable BonsaiCPUTimeReset BonsaiCPUSamplingAvailable BonsaiCPUSamplingConfigure BonsaiCPUSamplingCounter; do
             grep -Eq "[[:space:]][tT][[:space:]]_$symbol$" build/app-symbols.txt
           done
 
@@ -226,31 +234,35 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build125-SDOT-Analysis
+          name: Bonsai-Build126-SDOT-Analysis
           path: |
             build/sdot-analysis/
             build/pair-analysis/
             build/CI_TESTS.txt
+            build/BUILD126_POLICY.txt
+            build/BUILD126_TESTS.txt
           if-no-files-found: warn
           retention-days: 30
 
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build125-PTQ1-IPA-and-OneClick
+          name: Bonsai-Build126-PTQ1-IPA-and-OneClick
           path: |
-            build/delivery/BONSAI_BUILD125_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD125_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD126_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD126_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD126_Q8_TESTKIT.zip
+            build/delivery/BONSAI_BUILD126_Q8_TESTKIT.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build125-Symbols
+          name: Bonsai-Build126-Symbols
           path: |
-            build/Bonsai-Build125-Symbols.zip
-            build/Bonsai-Build125-Symbols.zip.sha256
+            build/Bonsai-Build126-Symbols.zip
+            build/Bonsai-Build126-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90
