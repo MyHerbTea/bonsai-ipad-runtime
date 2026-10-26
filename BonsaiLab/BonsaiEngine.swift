@@ -3926,8 +3926,8 @@ actor BonsaiEngine {
     }
 
     func acknowledgeQ8Interruption(_ body: [String: Any]) throws -> [String: Any] {
+        let evidence = BenchmarkTelemetry.evidence()
         guard benchmarkOriginal == nil, model != nil, context != nil,
-              let evidence = BenchmarkTelemetry.evidence(),
               let process = evidence["process_id"] as? String,
               let native = evidence["native_context"] as? [String: Any] else {
             throw LabError.invalidConfig("PRODUCTION_RUNTIME_REQUIRED_FOR_Q8_ACKNOWLEDGEMENT")
