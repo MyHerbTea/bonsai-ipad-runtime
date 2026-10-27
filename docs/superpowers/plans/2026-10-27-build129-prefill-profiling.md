@@ -2,7 +2,7 @@
 
 **Goal:** Measure the production context without replacing it or changing its inference configuration.
 **Architecture:** A dedicated diagnostic session owns the existing inference/vision admission lease. The actor drains the loaded context, checks native ABI, resets and enables scoped counters, runs one text request with production flags, drains and disables counters in all exit paths, and publishes explicitly scoped evidence. Unsupported isolation fails closed.
-**Spec:** docs/BUILD129_PREFILL_PROFILING_DESIGN_DRAFT.md
+**Spec:** docs/superpowers/specs/2026-10-27-build129-prefill-profiling-design.md
 
 ## Constraints
 Source begins at 5804c5089087445f365b03a926c48167cbd07468; keep Q8_0, 16K, B8/UB8, 56 GPU layers, 6 threads, unified KV, existing production native flags. Never bypass interruption quarantine or safety guards. No automatic retry after uncertain requests. Compare instrumented and uninstrumented behavior; no speed claim without actual device evidence.
