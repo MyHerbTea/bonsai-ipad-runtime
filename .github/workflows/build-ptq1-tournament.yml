@@ -2,7 +2,7 @@ name: Bonsai Build129 Reasoning Mode Candidate
 
 on:
   push:
-    branches: [codex/build129-reasoning-mode]
+    branches: [codex/build129-reasoning-mode, codex/build129-prefill-diagnostics]
   workflow_dispatch:
 
 concurrency:
@@ -32,6 +32,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/build129_production_profile_policy_tests.swift -o "$RUNNER_TEMP/build129-profile-policy"
+          "$RUNNER_TEMP/build129-profile-policy" | tee build/BUILD129_PROFILE_POLICY.txt
+          python3 -m unittest discover -s tools/tests -p "test_build129_profile_evidence.py" -v 2>&1 | tee -a build/BUILD129_PROFILE_POLICY.txt
           xcrun swiftc -swift-version 5 BonsaiLab/APIReasoningModePolicy.swift tools/build129_reasoning_effort_policy_tests.swift -o "$RUNNER_TEMP/build129-reasoning-policy"
           "$RUNNER_TEMP/build129-reasoning-policy" | tee build/BUILD129_POLICY.txt
           python3 tools/rc1252_api_usability_contract_tests.py 2>&1 | tee build/BUILD129_TESTS.txt
