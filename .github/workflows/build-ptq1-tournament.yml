@@ -1,4 +1,4 @@
-name: Bonsai Build129 Reasoning Mode Candidate
+name: Bonsai Build129-derived Prefill Diagnostics
 
 on:
   push:
@@ -276,7 +276,7 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build129-Reasoning-Mode-IPA-and-TestKit
+          name: Bonsai-Build129-Derived-Prefill-Diagnostics-IPA-and-TestKit
           path: |
             build/delivery/BONSAI_BUILD129_REASONING_MODE_CANDIDATE.zip
             build/delivery/BONSAI_BUILD129_REASONING_MODE_CANDIDATE.zip.sha256

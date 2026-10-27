@@ -51,13 +51,17 @@ final class BenchmarkSessionManager: @unchecked Sendable {
             }
             do {
                 await beforeStart()
-                var result = try await engine.benchmarkStart(mode: mode)
+                var result: [String: Any]
+                if mode == .productionProfile { result = try await engine.productionProfileStart() }
+                else { result = try await engine.benchmarkStart(mode: mode) }
                 control.finishOperation(error: nil)
                 result["session_id"] = id; result["state"] = control.snapshot
                 return result
             } catch {
                 // A failed restore retains the lease to prevent unsafe ordinary inference.
-                let restored = (try? await engine.benchmarkRestore(preserveInterrupted: mode != .full)) != nil
+                let restored: Bool
+                if mode == .productionProfile { restored = (try? await engine.productionProfileRestore()) != nil }
+                else { restored = (try? await engine.benchmarkRestore(preserveInterrupted: mode != .full)) != nil }
                 control.finishOperation(error: String(describing: error))
                 if restored { control.endSession(session: id) }
                 throw error
@@ -79,13 +83,16 @@ final class BenchmarkSessionManager: @unchecked Sendable {
             var result: [String: Any]
             switch command {
             case "configure":
+                guard !control.isProductionProfile else { throw LabError.invalidConfig("PROFILE_CANNOT_RECONFIGURE") }
                 let named = (body["candidate"] ?? body["id"]) as? String
                 if let named, BenchmarkCandidateRegistry.flags(named: named) == nil { throw LabError.invalidConfig("UNKNOWN_CANDIDATE") }
                 let config = BenchmarkConfiguration(context: body["context"] as? Int ?? 16384,
                     batch: body["batch"] as? Int ?? 16, kv: body["kv"] as? String ?? "Q4_0",
                     flags: named.flatMap(BenchmarkCandidateRegistry.flags(named:)) ?? body["flags"] as? Int ?? 0)
                 result = try await engine.benchmarkConfigure(config)
-            case "restore": result = try await engine.benchmarkRestore(preserveInterrupted: body["preserve_interrupted"] as? Bool ?? false)
+            case "restore":
+                if control.isProductionProfile { result = try await engine.productionProfileRestore() }
+                else { result = try await engine.benchmarkRestore(preserveInterrupted: body["preserve_interrupted"] as? Bool ?? false) }
             default:
                 guard let prompt = body["prompt"] as? String, prompt.utf8.count <= 1_000_000 else {
                     throw LabError.invalidConfig("INVALID_BENCHMARK_PROMPT")
@@ -104,8 +111,11 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                     guard (body["counting"] == nil || body["counting"] is String), ["on", "off"].contains(counting) else {
                         throw LabError.invalidConfig("INVALID_COUNTING_MODE")
                     }
-                    result = try await engine.benchmarkRun(system: system, history: history, prompt: prompt,
-                        maxTokens: maxTokens, countingEnabled: counting == "on", onDelta: onDelta)
+                    if control.isProductionProfile {
+                        result = try await engine.productionProfileRun(system: system, history: history, prompt: prompt, maxTokens: maxTokens, onDelta: onDelta)
+                    } else {
+                        result = try await engine.benchmarkRun(system: system, history: history, prompt: prompt, maxTokens: maxTokens, countingEnabled: counting == "on", onDelta: onDelta)
+                    }
                 }
             }
             control.finishOperation(error: nil)

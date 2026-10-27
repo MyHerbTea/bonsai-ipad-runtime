@@ -78,6 +78,9 @@ actor BonsaiEngine {
     private var benchmarkMode: BenchmarkSessionMode = .full
     private var benchmarkConfig: BenchmarkConfiguration?
     private var benchmarkInvocation = false
+    private var productionProfileSession = false
+    private var productionProfileContextID: String?
+    private var productionProfileInvocation = false
     private var benchmarkAllocations = 0
     private var benchmarkReuses = 0
     private var benchmarkLogits: [String: Any] = [:]
@@ -2792,8 +2795,9 @@ actor BonsaiEngine {
         defer {
             // The benchmark already requires terminal GPU drain. Publish its profile only after it.
             if benchmarkInvocation { llama_synchronize(context) }
-            let gpuDrained = benchmarkInvocation && BonsaiBenchmarkConfigure(Int32(benchmarkConfig?.flags ?? 0)) == 1
+            let gpuDrained = productionProfileInvocation ? productionProfileGPUDrained() : (benchmarkInvocation && BonsaiBenchmarkConfigure(Int32(benchmarkConfig?.flags ?? 0)) == 1)
             profile.finish(gpuDrained: gpuDrained); activeProfile = nil
+            if productionProfileInvocation { BonsaiProfileEnable(0); BonsaiCPUTimeEnable(0) }
             HealthMonitor.shared.progress(requestID: profile.requestID, finished: true)
             CrashDiagnostics.shared.recordTimelineEvent(profile.succeeded ? "INFERENCE_COMPLETED" : "INFERENCE_FAILED", details: ["request_id": .string(profile.requestID)])
             CrashDiagnostics.shared.updateState(["current_operation": .string("IDLE")], force: true)
@@ -2935,6 +2939,10 @@ actor BonsaiEngine {
                 )
             }
 
+            if productionProfileInvocation {
+                llama_synchronize(context)
+                profile.recordPrefillGPU(drained: productionProfileGPUDrained())
+            }
             let prefillEnd =
                 DispatchTime.now().uptimeNanoseconds
             mark("TEXT_02_PROMPT_DONE")
@@ -3760,7 +3768,7 @@ actor BonsaiEngine {
         var storage: llama_batch? = reuse ? llama_batch_init(1, 0, 1) : nil
         if reuse { benchmarkAllocations += 1 }
         defer { if let storage { llama_batch_free(storage) } }
-        if benchmarkInvocation, let logits = llama_get_logits_ith(context, -1) {
+        if benchmarkInvocation && !productionProfileInvocation, let logits = llama_get_logits_ith(context, -1) {
             let n = Int(llama_vocab_n_tokens(vocab))
             var finite = true
             var top = 0
@@ -3889,6 +3897,104 @@ actor BonsaiEngine {
         batch.logits[index] = logits ? 1 : 0
         batch.n_tokens += 1
     }
+    private func productionProfileGPUDrained() -> Bool {
+        let submitted = BonsaiBenchmarkCounter(6)
+        let completed = BonsaiBenchmarkCounter(7)
+        let failed = BonsaiBenchmarkCounter(8)
+        return submitted == completed + failed
+    }
+
+    func productionProfileStart() throws -> [String: Any] {
+        guard BenchmarkSessionControl.shared.isProductionProfile, !productionProfileSession,
+              benchmarkOriginal == nil, let context, model != nil,
+              BonsaiProfileAvailable(), BonsaiCPUTimeAvailable() else {
+            throw LabError.invalidConfig("PROFILE_CONTEXT_OR_NATIVE_ABI_UNAVAILABLE")
+        }
+        let evidence = BenchmarkTelemetry.evidence()
+        guard evidence["startup_ready"] as? Bool == true,
+              let native = evidence["native_context"] as? [String: Any],
+              let contextID = native["context_id"] as? String,
+              let modelIdentity = native["model_identity"] as? [String: Any],
+              modelIdentity["sha256"] as? String == "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+              native["context"] as? Int == 16384, native["batch"] as? Int == 8,
+              native["ubatch"] as? Int == 8, native["kv_k"] as? String == "Q8_0",
+              native["kv_v"] as? String == "Q8_0", native["gpu_layers"] as? Int == 56,
+              native["threads"] as? Int == 6, native["threads_batch"] as? Int == 6,
+              native["kv_unified"] as? Bool == true, native["offload_kqv"] as? Bool == true,
+              native["flash_attention"] as? Bool == true, native["text_kv_reuse"] as? Bool == false,
+              native["op_offload"] as? Bool == true, native["mmap"] as? Bool == true,
+              native["sequence_max"] as? Int == 1, native["swa_full"] as? Bool == false,
+              native["metal_tensor_disabled"] as? Bool == true,
+              UserDefaults.standard.dictionary(forKey: "BonsaiQ8BaselineInterrupted") == nil else {
+            throw LabError.invalidConfig("PROFILE_FROZEN_CONTEXT_IDENTITY_MISMATCH")
+        }
+        llama_synchronize(context)
+        guard productionProfileGPUDrained() else { throw LabError.invalidConfig("PROFILE_GPU_NOT_DRAINED") }
+        productionProfileContextID = contextID
+        productionProfileSession = true
+        return ["schema": 1, "mode": "production_profile", "context_recreated": false, "evidence": evidence]
+    }
+
+    func productionProfileRestore() throws -> [String: Any] {
+        guard !productionProfileInvocation else { throw LabError.invalidConfig("PROFILE_STILL_RUNNING") }
+        BonsaiProfileEnable(0); BonsaiCPUTimeEnable(0)
+        productionProfileSession = false
+        productionProfileContextID = nil
+        return ["schema": 1, "mode": "production_profile", "context_recreated": false,
+                "evidence": BenchmarkTelemetry.evidence()]
+    }
+
+    func productionProfileRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
+        maxTokens: Int, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] {
+        guard productionProfileSession, BenchmarkSessionControl.shared.isProductionProfile,
+              !productionProfileInvocation, let context else { throw LabError.invalidConfig("PROFILE_SESSION_REQUIRED") }
+        let before = BenchmarkTelemetry.evidence()
+        guard let nativeBefore = before["native_context"] as? [String: Any],
+              let contextID = nativeBefore["context_id"] as? String,
+              contextID == productionProfileContextID else { throw LabError.invalidConfig("PROFILE_CONTEXT_ID_MISSING_OR_CHANGED") }
+        llama_synchronize(context)
+        guard productionProfileGPUDrained() else { throw LabError.invalidConfig("PROFILE_GPU_NOT_DRAINED") }
+        let errorsBefore = BonsaiBenchmarkCounter(8)
+        BonsaiProfileEnable(0); BonsaiProfileReset(); BonsaiCPUTimeReset()
+        productionProfileInvocation = true; benchmarkInvocation = true
+        defer { BonsaiProfileEnable(0); BonsaiCPUTimeEnable(0); productionProfileInvocation = false; benchmarkInvocation = false }
+        let telemetry = BenchmarkTelemetry()
+        var generation = GenerationConfig()
+        generation.maxTokens = maxTokens; generation.temperature = 0
+        generation.topK = 1; generation.topP = 1; generation.repeatPenalty = 1; generation.seed = 1234
+        do {
+            let result = try generateText(systemPrompt: system, history: history, userPrompt: prompt,
+                generation: generation, reasoningEffort: "none", onDelta: onDelta)
+            let after = BenchmarkTelemetry.evidence()
+            let nativeAfter = after["native_context"] as? [String: Any]
+            let profile = ProfilingSnapshot.shared.read()
+            let gpu = profile["prefill_gpu_timing"] as? [String: Any]
+            let cpu = profile["cpu_prefill_timing"] as? [String: Any]
+            guard let nativeAfter, NSDictionary(dictionary: nativeBefore).isEqual(to: nativeAfter),
+                  nativeAfter["context_id"] as? String == contextID,
+                  profile["request_id"] as? String == BenchmarkSessionControl.shared.snapshot["request_id"] as? String,
+                  profile["completed"] as? Bool == true, gpu?["available"] as? Bool == true,
+                  cpu?["available"] as? Bool == true, productionProfileGPUDrained(),
+                  BonsaiBenchmarkCounter(8) == errorsBefore else {
+                throw LabError.invalidConfig("PROFILE_EVIDENCE_UNAVAILABLE")
+            }
+            return ["schema": 1, "mode": "production_profile", "context_recreated": false,
+                "evidence_before": before, "evidence_after": after, "exclusive": true,
+                "gpu_drained_before": true, "gpu_drained_after": true, "profile": profile,
+                "memory": telemetry.finish(), "prompt_tokens": result.promptTokens,
+                "generated_tokens": result.generatedTokens, "prefill_s": result.prefillSeconds,
+                "ttft_s": result.ttftSeconds, "decode_s": result.generationSeconds,
+                "decode_tps": result.tokensPerSecond, "finish_reason": result.terminationReason.openAIFinishReason,
+                "text": result.text, "output_sha256": SHA256.hash(data: Data(result.text.utf8)).map { String(format: "%02x", $0) }.joined(),
+                "reasoning_effort": "none", "seed": 1234, "temperature": 0,
+                "measurement_note": "prefill includes diagnostic boundary synchronization; verify overhead independently"]
+        } catch {
+            llama_synchronize(context)
+            _ = telemetry.finish()
+            throw error
+        }
+    }
+
     func benchmarkCapabilities() -> [String: Any] {
         let caps = Int(BonsaiBenchmarkCapabilities())
         var evidence = BenchmarkTelemetry.evidence()

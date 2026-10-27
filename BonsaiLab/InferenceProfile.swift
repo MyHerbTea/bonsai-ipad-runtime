@@ -19,6 +19,7 @@ final class InferenceProfile {
     private var read = 0.0
     private var prefillCalls = 0
     private var tokenCalls = 0
+    private var prefillGPU: [String: Any] = ["available": false, "reason": "boundary_not_recorded"]
     var succeeded = false
     init(requestID: String, nativeSerialized: Bool) {
         self.requestID = requestID
@@ -31,6 +32,18 @@ final class InferenceProfile {
     func decoded(since began: Double, prefill: Bool) {
         decode += (ProcessInfo.processInfo.systemUptime - began) * 1000
         if prefill { prefillCalls += 1 } else { tokenCalls += 1 }
+    }
+    // Caller synchronizes before reading completion handlers and records whether
+    // the native submitted/terminal counters agree. This snapshot is prefill-only.
+    func recordPrefillGPU(drained: Bool) {
+        let after = (0..<9).map { BonsaiProfileCounter(Int32($0)) }
+        let monotonic = !zip(before, after).contains { $0.1 < $0.0 }
+        let count = monotonic ? after[7] - before[7] : 0
+        let available = nativeSerialized && BonsaiProfileAvailable() && drained && monotonic && count > 0
+        prefillGPU = ["available": available, "command_buffers": count,
+            "execution_ms": available ? Double(after[6] - before[6]) / 1e6 as Any : NSNull(),
+            "scope": "prefill_command_buffer_execution_sum_may_overlap",
+            "drained": drained]
     }
     func readResult(since began: Double) { read += (ProcessInfo.processInfo.systemUptime - began) * 1000 }
     func finish(gpuDrained: Bool) {
@@ -47,6 +60,7 @@ final class InferenceProfile {
             "m1_operations": count(4), "m_gt1_operations": count(5),
             "scope": "request_delta_of_context_counters;matrix_operations_not_tokens"]
         let snapshot: [String: Any] = ["schema_version": 2, "request_id": requestID, "completed": succeeded,
+            "prefill_gpu_timing": prefillGPU,
             "cpu_prefill_timing": cpuPrefillTiming(available: available),
             "cpu_ptq1_sampling": cpuSampling(available: available),
             "timestamp": ISO8601DateFormatter().string(from: Date()), "wall_ms": (ProcessInfo.processInfo.systemUptime - start) * 1000,

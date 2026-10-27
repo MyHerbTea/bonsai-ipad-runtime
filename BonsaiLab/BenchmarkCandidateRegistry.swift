@@ -34,9 +34,11 @@ enum BenchmarkSessionMode: String {
     case full
     case q8Baseline = "q8_baseline"
     case quickPrefill = "quick_prefill"
+    case productionProfile = "production_profile"
     var markerKey: String { self == .q8Baseline ? "BonsaiQ8BaselineInterrupted" : (self == .full ? "BonsaiBenchmarkInterrupted" : "BonsaiQuickPrefillInterrupted") }
     var initial: BenchmarkConfiguration { if self == .q8Baseline { return BenchmarkConfiguration(context: 16384, batch: 8, kv: "Q8_0", flags: 64) }; return BenchmarkConfiguration(context: 16384, batch: self == .full ? 16 : 8, kv: "Q4_0", flags: 0) }
     func permits(_ config: BenchmarkConfiguration) -> Bool {
+        if self == .productionProfile { return false }
         if self == .q8Baseline { return config == initial || config == BenchmarkConfiguration(context: 16384, batch: 8, kv: "Q8_0", flags: 320) }
         return (self == .full && ![64,128,320].contains(config.flags)) || (self == .quickPrefill && config.context == 16384 && config.batch == 8 && config.kv == "Q4_0" && [0,4,8,16,32,64,128].contains(config.flags))
     }
@@ -131,6 +133,7 @@ final class BenchmarkSessionControl: @unchecked Sendable {
     func cancel(session id: String) { lock.lock(); if session == id { cancelled = true }; lock.unlock() }
     var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
     var active: Bool { lock.lock(); defer { lock.unlock() }; return session != nil }
+    var isProductionProfile: Bool { lock.lock(); defer { lock.unlock() }; return session != nil && sessionMode == .productionProfile }
     func matches(_ id: String) -> Bool { lock.lock(); defer { lock.unlock() }; return session == id }
     func endSession(session id: String) {
         lock.lock(); defer { lock.unlock() }

@@ -46,7 +46,7 @@ extern "C" uint64_t BonsaiCPUCounter(int index) {
     return fn ? fn(index) : 0;
 }
 
-extern "C" bool BonsaiProfileAvailable(void) { return dlsym(RTLD_DEFAULT, "BonsaiNativeProfileCounter") != nullptr; }
+extern "C" bool BonsaiProfileAvailable(void) { return dlsym(RTLD_DEFAULT, "BonsaiNativeProfileCounter") && dlsym(RTLD_DEFAULT, "BonsaiNativeProfileReset") && dlsym(RTLD_DEFAULT, "BonsaiNativeProfileEnable"); }
 extern "C" void BonsaiProfileReset(void) {
     using Fn = void (*)(void);
     static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeProfileReset")); if (fn) fn();
