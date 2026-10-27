@@ -3,9 +3,10 @@ import re
 
 root = Path(__file__).resolve().parents[1]
 server = (root / "BonsaiLab" / "LocalOpenAIServer.swift").read_text(encoding="utf-8")
+reasoning_policy = (root / "BonsaiLab" / "APIReasoningModePolicy.swift").read_text(encoding="utf-8")
 view = (root / "BonsaiLab" / "ProductionView.swift").read_text(encoding="utf-8")
 project = (root / "project.yml").read_text(encoding="utf-8")
-workflow = (root / ".github" / "workflows" / "build-ios.yml").read_text(encoding="utf-8")
+workflow_path = root / ".github" / "workflows" / "build-ios.yml"
 boundary_probe = (root / "tools" / "rc1252_context_boundary_probe.ps1").read_text(encoding="utf-8")
 probe = (root / "tools" / "rc1252_context_ladder_device_probe.ps1").read_text(encoding="utf-8")
 py_sdk_probe = (root / "tools" / "rc1252_openai_python_sdk_probe.py").read_text(encoding="utf-8")
@@ -21,11 +22,14 @@ project_build_match = re.search(
 assert project_build_match is not None
 project_build = int(project_build_match.group("build"))
 assert project_build >= 63
+if project_build >= 129:
+    workflow_path = root / ".github" / "workflows" / "build-ptq1-tournament.yml"
+workflow = workflow_path.read_text(encoding="utf-8")
 
 # The product UI must advertise the same numeric build without maintaining a
 # brittle allow-list of every later RC1.26 experiment name.
 assert "RC1.26" in view
-assert f'RC126APIStartupLifecycle.begin(build: "{project_build}")' in view
+assert "RC126APIStartupLifecycle.begin(" in view; assert re.search(r'build:\s*Bundle\.main\.infoDictionary\?\["CFBundleVersion"\]\s+as\?\s+String', view)
 
 # Context ladder: frozen 512 default plus explicit device-validation candidates.
 for value in ["512", "768", "1024", "2048"]:
@@ -57,20 +61,33 @@ for marker in [
     '"input_modalities": ["text", "image"]',
     '"output_modalities": ["text"]',
     '"tools": false',
-    '"reasoning": false',
+    '"reasoning": true',
     '"responses_api": false',
     '"max_images_per_request": 3',
 ]:
     assert marker in server
 
-# Do not falsely advertise unsupported tool/reasoning parameters.
+# Reasoning is supported; tool calls remain unsupported and must not be advertised.
 model_block = server[server.index('private static func modelObject'):]
-assert '"tool_choice"' not in model_block.split('private static func errorObject', 1)[0]
-assert '"tools"' not in model_block.split('"supported_parameters": [', 1)[1].split(']', 1)[0]
-assert '"reasoning_effort"' not in model_block.split('"supported_parameters": [', 1)[1].split(']', 1)[0]
+supported_parameters = model_block.split('"supported_parameters": [', 1)[1].split(']', 1)[0]
+assert '"tool_choice"' not in supported_parameters
+assert '"tools"' not in supported_parameters
+assert '"reasoning_effort"' in supported_parameters
 
 # The active runtime config is also what discovery publishes.
 assert "apiServer.configureModelMetadata(" in view
+assert '@AppStorage(APIReasoningModePolicy.userDefaultsKey)' in view
+assert 'BonsaiLocalAPIThinkingModeEnabled' in reasoning_policy
+assert 'private var apiThinkingModeEnabled = false' in view
+assert '省略 reasoning_effort 的 API 请求默认使用 medium' in view
+assert 'APIReasoningModePolicy.resolve(' in server
+assert 'APIReasoningModePolicy.defaultEffort(' in server
+assert 'requestWasPresent: reasoningWasPresent' in server
+assert 'thinkingEnabled: UserDefaults.standard.bool(' in server
+assert 'default_reasoning_effort' in server
+assert 'event["reasoning_effort"] = reasoningEffort' in server
+assert 'reasoningEffort: payload.reasoningEffort' in server
+assert 'api_default_reasoning_effort=' in view
 assert "contextWindow: selectedAPIContext" in view
 # Build97 adds a user-selected ceiling; the old hard-coded 256 assertion
 # applies only to pre-Build97 releases. Model discovery must match runtime.
@@ -117,7 +134,7 @@ assert "OpenAIMultimodalMessageBindingValidator" in server
 for marker in [
     "Chatbox",
     "Vision: ON",
-    "Reasoning: OFF",
+    "Reasoning: SUPPORTED",
     "Tool Use: OFF",
     "Context Window:",
 ]:
@@ -145,8 +162,8 @@ for marker in [
     assert marker in server
 
 # Browser/local clients may use either Bearer or X-API-Key.
-assert 'request.headers["authorization"] == expected' in server
-assert 'request.headers["x-api-key"] == apiKey' in server
+assert 'authorizationHeader: request.headers["authorization"]' in server
+assert 'apiKeyHeader: request.headers["x-api-key"]' in server
 assert "OpenAI-Organization" in server
 assert "OpenAI-Project" in server
 for header in [
@@ -228,15 +245,19 @@ for sdk_probe in [py_sdk_probe, js_sdk_probe]:
 assert "tool_choice" in py_sdk_probe
 assert "tool_choice" in js_sdk_probe
 
-# CI must execute this contract and package Build 63.
+# CI must execute this contract and identify the matching project build.
 assert "python3 tools/rc1252_api_usability_contract_tests.py" in workflow
-assert "RC1.25.2_CLIENT_COMPATIBILITY_MATRIX.md" in workflow
-assert "RC1.25.2_OPENAI_CHAT_COMPAT_GAP_AUDIT.md" in workflow
-assert "tools/rc1252_context_boundary_probe.ps1" in workflow
-assert "tools/rc1252_context_ladder_device_probe.ps1" in workflow
-assert "tools/rc1252_openai_python_sdk_probe.py" in workflow
-assert "tools/rc1252_openai_js_sdk_probe.mjs" in workflow
 assert f'BUILD_NUMBER: "{project_build}"' in workflow
 assert 'CFBundleVersion raw -o - "$APP/Info.plist")" = "$BUILD_NUMBER"' in workflow
+if project_build >= 129:
+    assert 'tools/build129_reasoning_effort_policy_tests.swift' in workflow
+    assert 'BonsaiLab/APIReasoningModePolicy.swift' in workflow
+else:
+    assert "RC1.25.2_CLIENT_COMPATIBILITY_MATRIX.md" in workflow
+    assert "RC1.25.2_OPENAI_CHAT_COMPAT_GAP_AUDIT.md" in workflow
+    assert "tools/rc1252_context_boundary_probe.ps1" in workflow
+    assert "tools/rc1252_context_ladder_device_probe.ps1" in workflow
+    assert "tools/rc1252_openai_python_sdk_probe.py" in workflow
+    assert "tools/rc1252_openai_js_sdk_probe.mjs" in workflow
 
-print("RC1.25.2 Build 63 API usability contracts: PASS")
+print("API usability source contracts: PASS")

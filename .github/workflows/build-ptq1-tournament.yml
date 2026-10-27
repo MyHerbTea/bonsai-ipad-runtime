@@ -1,8 +1,8 @@
-name: Bonsai Build128 Fixed Q8 Metal B8 Performance Candidate
+name: Bonsai Build129 Reasoning Mode Candidate
 
 on:
   push:
-    branches: [codex/build128-q8-performance]
+    branches: [codex/build129-reasoning-mode]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "128"
+  BUILD_NUMBER: "129"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -32,6 +32,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
+          xcrun swiftc -swift-version 5 BonsaiLab/APIReasoningModePolicy.swift tools/build129_reasoning_effort_policy_tests.swift -o "$RUNNER_TEMP/build129-reasoning-policy"
+          "$RUNNER_TEMP/build129-reasoning-policy" | tee build/BUILD129_POLICY.txt
+          python3 tools/rc1252_api_usability_contract_tests.py 2>&1 | tee build/BUILD129_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_build129_reasoning*.py" -v 2>&1 | tee -a build/BUILD129_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/KVCachePolicy.swift BonsaiLab/BenchmarkCandidateRegistry.swift tools/build126_kv_policy_tests.swift -o "$RUNNER_TEMP/kv-policy"
           "$RUNNER_TEMP/kv-policy" | tee build/BUILD126_POLICY.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift tools/build126_q8_interruption_recovery_tests.swift -o "$RUNNER_TEMP/q8-recovery"
@@ -52,13 +56,13 @@ jobs:
           "$RUNNER_TEMP/benchmark-policy" | tee build/CI_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift BonsaiLab/BenchmarkSessionManager.swift tools/benchmark_manager_behavior_tests.swift -o "$RUNNER_TEMP/benchmark-manager"
           "$RUNNER_TEMP/benchmark-manager" | tee -a build/CI_TESTS.txt
-          xcrun swiftc -frontend -parse BonsaiLab/BonsaiEngine.swift BonsaiLab/BenchmarkSessionManager.swift BonsaiLab/BenchmarkTelemetry.swift BonsaiLab/LocalOpenAIServer.swift
+          xcrun swiftc -frontend -parse BonsaiLab/APIReasoningModePolicy.swift BonsaiLab/BonsaiEngine.swift BonsaiLab/BenchmarkSessionManager.swift BonsaiLab/BenchmarkTelemetry.swift BonsaiLab/LocalOpenAIServer.swift
           python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/PTQ1_ONECLICK -p 'test_*.py' -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build124_oneclick.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_abc.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_assembly.py" -v 2>&1 | tee -a build/CI_TESTS.txt
-          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/PTQ1_ONECLICK/kv_baseline.py tools/PTQ1_ONECLICK/q8_metal_b8.py tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py tools/PTQ1_ONECLICK/test_q8_full_operator_abort.py tools/rc126_build127_patch_prism_q8_metal_b8.py tools/package_ptq1_oneclick.py
+          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/PTQ1_ONECLICK/kv_baseline.py tools/PTQ1_ONECLICK/q8_metal_b8.py tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py tools/PTQ1_ONECLICK/test_q8_full_operator_abort.py tools/rc126_build127_patch_prism_q8_metal_b8.py tools/package_ptq1_oneclick.py tools/package_build129_reasoning.py tools/BUILD129_REASONING_TESTKIT/build129_reasoning_api_smoke.py
           python3 -m unittest discover -s tools/tests -p "test_abba_measurement.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_drift_detection.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_measurement_thresholds.py" -v 2>&1 | tee -a build/CI_TESTS.txt
@@ -198,7 +202,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build128 IPA and native ABI
+      - name: Verify Build129 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -244,12 +248,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/package_ptq1_oneclick.py
+          python3 tools/package_build129_reasoning.py
       - name: Upload SDOT assembly evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build128-Q8-Metal-B8-Analysis
+          name: Bonsai-Build129-Reasoning-Mode-Analysis
           path: |
             build/sdot-analysis/
             build/pair-analysis/
@@ -260,6 +264,8 @@ jobs:
             build/BUILD127_TESTS.txt
             build/BUILD128_POLICY.txt
             build/BUILD128_TESTS.txt
+            build/BUILD129_POLICY.txt
+            build/BUILD129_TESTS.txt
             build/llama-strings.txt
           if-no-files-found: warn
           retention-days: 30
@@ -267,22 +273,22 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build128-Q8-Metal-B8-IPA-and-TestKit
+          name: Bonsai-Build129-Reasoning-Mode-IPA-and-TestKit
           path: |
-            build/delivery/BONSAI_BUILD128_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD128_PTQ1_ONECLICK.zip.sha256
-            build/delivery/BONSAI_BUILD128_Q8_TESTKIT.zip
-            build/delivery/BONSAI_BUILD128_Q8_TESTKIT.zip.sha256
+            build/delivery/BONSAI_BUILD129_REASONING_MODE_CANDIDATE.zip
+            build/delivery/BONSAI_BUILD129_REASONING_MODE_CANDIDATE.zip.sha256
+            build/delivery/BONSAI_BUILD129_REASONING_TESTKIT.zip
+            build/delivery/BONSAI_BUILD129_REASONING_TESTKIT.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build128-Symbols
+          name: Bonsai-Build129-Symbols
           path: |
-            build/Bonsai-Build128-Symbols.zip
-            build/Bonsai-Build128-Symbols.zip.sha256
+            build/Bonsai-Build129-Symbols.zip
+            build/Bonsai-Build129-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90

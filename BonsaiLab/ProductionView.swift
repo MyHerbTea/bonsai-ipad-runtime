@@ -927,6 +927,8 @@ private enum RC1232PerformanceDiagnostics {
     @AppStorage("BonsaiRC1235APIContextProfile")
     private var apiContextProfile = "4096"
     @AppStorage("BonsaiBuild126APIKVPolicy") private var apiKVPolicy = "legacy"
+    @AppStorage(APIReasoningModePolicy.userDefaultsKey)
+    private var apiThinkingModeEnabled = false
 
     @State private var output = ""
     @State private var status = "准备就绪"
@@ -1305,6 +1307,11 @@ private enum RC1232PerformanceDiagnostics {
                         Text(build117SnapshotStatus).font(.footnote).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    Toggle("启用思考模式（API 默认）", isOn: $apiThinkingModeEnabled)
+                    Text("开启后，省略 reasoning_effort 的 API 请求默认使用 medium；关闭时默认使用 none。客户端明确传入的合法值优先，设置即时生效。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     AnyLayout(horizontalSizeClass == .compact || dynamicTypeSize.isAccessibilitySize
                         ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
                         : AnyLayout(HStackLayout(alignment: .center, spacing: 12))) {
@@ -1393,11 +1400,11 @@ private enum RC1232PerformanceDiagnostics {
                         )
                         LabeledContent(
                             "能力",
-                            value: "Chat · Vision · Stream"
+                            value: "Chat · Vision · Stream · Reasoning"
                         )
 
                         Text(
-                            "RC1.25.2：/v1/models 会公布 context_length 与 Vision 能力；Tools、Reasoning、Responses API 不宣称支持。兼容 max_tokens / max_completion_tokens / max_output_tokens、stream=true 真 SSE 与 stream_options.include_usage。"
+                            "API 支持 reasoning_effort（none、minimal、low、medium、high、xhigh）；省略时使用上方默认设置。Tools 与 Responses API 不支持。/v1/models 会公布 context_length、Vision 与 Reasoning 能力。"
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -2612,7 +2619,8 @@ private enum RC1232PerformanceDiagnostics {
             "capability_vision=true",
             "capability_streaming=true",
             "capability_tools=false",
-            "capability_reasoning=false",
+            "capability_reasoning=true",
+            "api_default_reasoning_effort=\(APIReasoningModePolicy.defaultEffort(thinkingEnabled: apiThinkingModeEnabled))",
             "capability_responses_api=false",
             "",
             "[SELECTED ASSETS]",
@@ -4859,11 +4867,12 @@ applyBuild82LongContextPolicy(
         Context Window: \(apiContextProfile)
         Server Max Output Tokens: \(apiMaxOutputTokens)
         Recommended Client Max Output: \(apiMaxOutputTokens) (same as iPad UI; default if omitted)
+        Default Reasoning Effort: \(APIReasoningModePolicy.defaultEffort(thinkingEnabled: apiThinkingModeEnabled))
 
         Capabilities
         Vision: ON
         Streaming: ON
-        Reasoning: OFF
+        Reasoning: SUPPORTED (default: \(APIReasoningModePolicy.defaultEffort(thinkingEnabled: apiThinkingModeEnabled)))
         Tool Use: OFF
         Responses API: OFF
 
@@ -4875,7 +4884,7 @@ applyBuild82LongContextPolicy(
         Context Window: \(apiContextProfile)
         Max Output Tokens: \(apiMaxOutputTokens) (omit if the client supports server defaults)
         Vision: ON
-        Reasoning: OFF
+        Reasoning: SUPPORTED (default: \(APIReasoningModePolicy.defaultEffort(thinkingEnabled: apiThinkingModeEnabled)))
         Tool Use: OFF
         """
 

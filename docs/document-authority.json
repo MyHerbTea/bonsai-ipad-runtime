@@ -17,6 +17,22 @@
       "status": "DRAFT"
     },
     {
+      "pattern": "docs/superpowers/specs/2026-10-27-api-reasoning-effort-design.md",
+      "status": "DRAFT"
+    },
+    {
+      "pattern": "docs/superpowers/plans/2026-10-27-api-reasoning-effort.md",
+      "status": "DRAFT"
+    },
+    {
+      "pattern": "tools/BUILD129_REASONING_TESTKIT/*.md",
+      "status": "REFERENCE"
+    },
+    {
+      "pattern": ".superpowers/sdd/*/progress.md",
+      "status": "DRAFT"
+    },
+    {
       "pattern": "tools/PTQ1_ONECLICK/README_BUILD128_CN.md",
       "status": "REFERENCE"
     },

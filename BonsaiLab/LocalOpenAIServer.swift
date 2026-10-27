@@ -715,7 +715,7 @@ final class LocalOpenAIServer: ObservableObject {
                     "model": modelID,
                     "streaming": "chunked_sse",
                     "resource_governor": "v1",
-                    "default_reasoning_effort": "none",
+                    "default_reasoning_effort": Self.defaultReasoningEffort(),
                     "context_window": advertisedContextWindow,
                     "max_output_tokens": advertisedMaxOutputTokens,
                     "diagnostics": healthDiagnostics(),
@@ -724,7 +724,7 @@ final class LocalOpenAIServer: ObservableObject {
                         "vision": true,
                         "streaming": true,
                         "tools": false,
-                        "reasoning": false,
+                        "reasoning": true,
                         "responses_api": false,
                         "max_images_per_request": 3
                     ]
@@ -969,7 +969,8 @@ final class LocalOpenAIServer: ObservableObject {
                         Self.modelObject(
                             modelID,
                             contextWindow: advertisedContextWindow,
-                            maxOutputTokens: advertisedMaxOutputTokens
+                            maxOutputTokens: advertisedMaxOutputTokens,
+                            defaultReasoningEffort: Self.defaultReasoningEffort()
                         )
                     ]
                 ]
@@ -1000,7 +1001,8 @@ final class LocalOpenAIServer: ObservableObject {
                 object: Self.modelObject(
                     modelID,
                     contextWindow: advertisedContextWindow,
-                    maxOutputTokens: advertisedMaxOutputTokens
+                    maxOutputTokens: advertisedMaxOutputTokens,
+                    defaultReasoningEffort: Self.defaultReasoningEffort()
                 )
             )
             return
@@ -1052,9 +1054,18 @@ final class LocalOpenAIServer: ObservableObject {
                 request.body,
                 defaultModel: modelID,
                 contextWindow: advertisedContextWindow,
-                maxOutputLimit: advertisedMaxOutputTokens
+                maxOutputLimit: advertisedMaxOutputTokens,
+                thinkingEnabled: UserDefaults.standard.bool(
+                    forKey: APIReasoningModePolicy.userDefaultsKey
+                )
             )
             payload.certificationTrace = certificationTrace
+            recordCertificationTrace(
+                certificationTrace,
+                stage: "request_admitted",
+                status: 0,
+                reasoningEffort: payload.reasoningEffort
+            )
         } catch let error as OpenAIMultimodalError {
             recordCertificationTrace(certificationTrace, stage: error.code, status: error.status)
             recordRejection(error.code)
@@ -1168,7 +1179,10 @@ final class LocalOpenAIServer: ObservableObject {
                     )
                     self.recordPrefillObservation(result)
                     self.recordCertificationTrace(
-                        certificationTrace, stage: "inference_finished", status: 200
+                        certificationTrace,
+                        stage: "inference_finished",
+                        status: 200,
+                        reasoningEffort: payload.reasoningEffort
                     )
                     self.forensicsEvent(certificationTrace, phase: "completed", terminal: true)
 
@@ -1201,7 +1215,8 @@ final class LocalOpenAIServer: ObservableObject {
                     self.recordCertificationTrace(
                         certificationTrace,
                         stage: mappedTraceError.code,
-                        status: mappedTraceError.status
+                        status: mappedTraceError.status,
+                        reasoningEffort: payload.reasoningEffort
                     )
                     self.queue.async {
                         let mapped = Self.mapHandlerError(error)
@@ -1253,7 +1268,10 @@ final class LocalOpenAIServer: ObservableObject {
                 )
                 self.recordPrefillObservation(result)
                 self.recordCertificationTrace(
-                    certificationTrace, stage: "inference_finished", status: 200
+                    certificationTrace,
+                    stage: "inference_finished",
+                    status: 200,
+                    reasoningEffort: payload.reasoningEffort
                 )
                 self.forensicsEvent(certificationTrace, phase: "completed", terminal: true)
                 self.sendCompletion(
@@ -1272,7 +1290,10 @@ final class LocalOpenAIServer: ObservableObject {
                 )
                 let mapped = Self.mapHandlerError(error)
                 self.recordCertificationTrace(
-                    certificationTrace, stage: mapped.code, status: mapped.status
+                    certificationTrace,
+                    stage: mapped.code,
+                    status: mapped.status,
+                    reasoningEffort: payload.reasoningEffort
                 )
                 self.sendJSON(
                     connection,
@@ -2235,9 +2256,10 @@ final class LocalOpenAIServer: ObservableObject {
     private func recordCertificationTrace(
         _ trace: BonsaiRequestTrace,
         stage: String,
-        status: Int
+        status: Int,
+        reasoningEffort: String? = nil
     ) {
-        let event: [String: Any] = [
+        var event: [String: Any] = [
             "run_id": trace.runID,
             "request_id": trace.requestID,
             "test_case": trace.testCase,
@@ -2245,6 +2267,9 @@ final class LocalOpenAIServer: ObservableObject {
             "http_status": status,
             "timestamp": ISO8601DateFormatter().string(from: Date())
         ]
+        if let reasoningEffort {
+            event["reasoning_effort"] = reasoningEffort
+        }
         certificationTraceLock.lock()
         certificationTraceHistory.append(event)
         if certificationTraceHistory.count > certificationTraceLimit {
@@ -3193,7 +3218,8 @@ final class LocalOpenAIServer: ObservableObject {
         _ body: Data,
         defaultModel: String,
         contextWindow: Int,
-        maxOutputLimit: Int
+        maxOutputLimit: Int,
+        thinkingEnabled: Bool
     ) throws -> OpenAIRequestPayload {
         guard
             let root = try JSONSerialization.jsonObject(
@@ -3540,19 +3566,12 @@ final class LocalOpenAIServer: ObservableObject {
         let includeUsage =
             streamOptions?["include_usage"] as? Bool ?? false
 
-        let reasoningEffort = (
-            root["reasoning_effort"] as? String
-            ?? "none"
-        ).lowercased()
-
-        guard [
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh"
-        ].contains(reasoningEffort) else {
+        let reasoningWasPresent = root.keys.contains("reasoning_effort")
+        guard let reasoningEffort = APIReasoningModePolicy.resolve(
+            requestValue: root["reasoning_effort"],
+            requestWasPresent: reasoningWasPresent,
+            thinkingEnabled: thinkingEnabled
+        ) else {
             throw APIServerError.unsupportedReasoningEffort
         }
 
@@ -3622,7 +3641,8 @@ final class LocalOpenAIServer: ObservableObject {
     private static func modelObject(
         _ modelID: String,
         contextWindow: Int,
-        maxOutputTokens: Int
+        maxOutputTokens: Int,
+        defaultReasoningEffort: String
     ) -> [String: Any] {
         [
             "id": modelID,
@@ -3635,6 +3655,7 @@ final class LocalOpenAIServer: ObservableObject {
             "context_length": contextWindow,
             "context_window": contextWindow,
             "max_output_tokens": maxOutputTokens,
+            "default_reasoning_effort": defaultReasoningEffort,
             "architecture": [
                 "input_modalities": ["text", "image"],
                 "output_modalities": ["text"]
@@ -3648,18 +3669,27 @@ final class LocalOpenAIServer: ObservableObject {
                 "seed",
                 "response_format",
                 "stream",
-                "stream_options"
+                "stream_options",
+                "reasoning_effort"
             ],
             "capabilities": [
                 "chat": true,
                 "vision": true,
                 "streaming": true,
                 "tools": false,
-                "reasoning": false,
+                "reasoning": true,
                 "responses_api": false,
                 "max_images_per_request": 3
             ]
         ]
+    }
+
+    private static func defaultReasoningEffort() -> String {
+        APIReasoningModePolicy.defaultEffort(
+            thinkingEnabled: UserDefaults.standard.bool(
+                forKey: APIReasoningModePolicy.userDefaultsKey
+            )
+        )
     }
 
     private static func errorObject(

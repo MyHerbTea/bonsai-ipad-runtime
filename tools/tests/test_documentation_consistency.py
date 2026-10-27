@@ -4,12 +4,18 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
-from tools.documentation_consistency import classify, check_links, check_candidate_references, validate
+from tools.documentation_consistency import classify, check_links, check_candidate_references, ignored_document_path, validate
 
 class DocumentationConsistencyTests(unittest.TestCase):
     def test_unknown_document_is_unclassified(self):
         self.assertIsNone(classify("unknown.md", {"rules": []}))
         self.assertEqual(classify("docs/a.md", {"rules": [{"pattern": "docs/*.md", "status": "DRAFT"}]}), "DRAFT")
+
+    def test_ignored_root_cache_and_delivery_paths_are_outside_document_scope(self):
+        for path in (".pytest_cache/README.md", "deliveries/prism-source/README.md", "docs/generated/artifacts/report.md"):
+            with self.subTest(path=path):
+                self.assertTrue(ignored_document_path(path))
+        self.assertFalse(ignored_document_path("docs/INDEX.md"))
 
     def test_links_are_relative_to_document_and_code_examples_are_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:

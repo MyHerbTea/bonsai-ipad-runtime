@@ -13,6 +13,13 @@ def classify(path, authority):
             return rule["status"]
     return None
 
+def ignored_document_path(path):
+    parts = Path(path).parts
+    return (
+        any(part in {".git", "__pycache__", "artifacts"} for part in parts)
+        or bool(parts and parts[0] in {".pytest_cache", "deliveries"})
+    )
+
 def check_links(root, document, unavailable=()):
     source = document.read_text(encoding="utf-8-sig")
     source = re.sub(r"(?ms)^ *(```|~~~).*?^ *\1[^\n]*$", "", source)
@@ -114,8 +121,10 @@ def validate(root):
         if rule["status"] not in STATUSES:
             errors.append(f"invalid authority status: {rule}")
     for document in sorted(root.rglob("*.md")):
-        relative = document.relative_to(root).as_posix()
-        if any(part in {".git", "__pycache__", "artifacts"} for part in document.relative_to(root).parts):
+        relative_path = document.relative_to(root)
+        relative = relative_path.as_posix()
+        # Root-level ignored build/cache output is not repository documentation.
+        if ignored_document_path(relative_path):
             continue
         status = classify(relative, authority)
         if status not in STATUSES:
