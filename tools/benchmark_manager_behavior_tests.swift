@@ -88,6 +88,12 @@ actor BonsaiEngine {
         } catch { precondition(control.active) }
         let profileRun = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test"], onDelta: { _ in })
         precondition(profileRun["mode"] as? String == "production_profile")
+        let controlRun = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test", "instrumented":false], onDelta: { _ in })
+        precondition(controlRun["instrumented"] as? Bool == false, "control must explicitly turn off native profiling")
+        do {
+            _ = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test", "instrumented":"false"], onDelta: { _ in })
+            preconditionFailure("non-boolean instrumented must be rejected")
+        } catch { precondition(control.active) }
         _ = try await manager.handle("restore", body: ["session_id":profileID], onDelta: { _ in })
         precondition(!control.active)
         let started = try await manager.handle("start", body: [:], onDelta: { _ in })
