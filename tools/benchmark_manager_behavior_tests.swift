@@ -13,6 +13,10 @@ actor BonsaiEngine {
     func lastRestorePreserved() -> Bool { preserved }
     func setRestoreFailure(_ value: Bool) { failRestore = value }
     func setStartFailure(_ value: Bool) { failStart = value }
+    func productionProfileStart() throws -> [String: Any] { ["mode":"production_profile"] }
+    func productionProfileRestore() throws -> [String: Any] { ["restored":true] }
+    func productionProfileRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
+        maxTokens: Int, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] { ["mode":"production_profile", "text":"test"] }
     func benchmarkCapabilities() -> [String: Any] { ["capabilities": 7] }
     func acknowledgeQuickInterruption(_ body: [String: Any]) throws -> [String: Any] { ["acknowledged":true] }
     func acknowledgeQ8Interruption(_ body: [String: Any]) throws -> [String: Any] { ["status":"acknowledged_preserved_q8_interruption"] }
@@ -75,6 +79,17 @@ actor BonsaiEngine {
         await manager.restoreAbandonedSession(quick["session_id"] as! String)
         let abandonedPreserved = await engine.lastRestorePreserved()
         precondition(abandonedPreserved && !control.active)
+        let profile = try await manager.handle("start", body: ["mode":"production_profile"], onDelta: { _ in })
+        let profileID = profile["session_id"] as! String
+        precondition(profile["mode"] as? String == "production_profile" && control.active)
+        do {
+            _ = try await manager.handle("configure", body: ["session_id":profileID], onDelta: { _ in })
+            preconditionFailure("profile reconfiguration was accepted")
+        } catch { precondition(control.active) }
+        let profileRun = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test"], onDelta: { _ in })
+        precondition(profileRun["mode"] as? String == "production_profile")
+        _ = try await manager.handle("restore", body: ["session_id":profileID], onDelta: { _ in })
+        precondition(!control.active)
         let started = try await manager.handle("start", body: [:], onDelta: { _ in })
         let id = started["session_id"] as! String
         precondition(control.active && !control.enterOrdinary())
