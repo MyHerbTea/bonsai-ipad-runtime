@@ -285,6 +285,15 @@ def resolve_operator_correction_path(results_path, supplied):
         raise b.EvidenceError("OPERATOR_ABORT_CORRECTION_PATH_REQUIRED")
     return Path(value)
 
+def reuses_prior_operator_authorization(archived):
+    correction = archived.get("correction")
+    return isinstance(correction, dict) and (
+        correction.get("outcome") == "OPERATOR_ABORTED_UNUSABLE_PREFILL"
+        and correction.get("failure_source_git_sha") == OPERATOR_ABORT_SOURCE
+        and correction.get("failure_build_number") == "126"
+        and correction.get("operator_acknowledgement_token") == TOKEN
+    )
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", type=Path)
@@ -317,7 +326,10 @@ def main():
             "failure_archive_name":archived["directory"].name, "failure_report_sha256":archived["report_sha256"],
             "correction_sha256":archived["correction_sha256"]})
         print("已校验失败 ZIP、报告、更正记录、隔离标记与当前 M5/Build128/Q8 运行时。")
-        print("使用你已给出的 ACKNOWLEDGE PRESERVED FAILED Q8 授权，只归档并解除此精确标记；本步骤不发送推理请求。")
+        if reuses_prior_operator_authorization(archived):
+            print("复用你已给出的授权，只归档并解除这条精确的 Build126 Full 中止标记；本步骤不发送推理请求。")
+        elif input("输入 " + TOKEN + " 才继续：").strip() != TOKEN:
+            raise b.EvidenceError("OPERATOR_ACKNOWLEDGEMENT_NOT_CONFIRMED")
         body = {"reason":"operator_reviewed_preserved_failed_result",
             "expected_source_git_sha":identity["source_git_sha"], "failure_source_git_sha":archived["report"]["identity"]["source_git_sha"], "expected_process_id":ev["process_id"],
             "expected_interruption":archived["marker"], "results_zip_sha256":archived["zip_sha256"],

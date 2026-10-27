@@ -50,6 +50,16 @@ def correction():
 
 
 class FullOperatorAbortTests(unittest.TestCase):
+    def test_prior_ack_is_reused_only_for_the_exact_build126_operator_abort(self):
+        correction = {"outcome":"OPERATOR_ABORTED_UNUSABLE_PREFILL",
+            "failure_source_git_sha":FAILED_SOURCE,"failure_build_number":"126",
+            "operator_acknowledgement_token":"ACKNOWLEDGE PRESERVED FAILED Q8"}
+        self.assertTrue(ack.reuses_prior_operator_authorization({"correction":correction}))
+        for key, value in (("failure_source_git_sha","f"*40),("failure_build_number","127"),
+                           ("operator_acknowledgement_token",""),("outcome","OTHER")):
+            altered = dict(correction); altered[key] = value
+            with self.subTest(field=key):
+                self.assertFalse(ack.reuses_prior_operator_authorization({"correction":altered}))
     def test_full_archive_double_click_flow_prompts_for_the_separate_correction(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
