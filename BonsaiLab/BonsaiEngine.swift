@@ -82,6 +82,9 @@ actor BonsaiEngine {
     private var productionProfileContextID: String?
     private var productionProfileInvocation = false
     private var productionProfileInstrumented = true
+    private var productionProfileNativeCounters = true
+    private var productionProfileCPUOverride = false
+    private var productionProfileSavedSampling: (counting: Int32, period: Int32)?
     private var benchmarkAllocations = 0
     private var benchmarkReuses = 0
     private var benchmarkLogits: [String: Any] = [:]
@@ -2783,7 +2786,8 @@ actor BonsaiEngine {
         let request = BenchmarkSessionControl.shared.snapshot["request_id"] as? String
         let profile = InferenceProfile(requestID: benchmarkInvocation ? (request ?? UUID().uuidString) : UUID().uuidString,
             nativeSerialized: benchmarkInvocation, productionProfile: productionProfileInvocation,
-            collectNative: !productionProfileInvocation || productionProfileInstrumented)
+            collectNative: !productionProfileInvocation || productionProfileNativeCounters,
+            cpuTimingCollected: !productionProfileInvocation || productionProfileInstrumented)
         activeProfile = profile
         HealthMonitor.shared.progress(requestID: profile.requestID)
         CrashDiagnostics.shared.updateState(["request_id": .string(profile.requestID), "current_operation": .string("INFERENCE_STARTED"),
@@ -3906,9 +3910,60 @@ actor BonsaiEngine {
         return submitted == completed + failed
     }
 
+    // The CPU experiment never rebuilds the context. Keep the original sampling
+    // settings until restoration succeeds; failures retain the session lease.
+    private func productionProfileRestoreExperiment() throws {
+        guard productionProfileCPUOverride || productionProfileSavedSampling != nil else { return }
+        guard let context else { throw LabError.invalidConfig("PROFILE_RESTORE_CONTEXT_MISSING") }
+        llama_synchronize(context)
+        guard productionProfileGPUDrained() else { throw LabError.invalidConfig("PROFILE_RESTORE_GPU_NOT_DRAINED") }
+        if productionProfileCPUOverride {
+            guard BonsaiBenchmarkConfigure(-1) == 1 else { throw LabError.invalidConfig("PROFILE_NATIVE_RESTORE_FAILED") }
+            productionProfileCPUOverride = false
+        }
+        if let saved = productionProfileSavedSampling {
+            guard BonsaiCPUSamplingConfigure(saved.counting, saved.period) == 1,
+                  BonsaiCPUSamplingCounter(8) == UInt64(saved.counting),
+                  BonsaiCPUSamplingCounter(7) == UInt64(saved.period) else {
+                throw LabError.invalidConfig("PROFILE_SAMPLING_RESTORE_FAILED")
+            }
+            productionProfileSavedSampling = nil
+        }
+    }
+
+    private func productionProfileBeginExperiment(_ selection: String) throws {
+        guard ["none", "baseline", "sdot"].contains(selection),
+              !productionProfileCPUOverride, productionProfileSavedSampling == nil else {
+            throw LabError.invalidConfig("PROFILE_EXPERIMENT_STATE_INVALID")
+        }
+        guard selection != "none" else { return }
+        guard BonsaiCPUSamplingAvailable(), BonsaiCPUAvailable(),
+              (selection != "sdot" || (BonsaiBenchmarkCapabilities() & 64) != 0) else {
+            throw LabError.invalidConfig("PROFILE_CPU_CANDIDATE_UNAVAILABLE")
+        }
+        let counting = BonsaiCPUSamplingCounter(8)
+        let period = BonsaiCPUSamplingCounter(7)
+        guard counting <= 1, [UInt64(0), 1000, 10000].contains(period) else {
+            throw LabError.invalidConfig("PROFILE_SAMPLING_STATE_UNKNOWN")
+        }
+        productionProfileSavedSampling = (Int32(counting), Int32(period))
+        do {
+            guard BonsaiCPUSamplingConfigure(0, 0) == 1 else {
+                throw LabError.invalidConfig("PROFILE_SAMPLING_DISABLE_FAILED")
+            }
+            productionProfileCPUOverride = true
+            guard BonsaiBenchmarkConfigure(selection == "sdot" ? 64 : -1) == 1 else {
+                throw LabError.invalidConfig("PROFILE_CPU_CONFIGURE_FAILED")
+            }
+        } catch {
+            try productionProfileRestoreExperiment()
+            throw error
+        }
+    }
     func productionProfileStart() throws -> [String: Any] {
         guard BenchmarkSessionControl.shared.isProductionProfile, !productionProfileSession,
-              benchmarkOriginal == nil, let context, model != nil,
+              benchmarkOriginal == nil, !productionProfileCPUOverride, productionProfileSavedSampling == nil,
+              let context, model != nil,
               BonsaiProfileAvailable(), BonsaiCPUTimeAvailable(), BonsaiBenchmarkCounterAvailable() else {
             throw LabError.invalidConfig("PROFILE_CONTEXT_OR_NATIVE_ABI_UNAVAILABLE")
         }
@@ -3939,6 +3994,7 @@ actor BonsaiEngine {
 
     func productionProfileRestore() throws -> [String: Any] {
         guard !productionProfileInvocation else { throw LabError.invalidConfig("PROFILE_STILL_RUNNING") }
+        try productionProfileRestoreExperiment()
         BonsaiProfileEnable(0); BonsaiCPUTimeEnable(0)
         productionProfileSession = false
         productionProfileContextID = nil
@@ -3947,7 +4003,8 @@ actor BonsaiEngine {
     }
 
     func productionProfileRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
-        maxTokens: Int, instrumented: Bool, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] {
+        maxTokens: Int, instrumented: Bool, nativeCounters: Bool, cpuExperiment: String,
+        onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] {
         guard productionProfileSession, BenchmarkSessionControl.shared.isProductionProfile,
               !productionProfileInvocation, let context else { throw LabError.invalidConfig("PROFILE_SESSION_REQUIRED") }
         let before = BenchmarkTelemetry.evidence()
@@ -3957,9 +4014,11 @@ actor BonsaiEngine {
         llama_synchronize(context)
         guard productionProfileGPUDrained() else { throw LabError.invalidConfig("PROFILE_GPU_NOT_DRAINED") }
         let errorsBefore = BonsaiBenchmarkCounter(8)
+        try productionProfileBeginExperiment(cpuExperiment)
         BonsaiProfileEnable(0); BonsaiProfileReset(); BonsaiCPUTimeReset()
-        productionProfileInstrumented = instrumented; productionProfileInvocation = true; benchmarkInvocation = true
-        defer { BonsaiProfileEnable(0); BonsaiCPUTimeEnable(0); productionProfileInvocation = false; productionProfileInstrumented = true; benchmarkInvocation = false }
+        productionProfileInstrumented = instrumented; productionProfileNativeCounters = nativeCounters
+        productionProfileInvocation = true; benchmarkInvocation = true
+        defer { BonsaiProfileEnable(0); BonsaiCPUTimeEnable(0); productionProfileInvocation = false; productionProfileInstrumented = true; productionProfileNativeCounters = true; benchmarkInvocation = false }
         let telemetry = BenchmarkTelemetry()
         var generation = GenerationConfig()
         generation.maxTokens = maxTokens; generation.temperature = 0
@@ -3977,11 +4036,13 @@ actor BonsaiEngine {
                   profile["request_id"] as? String == BenchmarkSessionControl.shared.snapshot["request_id"] as? String,
                   profile["completed"] as? Bool == true,
                   (instrumented ? (gpu?["available"] as? Bool == true && cpu?["available"] as? Bool == true) : (gpu?["available"] as? Bool == false && cpu?["available"] as? Bool == false)),
+                  ((profile["availability"] as? String == "native_counters_available") == nativeCounters),
                   productionProfileGPUDrained(),
                   BonsaiBenchmarkCounter(8) == errorsBefore else {
                 throw LabError.invalidConfig("PROFILE_EVIDENCE_UNAVAILABLE")
             }
-            return ["schema": 1, "mode": "production_profile", "instrumented": instrumented, "context_recreated": false,
+            try productionProfileRestoreExperiment()
+            return ["schema": 1, "mode": "production_profile", "instrumented": instrumented, "native_counters": nativeCounters, "cpu_experiment": cpuExperiment, "native_flags_restored": true, "context_recreated": false,
                 "evidence_before": before, "evidence_after": after, "exclusive": true,
                 "gpu_drained_before": true, "gpu_drained_after": true, "profile": profile,
                 "memory": telemetry.finish(), "prompt_tokens": result.promptTokens,
@@ -3990,10 +4051,12 @@ actor BonsaiEngine {
                 "decode_tps": result.tokensPerSecond, "finish_reason": result.terminationReason.openAIFinishReason,
                 "text": result.text, "output_sha256": SHA256.hash(data: Data(result.text.utf8)).map { String(format: "%02x", $0) }.joined(),
                 "reasoning_effort": "none", "seed": 1234, "temperature": 0,
-                "measurement_note": instrumented ? "prefill includes diagnostic boundary synchronization" : "native profiling and diagnostic boundary synchronization disabled"]
+                "cpu_route_evidence": cpuExperiment == "sdot" ? "requested_capability_checked_not_directly_counted" : "baseline_or_not_requested",
+                "measurement_note": instrumented ? "prefill includes diagnostic boundary synchronization" : "CPU timing and diagnostic boundary synchronization disabled; native GPU counters as requested"]
         } catch {
             llama_synchronize(context)
             _ = telemetry.finish()
+            try productionProfileRestoreExperiment()
             throw error
         }
     }

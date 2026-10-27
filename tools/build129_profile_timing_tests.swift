@@ -50,6 +50,13 @@ final class CrashDiagnostics {
         let controlCPU = controlResult["cpu_prefill_timing"] as! [String: Any]
         precondition(controlGPU["available"] as? Bool == false, "control must not claim GPU counters")
         precondition(controlCPU["available"] as? Bool == false, "control must not claim CPU counters")
+        fakeProfileCounts = [UInt64](repeating: 0, count: 9)
+        let countersOnly = InferenceProfile(requestID: "r4", nativeSerialized: true, productionProfile: true, collectNative: true, cpuTimingCollected: false)
+        fakeProfileCounts[6] = 1_000_000; fakeProfileCounts[7] = 1
+        countersOnly.finish(gpuDrained: true)
+        let counterResult = ProfilingSnapshot.shared.read()
+        precondition(counterResult["gpu_execution_ms"] as? Double == 1.0)
+        precondition((counterResult["cpu_prefill_timing"] as! [String: Any])["available"] as? Bool == false, "GPU-only counter mode must not claim CPU timing")
         print("Production prefill timing boundary: PASS")
     }
 }

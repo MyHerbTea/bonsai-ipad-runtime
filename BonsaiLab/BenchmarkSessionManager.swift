@@ -120,7 +120,23 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                             }
                             instrumented = number.boolValue
                         } else { instrumented = true }
-                        result = try await engine.productionProfileRun(system: system, history: history, prompt: prompt, maxTokens: maxTokens, instrumented: instrumented, onDelta: onDelta)
+                        let nativeCounters: Bool
+                        if let supplied = body["native_counters"] {
+                            guard let number = supplied as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+                                throw LabError.invalidConfig("INVALID_NATIVE_COUNTERS")
+                            }
+                            nativeCounters = number.boolValue
+                        } else { nativeCounters = instrumented }
+                        let cpuExperiment = body["cpu_experiment"] as? String ?? "none"
+                        guard (body["cpu_experiment"] == nil || body["cpu_experiment"] is String),
+                              ["none", "baseline", "sdot"].contains(cpuExperiment),
+                              (!instrumented || nativeCounters),
+                              (cpuExperiment == "none" || (!instrumented && !nativeCounters)) else {
+                            throw LabError.invalidConfig("INVALID_COMBINED_PROFILE_EXPERIMENT")
+                        }
+                        result = try await engine.productionProfileRun(system: system, history: history, prompt: prompt,
+                            maxTokens: maxTokens, instrumented: instrumented, nativeCounters: nativeCounters,
+                            cpuExperiment: cpuExperiment, onDelta: onDelta)
                     } else {
                         result = try await engine.benchmarkRun(system: system, history: history, prompt: prompt, maxTokens: maxTokens, countingEnabled: counting == "on", onDelta: onDelta)
                     }

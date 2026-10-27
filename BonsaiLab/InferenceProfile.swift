@@ -15,6 +15,7 @@ final class InferenceProfile {
     private let nativeSerialized: Bool
     private let productionProfile: Bool
     private let collectNative: Bool
+    private let cpuTimingCollected: Bool
     private let start = ProcessInfo.processInfo.systemUptime
     private var prep = 0.0
     private var decode = 0.0
@@ -23,11 +24,12 @@ final class InferenceProfile {
     private var tokenCalls = 0
     private var prefillGPU: [String: Any] = ["available": false, "reason": "boundary_not_recorded"]
     var succeeded = false
-    init(requestID: String, nativeSerialized: Bool, productionProfile: Bool = false, collectNative: Bool = true) {
+    init(requestID: String, nativeSerialized: Bool, productionProfile: Bool = false, collectNative: Bool = true, cpuTimingCollected: Bool = true) {
         self.requestID = requestID
         self.nativeSerialized = nativeSerialized
         self.productionProfile = productionProfile
         self.collectNative = collectNative
+        self.cpuTimingCollected = cpuTimingCollected
         if nativeSerialized { BonsaiCPUTimeReset() }
         BonsaiProfileEnable(collectNative ? 1 : 0)
         before = (0..<9).map { BonsaiProfileCounter(Int32($0)) }
@@ -71,7 +73,7 @@ final class InferenceProfile {
             "scope": "request_delta_of_context_counters;matrix_operations_not_tokens"]
         let snapshot: [String: Any] = ["schema_version": 2, "request_id": requestID, "completed": succeeded,
             "prefill_gpu_timing": prefillGPU,
-            "cpu_prefill_timing": cpuPrefillTiming(available: available),
+            "cpu_prefill_timing": cpuPrefillTiming(available: available && cpuTimingCollected),
             "cpu_ptq1_sampling": productionProfile ? ["available": false, "valid": false, "unavailable": "not_measured_in_production_profile"] : cpuSampling(available: available),
             "timestamp": ISO8601DateFormatter().string(from: Date()), "wall_ms": (ProcessInfo.processInfo.systemUptime - start) * 1000,
             "breakdown": ["batch_prep_ms": prep, "decode_call_ms": decode, "metal_submit_ms": available ? Double(delta[8]) / 1e6 as Any : NSNull(),

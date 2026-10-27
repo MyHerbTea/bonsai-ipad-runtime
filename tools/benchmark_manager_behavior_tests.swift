@@ -16,7 +16,7 @@ actor BonsaiEngine {
     func productionProfileStart() throws -> [String: Any] { ["mode":"production_profile"] }
     func productionProfileRestore() throws -> [String: Any] { ["restored":true] }
     func productionProfileRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
-        maxTokens: Int, instrumented: Bool, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] { ["mode":"production_profile", "instrumented": instrumented, "text":"test"] }
+        maxTokens: Int, instrumented: Bool, nativeCounters: Bool, cpuExperiment: String, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] { ["mode":"production_profile", "instrumented": instrumented, "native_counters": nativeCounters, "cpu_experiment": cpuExperiment, "text":"test"] }
     func benchmarkCapabilities() -> [String: Any] { ["capabilities": 7] }
     func acknowledgeQuickInterruption(_ body: [String: Any]) throws -> [String: Any] { ["acknowledged":true] }
     func acknowledgeQ8Interruption(_ body: [String: Any]) throws -> [String: Any] { ["status":"acknowledged_preserved_q8_interruption"] }
