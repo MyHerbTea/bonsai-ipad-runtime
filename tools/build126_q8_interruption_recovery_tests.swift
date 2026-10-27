@@ -51,9 +51,13 @@ import Foundation
         var candidateMarker = marker; candidateMarker["flags"] = 320
         let candidateStore = defaults(); candidateStore.set(candidateMarker, forKey:"BonsaiQ8BaselineInterrupted")
         let candidateRequest = payload(marker:candidateMarker)
+        var candidateSaved: [String: Any]?
         let candidateAudit = try BenchmarkInterruptionRecovery.acknowledgeQ8(defaults:candidateStore,source:source,process:process,
-            body:candidateRequest,runtime:runtime,readAudit:{ _ in ["operator_acknowledgement":candidateRequest] },
-            saveAudit:{ _,_ in "candidate-audit" })
+            body:candidateRequest,runtime:runtime,readAudit:{ _ in
+                guard let fields = candidateSaved else { return nil }
+                return ["operator_acknowledgement":fields]
+            },
+            saveAudit:{ _,fields in candidateSaved=fields; return "candidate-audit" })
         precondition(candidateAudit == "candidate-audit" && candidateStore.dictionary(forKey:"BonsaiQ8BaselineInterrupted") == nil)
 
         rejectedCase({ var x=$0; x.removeValue(forKey:"results_zip_sha256"); return x },"requires result archive hash")
