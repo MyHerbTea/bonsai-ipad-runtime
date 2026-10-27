@@ -34,6 +34,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
 
 class IntegrationTests(unittest.TestCase):
+    def test_build128_swift_ack_ci_compiles_its_recovery_dependency(self):
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/build-ptq1-tournament.yml").read_text()
+        commands = [line for line in workflow.splitlines() if "tools/build128_q8_operator_abort_tests.swift" in line]
+        self.assertEqual(len(commands), 1)
+        self.assertIn("BonsaiLab/BenchmarkCancellationEvidence.swift", commands[0])
     def test_build128_quick_uses_bounded_first_principles_screen(self):
         import q8_metal_b8
         self.assertEqual(q8_metal_b8.PROMPT_TOKENS, 128)

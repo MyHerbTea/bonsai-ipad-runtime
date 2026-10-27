@@ -36,7 +36,7 @@ jobs:
           "$RUNNER_TEMP/kv-policy" | tee build/BUILD126_POLICY.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift tools/build126_q8_interruption_recovery_tests.swift -o "$RUNNER_TEMP/q8-recovery"
           "$RUNNER_TEMP/q8-recovery" | tee -a build/BUILD126_POLICY.txt
-          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift tools/build128_q8_operator_abort_tests.swift -o "$RUNNER_TEMP/q8-operator-abort"
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift tools/build128_q8_operator_abort_tests.swift -o "$RUNNER_TEMP/q8-operator-abort"
           "$RUNNER_TEMP/q8-operator-abort" | tee build/BUILD128_POLICY.txt
           python3 -m unittest discover -s tools/tests -p "test_build126*.py" -v 2>&1 | tee build/BUILD126_TESTS.txt
           python3 -m unittest discover -s tools/PTQ1_ONECLICK -p "test_q8_full_operator_abort.py" -v 2>&1 | tee build/BUILD128_TESTS.txt
