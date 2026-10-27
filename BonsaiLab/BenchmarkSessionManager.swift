@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 final class BenchmarkSessionManager: @unchecked Sendable {
     private let engine: BonsaiEngine
@@ -112,7 +113,14 @@ final class BenchmarkSessionManager: @unchecked Sendable {
                         throw LabError.invalidConfig("INVALID_COUNTING_MODE")
                     }
                     if control.isProductionProfile {
-                        result = try await engine.productionProfileRun(system: system, history: history, prompt: prompt, maxTokens: maxTokens, onDelta: onDelta)
+                        let instrumented: Bool
+                        if let supplied = body["instrumented"] {
+                            guard let number = supplied as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+                                throw LabError.invalidConfig("INVALID_PROFILE_INSTRUMENTED")
+                            }
+                            instrumented = number.boolValue
+                        } else { instrumented = true }
+                        result = try await engine.productionProfileRun(system: system, history: history, prompt: prompt, maxTokens: maxTokens, instrumented: instrumented, onDelta: onDelta)
                     } else {
                         result = try await engine.benchmarkRun(system: system, history: history, prompt: prompt, maxTokens: maxTokens, countingEnabled: counting == "on", onDelta: onDelta)
                     }

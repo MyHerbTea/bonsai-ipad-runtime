@@ -2,8 +2,9 @@ import Foundation
 
 var fakeProfileCounts = [UInt64](repeating: 0, count: 9)
 var fakeProfileAvailable = true
+var fakeProfileEnabled: Int32 = -1
 func BonsaiCPUTimeReset() {}
-func BonsaiProfileEnable(_ enabled: Int32) {}
+func BonsaiProfileEnable(_ enabled: Int32) { fakeProfileEnabled = enabled }
 func BonsaiProfileCounter(_ index: Int32) -> UInt64 { fakeProfileCounts[Int(index)] }
 func BonsaiProfileAvailable() -> Bool { fakeProfileAvailable }
 func BonsaiCPUSamplingAvailable() -> Bool { false }
@@ -39,6 +40,16 @@ final class CrashDiagnostics {
         incomplete.recordPrefillGPU(drained: false); incomplete.finish(gpuDrained: false)
         let missing = ProfilingSnapshot.shared.read()["prefill_gpu_timing"] as! [String: Any]
         precondition(missing["available"] as? Bool == false, "undrained data must fail closed")
+        fakeProfileCounts = [UInt64](repeating: 0, count: 9)
+        let control = InferenceProfile(requestID: "r3", nativeSerialized: true, productionProfile: true, collectNative: false)
+        precondition(fakeProfileEnabled == 0, "control must disable native profiling")
+        fakeProfileCounts[6] = 1_000_000; fakeProfileCounts[7] = 1
+        control.recordPrefillGPU(drained: true); control.finish(gpuDrained: true)
+        let controlResult = ProfilingSnapshot.shared.read()
+        let controlGPU = controlResult["prefill_gpu_timing"] as! [String: Any]
+        let controlCPU = controlResult["cpu_prefill_timing"] as! [String: Any]
+        precondition(controlGPU["available"] as? Bool == false, "control must not claim GPU counters")
+        precondition(controlCPU["available"] as? Bool == false, "control must not claim CPU counters")
         print("Production prefill timing boundary: PASS")
     }
 }

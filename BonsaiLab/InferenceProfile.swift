@@ -14,6 +14,7 @@ final class InferenceProfile {
     private let before: [UInt64]
     private let nativeSerialized: Bool
     private let productionProfile: Bool
+    private let collectNative: Bool
     private let start = ProcessInfo.processInfo.systemUptime
     private var prep = 0.0
     private var decode = 0.0
@@ -22,12 +23,13 @@ final class InferenceProfile {
     private var tokenCalls = 0
     private var prefillGPU: [String: Any] = ["available": false, "reason": "boundary_not_recorded"]
     var succeeded = false
-    init(requestID: String, nativeSerialized: Bool, productionProfile: Bool = false) {
+    init(requestID: String, nativeSerialized: Bool, productionProfile: Bool = false, collectNative: Bool = true) {
         self.requestID = requestID
         self.nativeSerialized = nativeSerialized
         self.productionProfile = productionProfile
+        self.collectNative = collectNative
         if nativeSerialized { BonsaiCPUTimeReset() }
-        BonsaiProfileEnable(1)
+        BonsaiProfileEnable(collectNative ? 1 : 0)
         before = (0..<9).map { BonsaiProfileCounter(Int32($0)) }
     }
     func batchPrepared(since began: Double) { prep += (ProcessInfo.processInfo.systemUptime - began) * 1000 }
@@ -41,7 +43,7 @@ final class InferenceProfile {
         let after = (0..<9).map { BonsaiProfileCounter(Int32($0)) }
         let monotonic = !zip(before, after).contains { $0.1 < $0.0 }
         let count = monotonic ? after[7] - before[7] : 0
-        let available = nativeSerialized && BonsaiProfileAvailable() && drained && monotonic && count > 0
+        let available = collectNative && nativeSerialized && BonsaiProfileAvailable() && drained && monotonic && count > 0
         prefillGPU = ["available": available, "command_buffers": count,
             "execution_ms": available ? Double(after[6] - before[6]) / 1e6 as Any : NSNull(),
             "ptq1_mv_r4_dispatches": available ? after[0] - before[0] as Any : NSNull(),
@@ -58,7 +60,7 @@ final class InferenceProfile {
         let after = (0..<9).map { BonsaiProfileCounter(Int32($0)) }
         let reset = zip(before, after).contains { $0.1 < $0.0 }
         let delta = zip(before, after).map { $0.1 >= $0.0 ? $0.1 - $0.0 : 0 }
-        let available = BonsaiProfileAvailable() && !reset && nativeSerialized && gpuDrained
+        let available = collectNative && BonsaiProfileAvailable() && !reset && nativeSerialized && gpuDrained
         let count: (Int) -> Any = { available ? delta[$0] as Any : NSNull() }
         let gpu: Any = available && delta[7] > 0 ? Double(delta[6]) / 1e6 : NSNull()
         let total = prefillCalls + tokenCalls

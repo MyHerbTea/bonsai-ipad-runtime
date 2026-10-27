@@ -16,7 +16,7 @@ actor BonsaiEngine {
     func productionProfileStart() throws -> [String: Any] { ["mode":"production_profile"] }
     func productionProfileRestore() throws -> [String: Any] { ["restored":true] }
     func productionProfileRun(system: String, history: [BonsaiTextChatTurn], prompt: String,
-        maxTokens: Int, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] { ["mode":"production_profile", "text":"test"] }
+        maxTokens: Int, instrumented: Bool, onDelta: @escaping @Sendable (String) -> Void) throws -> [String: Any] { ["mode":"production_profile", "instrumented": instrumented, "text":"test"] }
     func benchmarkCapabilities() -> [String: Any] { ["capabilities": 7] }
     func acknowledgeQuickInterruption(_ body: [String: Any]) throws -> [String: Any] { ["acknowledged":true] }
     func acknowledgeQ8Interruption(_ body: [String: Any]) throws -> [String: Any] { ["status":"acknowledged_preserved_q8_interruption"] }
@@ -93,6 +93,10 @@ actor BonsaiEngine {
         do {
             _ = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test", "instrumented":"false"], onDelta: { _ in })
             preconditionFailure("non-boolean instrumented must be rejected")
+        } catch { precondition(control.active) }
+        do {
+            _ = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test", "instrumented":1], onDelta: { _ in })
+            preconditionFailure("numeric instrumented must be rejected")
         } catch { precondition(control.active) }
         _ = try await manager.handle("restore", body: ["session_id":profileID], onDelta: { _ in })
         precondition(!control.active)
