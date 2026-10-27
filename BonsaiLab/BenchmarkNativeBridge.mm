@@ -72,6 +72,7 @@ extern "C" uint32_t BonsaiBenchmarkCapabilities(void) {
     static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeBenchmarkCapabilities"));
     return fn ? fn() : 0;
 }
+extern "C" bool BonsaiBenchmarkCounterAvailable(void) { return dlsym(RTLD_DEFAULT, "BonsaiNativeBenchmarkCounter") != nullptr; }
 extern "C" uint64_t BonsaiBenchmarkCounter(int index) {
     using Fn = uint64_t (*)(int);
     static Fn fn = reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, "BonsaiNativeBenchmarkCounter"));

@@ -44,6 +44,12 @@ final class InferenceProfile {
         let available = nativeSerialized && BonsaiProfileAvailable() && drained && monotonic && count > 0
         prefillGPU = ["available": available, "command_buffers": count,
             "execution_ms": available ? Double(after[6] - before[6]) / 1e6 as Any : NSNull(),
+            "ptq1_mv_r4_dispatches": available ? after[0] - before[0] as Any : NSNull(),
+            "ptq1_mv_r5_dispatches": available ? after[1] - before[1] as Any : NSNull(),
+            "fwht_dispatches": available ? after[2] - before[2] as Any : NSNull(),
+            "total_dispatches": available ? after[3] - before[3] as Any : NSNull(),
+            "m1_operations": available ? after[4] - before[4] as Any : NSNull(),
+            "m_gt1_operations": available ? after[5] - before[5] as Any : NSNull(),
             "scope": "prefill_command_buffer_execution_sum_may_overlap",
             "drained": drained]
     }

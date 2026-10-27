@@ -19,8 +19,10 @@ final class CrashDiagnostics {
     static func main() {
         fakeProfileCounts = [UInt64](repeating: 0, count: 9)
         let profile = InferenceProfile(requestID: "r1", nativeSerialized: true, productionProfile: true)
+        fakeProfileCounts[0] = 3; fakeProfileCounts[3] = 5
         fakeProfileCounts[6] = 2_000_000; fakeProfileCounts[7] = 1
         profile.recordPrefillGPU(drained: true)
+        fakeProfileCounts[0] = 7; fakeProfileCounts[3] = 10
         fakeProfileCounts[6] = 5_000_000; fakeProfileCounts[7] = 2
         profile.succeeded = true; profile.finish(gpuDrained: true)
         let result = ProfilingSnapshot.shared.read()
@@ -28,6 +30,7 @@ final class CrashDiagnostics {
         precondition(prefill["available"] as? Bool == true)
         precondition(prefill["execution_ms"] as? Double == 2.0, "decode GPU time must not enter prefill")
         precondition(result["gpu_execution_ms"] as? Double == 5.0)
+        precondition(prefill["ptq1_mv_r4_dispatches"] as? UInt64 == 3, "decode dispatch must not enter prefill")
         let sampling = result["cpu_ptq1_sampling"] as! [String: Any]
         precondition(sampling["available"] as? Bool == false, "stale sampling must remain unavailable")
         fakeProfileCounts = [UInt64](repeating: 0, count: 9)

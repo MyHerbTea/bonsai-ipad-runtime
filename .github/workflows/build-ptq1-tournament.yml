@@ -241,7 +241,7 @@ jobs:
           # App wrappers are directly linked and legitimately localized by ld.
           # Only the framework dlsym targets above require global exports.
           nm -U "$APP/BonsaiLab" > build/app-symbols.txt
-          for symbol in BonsaiKVCacheType BonsaiContextFailure BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation BonsaiProfileAvailable BonsaiProfileCounter BonsaiProfileReset BonsaiProfileEnable BonsaiCrashInstall BonsaiCrashRead BonsaiCPUAvailable BonsaiCPUCounter BonsaiCPUTimeAvailable BonsaiCPUTimeCounter BonsaiCPUTimeEnable BonsaiCPUTimeReset BonsaiCPUSamplingAvailable BonsaiCPUSamplingConfigure BonsaiCPUSamplingCounter; do
+          for symbol in BonsaiKVCacheType BonsaiContextFailure BonsaiBenchmarkConfigure BonsaiBenchmarkCapabilities BonsaiBenchmarkCounter BonsaiBenchmarkCounterAvailable BonsaiBenchmarkBeginRequest BonsaiBenchmarkObservation BonsaiProfileAvailable BonsaiProfileCounter BonsaiProfileReset BonsaiProfileEnable BonsaiCrashInstall BonsaiCrashRead BonsaiCPUAvailable BonsaiCPUCounter BonsaiCPUTimeAvailable BonsaiCPUTimeCounter BonsaiCPUTimeEnable BonsaiCPUTimeReset BonsaiCPUSamplingAvailable BonsaiCPUSamplingConfigure BonsaiCPUSamplingCounter; do
             grep -Eq "[[:space:]][tT][[:space:]]_$symbol$" build/app-symbols.txt
           done
 

@@ -3907,7 +3907,7 @@ actor BonsaiEngine {
     func productionProfileStart() throws -> [String: Any] {
         guard BenchmarkSessionControl.shared.isProductionProfile, !productionProfileSession,
               benchmarkOriginal == nil, let context, model != nil,
-              BonsaiProfileAvailable(), BonsaiCPUTimeAvailable() else {
+              BonsaiProfileAvailable(), BonsaiCPUTimeAvailable(), BonsaiBenchmarkCounterAvailable() else {
             throw LabError.invalidConfig("PROFILE_CONTEXT_OR_NATIVE_ABI_UNAVAILABLE")
         }
         let evidence = BenchmarkTelemetry.evidence()

@@ -30,6 +30,7 @@ enum BonsaiBenchmarkCounterIndex {
     BonsaiBenchmarkCounterCount = 10
 };
 uint64_t BonsaiBenchmarkCounter(int index);
+bool BonsaiBenchmarkCounterAvailable(void);
 bool BonsaiProfileAvailable(void);
 void BonsaiProfileReset(void);
 void BonsaiProfileEnable(int enabled);
