@@ -13,6 +13,7 @@ final class InferenceProfile {
     let requestID: String
     private let before: [UInt64]
     private let nativeSerialized: Bool
+    private let productionProfile: Bool
     private let start = ProcessInfo.processInfo.systemUptime
     private var prep = 0.0
     private var decode = 0.0
@@ -21,9 +22,10 @@ final class InferenceProfile {
     private var tokenCalls = 0
     private var prefillGPU: [String: Any] = ["available": false, "reason": "boundary_not_recorded"]
     var succeeded = false
-    init(requestID: String, nativeSerialized: Bool) {
+    init(requestID: String, nativeSerialized: Bool, productionProfile: Bool = false) {
         self.requestID = requestID
         self.nativeSerialized = nativeSerialized
+        self.productionProfile = productionProfile
         if nativeSerialized { BonsaiCPUTimeReset() }
         BonsaiProfileEnable(1)
         before = (0..<9).map { BonsaiProfileCounter(Int32($0)) }
@@ -62,7 +64,7 @@ final class InferenceProfile {
         let snapshot: [String: Any] = ["schema_version": 2, "request_id": requestID, "completed": succeeded,
             "prefill_gpu_timing": prefillGPU,
             "cpu_prefill_timing": cpuPrefillTiming(available: available),
-            "cpu_ptq1_sampling": cpuSampling(available: available),
+            "cpu_ptq1_sampling": productionProfile ? ["available": false, "valid": false, "unavailable": "not_measured_in_production_profile"] : cpuSampling(available: available),
             "timestamp": ISO8601DateFormatter().string(from: Date()), "wall_ms": (ProcessInfo.processInfo.systemUptime - start) * 1000,
             "breakdown": ["batch_prep_ms": prep, "decode_call_ms": decode, "metal_submit_ms": available ? Double(delta[8]) / 1e6 as Any : NSNull(),
                 "gpu_wait_ms": NSNull(), "result_read_ms": read],

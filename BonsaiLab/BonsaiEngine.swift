@@ -2781,7 +2781,7 @@ actor BonsaiEngine {
         }
         let request = BenchmarkSessionControl.shared.snapshot["request_id"] as? String
         let profile = InferenceProfile(requestID: benchmarkInvocation ? (request ?? UUID().uuidString) : UUID().uuidString,
-            nativeSerialized: benchmarkInvocation)
+            nativeSerialized: benchmarkInvocation, productionProfile: productionProfileInvocation)
         activeProfile = profile
         HealthMonitor.shared.progress(requestID: profile.requestID)
         CrashDiagnostics.shared.updateState(["request_id": .string(profile.requestID), "current_operation": .string("INFERENCE_STARTED"),

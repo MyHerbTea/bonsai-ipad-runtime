@@ -34,6 +34,8 @@ jobs:
           mkdir -p build
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/build129_production_profile_policy_tests.swift -o "$RUNNER_TEMP/build129-profile-policy"
           "$RUNNER_TEMP/build129-profile-policy" | tee build/BUILD129_PROFILE_POLICY.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/InferenceProfile.swift tools/build129_profile_timing_tests.swift -o "$RUNNER_TEMP/build129-profile-timing"
+          "$RUNNER_TEMP/build129-profile-timing" | tee -a build/BUILD129_PROFILE_POLICY.txt
           python3 -m unittest discover -s tools/tests -p "test_build129_profile_evidence.py" -v 2>&1 | tee -a build/BUILD129_PROFILE_POLICY.txt
           xcrun swiftc -swift-version 5 BonsaiLab/APIReasoningModePolicy.swift tools/build129_reasoning_effort_policy_tests.swift -o "$RUNNER_TEMP/build129-reasoning-policy"
           "$RUNNER_TEMP/build129-reasoning-policy" | tee build/BUILD129_POLICY.txt

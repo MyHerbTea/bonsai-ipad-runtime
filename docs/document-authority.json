@@ -9,6 +9,14 @@
   ],
   "rules": [
     {
+      "pattern": "docs/superpowers/specs/2026-10-27-build129-prefill-profiling-design.md",
+      "status": "DRAFT"
+    },
+    {
+      "pattern": "docs/superpowers/plans/2026-10-27-build129-prefill-profiling.md",
+      "status": "DRAFT"
+    },
+    {
       "pattern": "docs/superpowers/specs/2026-10-27-build128-q8-performance-enablement.md",
       "status": "DRAFT"
     },
