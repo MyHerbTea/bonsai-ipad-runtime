@@ -7,7 +7,7 @@ if not exist "python\python.exe" goto missing
 set "BONSAI_EXIT=%ERRORLEVEL%"
 goto finished
 :missing
-echo Extract the ENTIRE Build126 TestKit ZIP, including portable Python.
+echo Extract the ENTIRE TestKit ZIP, including portable Python.
 set "BONSAI_EXIT=2"
 :finished
 popd

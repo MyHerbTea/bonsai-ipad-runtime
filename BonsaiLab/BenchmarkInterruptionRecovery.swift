@@ -52,12 +52,13 @@ enum BenchmarkInterruptionRecovery {
                               saveAudit: (String, [String: Any]) throws -> String) throws -> String {
         let key = "BonsaiQ8BaselineInterrupted"
         let reason = "operator_reviewed_preserved_failed_result"
+        let fullOperatorAbortSource = "2b4daf44ff9f8b7d2bb30f9831c53938fc7bd158"
         guard source.utf8.count == 40, source.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) || (65...70).contains($0) }),
               UUID(uuidString: process) != nil,
               body["reason"] as? String == reason,
               body["expected_source_git_sha"] as? String == source,
               let failureSource = body["failure_source_git_sha"] as? String, isGitSHA(failureSource),
-              failureSource == source || failureSource == "2d5b75430ac152da7b03c0e4f0edb18b1a9ac5f2",
+              failureSource == source || failureSource == "2d5b75430ac152da7b03c0e4f0edb18b1a9ac5f2" || failureSource == fullOperatorAbortSource,
               body["expected_process_id"] as? String == process,
               let archiveSHA = body["results_zip_sha256"] as? String, isSHA256(archiveSHA),
               let reportSHA = body["report_sha256"] as? String, isSHA256(reportSHA),
@@ -80,12 +81,42 @@ enum BenchmarkInterruptionRecovery {
               identity["sha256"] as? String == "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
               let readAudit else { throw Failure.acknowledgementRejected }
 
+        var operatorCorrection: [String: Any]?
+        if failureSource == fullOperatorAbortSource {
+            let requiredStatement = "这个中断是用户发起的，原因是丧失了实际的使用性，600秒了prefill仅仅只完成了40%左右。"
+            guard let correction = body["operator_correction"] as? [String: Any],
+                  correction["schema"] as? String == "bonsai-q8-operator-abort-correction-v1",
+                  correction["operator_initiated"] as? Bool == true,
+                  correction["outcome"] as? String == "OPERATOR_ABORTED_UNUSABLE_PREFILL",
+                  correction["elapsed_seconds_approx"] as? Int == 600,
+                  correction["prefill_progress_percent_approx"] as? Int == 40,
+                  correction["user_statement"] as? String == requiredStatement,
+                  correction["marker_interruption_id"] as? String == (marker["interruption_id"] as? String),
+                  correction["operator_acknowledgement_token"] as? String == "ACKNOWLEDGE PRESERVED FAILED Q8",
+                  correction["failure_source_git_sha"] as? String == fullOperatorAbortSource,
+                  correction["failure_build_number"] as? String == "126",
+                  correction["model_sha256"] as? String == (identity["sha256"] as? String),
+                  let failureCapabilitiesHash = body["failure_capabilities_sha256"] as? String, isSHA256(failureCapabilitiesHash),
+                  let phaseReportHash = body["phase_report_sha256"] as? String, isSHA256(phaseReportHash) else {
+                throw Failure.acknowledgementRejected
+            }
+            operatorCorrection = correction
+        } else if body["operator_correction"] != nil || body["failure_capabilities_sha256"] != nil || body["phase_report_sha256"] != nil {
+            throw Failure.acknowledgementRejected
+        }
+
         let auditFields: [String: Any] = ["operator_reason":reason, "source_git_sha":source,
             "process_id":process, "failure_source_git_sha":failureSource, "acknowledged_marker":marker, "results_zip_sha256":archiveSHA,
             "report_sha256":reportSHA, "correction_sha256":correctionSHA]
-        let audit = try saveAudit("operator_acknowledged_q8_interruption", auditFields)
+        var completeAuditFields = auditFields
+        if let operatorCorrection {
+            completeAuditFields["operator_correction"] = operatorCorrection
+            completeAuditFields["failure_capabilities_sha256"] = body["failure_capabilities_sha256"]
+            completeAuditFields["phase_report_sha256"] = body["phase_report_sha256"]
+        }
+        let audit = try saveAudit("operator_acknowledged_q8_interruption", completeAuditFields)
         guard !audit.isEmpty, let report = try readAudit(audit),
-              let fields = report["operator_acknowledgement"] as? [String: Any], equal(fields, auditFields),
+              let fields = report["operator_acknowledgement"] as? [String: Any], equal(fields, completeAuditFields),
               let latest = defaults.dictionary(forKey: key), equal(latest, marker) else {
             throw Failure.acknowledgementRejected
         }

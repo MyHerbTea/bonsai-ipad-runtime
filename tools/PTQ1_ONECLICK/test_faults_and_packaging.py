@@ -34,6 +34,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
 
 class IntegrationTests(unittest.TestCase):
+    def test_build128_quick_uses_bounded_first_principles_screen(self):
+        import q8_metal_b8
+        self.assertEqual(q8_metal_b8.PROMPT_TOKENS, 128)
+        self.assertEqual(q8_metal_b8.REQUEST_DEADLINE_S, 60)
+        self.assertEqual(q8_metal_b8.TOTAL_DEADLINE_S, 240)
+
     def test_uncertain_inference_is_cancelled_checkpointed_never_replayed(self):
         Handler.calls=[]
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
@@ -78,49 +84,62 @@ class IntegrationTests(unittest.TestCase):
                     self.assertIn(tournament.config_id(config),tournament.blacklist)
                     self.assertNotIn(tournament.config_id(CONFIG),tournament.blacklist)
 
-    def test_build127_delivery_contains_fixed_q8_metal_b8_testkit(self):
+    def test_build128_delivery_contains_fixed_q8_metal_b8_and_ack_testkit(self):
         script=Path(__file__).resolve().parents[1]/'package_ptq1_oneclick.py'
-        spec=importlib.util.spec_from_file_location('package_build127_under_test',script)
+        spec=importlib.util.spec_from_file_location('package_build128_under_test',script)
         package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);app=root/'build/DerivedData/Build/Products/Release-iphoneos/BonsaiLab.app';app.mkdir(parents=True)
-            (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleVersion':'127'}));(app/'BonsaiLab').write_bytes(b'synthetic executable')
+            (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleVersion':'128'}));(app/'BonsaiLab').write_bytes(b'synthetic executable')
             tools=root/'tools';kit=tools/'PTQ1_ONECLICK';kit.mkdir(parents=True)
             for name in ('RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd','RUN_Q8_METAL_B8_QUICK.cmd','RUN_Q8_BASELINE.cmd','RUN_Q8_FULL.cmd','RUN_Q8_ACKNOWLEDGE.cmd'):
                 (kit/name).write_bytes(b'@echo off\necho synthetic\npause\n')
-            for name in ('ptq1_oneclick.py','kv_baseline.py','q8_metal_b8.py','README_BUILD127_CN.md','acknowledge_q8_interruption.py'):
+            for name in ('ptq1_oneclick.py','kv_baseline.py','q8_metal_b8.py','README_BUILD128_CN.md','acknowledge_q8_interruption.py'):
                 (kit/name).write_text('synthetic test')
             (tools/'ptq1_official_model.json').write_text(json.dumps(IDENTITY['official_model']))
-            for name in ('CI_TESTS.txt','BUILD127_POLICY.txt','BUILD127_TESTS.txt','build.log','llama-symbols.txt','app-symbols.txt','SYMBOL_IDENTITY.json'):
+            for name in ('CI_TESTS.txt','BUILD128_POLICY.txt','BUILD128_TESTS.txt','build.log','llama-symbols.txt','app-symbols.txt','SYMBOL_IDENTITY.json'):
                 (root/'build'/name).write_text('SYNTHETIC TEST FIXTURE')
-            (root/'build/Bonsai-Build127-Symbols.zip').write_bytes(b'SYNTHETIC SYMBOL ARTIFACT')
-            for name in ('docs/superpowers/specs/2026-10-27-build127-q8-metal-b8-design.md',
-                         'docs/superpowers/plans/2026-10-27-build127-q8-metal-b8.md'):
+            (root/'build/Bonsai-Build128-Symbols.zip').write_bytes(b'SYNTHETIC SYMBOL ARTIFACT')
+            for name in ('docs/superpowers/specs/2026-10-27-build128-q8-performance-enablement.md',
+                         'docs/superpowers/plans/2026-10-27-build128-q8-performance.md',
+                         'tools/PTQ1_ONECLICK/README_BUILD128_CN.md'):
                 path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('synthetic source audit')
             stream=io.BytesIO()
             with zipfile.ZipFile(stream,'w') as archive:
                 for name in ('python.exe','python312.dll','python312.zip','_ssl.pyd','LICENSE.txt'):archive.writestr(name,b'synthetic')
             data=stream.getvalue()
-            env={'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'127','PRISM_COMMIT':'d'*40,
-                 'GITHUB_REF_NAME':'codex/build127-q8-metal-b8','BUILD_NUMBER':'127'}
+            env={'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'128','PRISM_COMMIT':'d'*40,
+                 'GITHUB_REF_NAME':'codex/build128-q8-performance','BUILD_NUMBER':'128'}
             with patch.object(package,'ROOT',root),patch.object(package,'PYTHON_SHA',hashlib.sha256(data).hexdigest()),patch.object(package.urllib.request,'urlopen',return_value=contextlib.closing(io.BytesIO(data))),patch.dict(os.environ,env):
                 package.build()
-            full=root/'build/delivery/BONSAI_BUILD127_PTQ1_ONECLICK.zip'
-            standalone=root/'build/delivery/BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip'
+            full=root/'build/delivery/BONSAI_BUILD128_PTQ1_ONECLICK.zip'
+            standalone=root/'build/delivery/BONSAI_BUILD128_Q8_TESTKIT.zip'
             with zipfile.ZipFile(full) as archive:
                 self.assertIsNone(archive.testzip())
                 names=archive.namelist()
-                prefix='Bonsai-Build127-PTQ1/'
+                prefix='Bonsai-Build128-PTQ1/'
                 self.assertIn(prefix+'RUN_Q8_METAL_B8_QUICK.cmd',names)
+                self.assertIn(prefix+'RUN_Q8_ACKNOWLEDGE.cmd',names)
                 self.assertNotIn(prefix+'RUN_Q8_BASELINE.cmd',names)
                 self.assertNotIn(prefix+'RUN_Q8_FULL.cmd',names)
                 self.assertEqual(len([n for n in names if n.endswith('.ipa')]),1)
+                identity=json.loads(archive.read(prefix+'TestKitIdentity.json'))
+                self.assertEqual(identity['acknowledge_failure_source_shas'],['2b4daf44ff9f8b7d2bb30f9831c53938fc7bd158'])
+                build_info=archive.read(prefix+'BUILD_INFO.txt').decode()
+                delivery_report=archive.read(prefix+'BUILD128_DELIVERY_REPORT_CN.md').decode()
+                self.assertIn('128-token',build_info)
+                self.assertIn('240 seconds',build_info)
+                self.assertIn('128输入/32输出',delivery_report)
+                self.assertIn('240秒',delivery_report)
+                self.assertNotIn('512-token input',build_info)
+                self.assertNotIn('总时限10分钟',delivery_report)
             with zipfile.ZipFile(standalone) as archive:
                 self.assertIsNone(archive.testzip())
                 names=archive.namelist()
                 self.assertTrue(any(n.endswith('q8_metal_b8.py') for n in names))
-                self.assertTrue(any(n.endswith('README_BUILD127_CN.md') for n in names))
+                self.assertTrue(any(n.endswith('README_BUILD128_CN.md') for n in names))
                 self.assertTrue(any(n.endswith('RUN_Q8_METAL_B8_QUICK.cmd') for n in names))
+                self.assertTrue(any(n.endswith('RUN_Q8_ACKNOWLEDGE.cmd') for n in names))
                 self.assertFalse(any(n.endswith('.ipa') for n in names))
 
     def test_delivery_contains_one_ipa_portable_runtime_and_identity(self):

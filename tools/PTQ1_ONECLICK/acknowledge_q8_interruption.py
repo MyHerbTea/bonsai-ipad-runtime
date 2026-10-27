@@ -12,6 +12,9 @@ import ptq1_oneclick as b
 import kv_baseline as q
 
 TOKEN = "ACKNOWLEDGE PRESERVED FAILED Q8"
+OPERATOR_ABORT_SOURCE = "2b4daf44ff9f8b7d2bb30f9831c53938fc7bd158"
+OPERATOR_ABORT_MODEL = "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3"
+OPERATOR_ABORT_STATEMENT = "这个中断是用户发起的，原因是丧失了实际的使用性，600秒了prefill仅仅只完成了40%左右。"
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -19,10 +22,142 @@ def sha(path):
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
+def verify_operator_abort_correction(report, correction):
+    identity = report.get("identity") or {}
+    config = report.get("configuration") or {}
+    expected_correction = {
+        "schema": "bonsai-q8-operator-abort-correction-v1",
+        "operator_initiated": True,
+        "outcome": "OPERATOR_ABORTED_UNUSABLE_PREFILL",
+        "elapsed_seconds_approx": 600,
+        "prefill_progress_percent_approx": 40,
+        "user_statement": OPERATOR_ABORT_STATEMENT,
+        "operator_acknowledgement_token": TOKEN,
+    }
+    if report.get("status") != "FAIL" or report.get("mode") != "full":
+        raise b.EvidenceError("PRESERVED_FAILURE_NOT_FULL_OPERATOR_ABORT")
+    if identity.get("source_git_sha") != OPERATOR_ABORT_SOURCE or identity.get("build_number") != "126":
+        raise b.EvidenceError("PRESERVED_FAILURE_SOURCE_OR_BUILD_MISMATCH")
+    if (identity.get("official_model") or {}).get("sha256") != OPERATOR_ABORT_MODEL:
+        raise b.EvidenceError("PRESERVED_FAILURE_MODEL_MISMATCH")
+    if config != {"context": 16384, "batch": 8, "kv": "Q8_0", "flags": 64}:
+        raise b.EvidenceError("PRESERVED_FAILURE_Q8_CONFIGURATION_MISMATCH")
+    if not any(item.get("code") == "KeyboardInterrupt" for item in report.get("errors", [])):
+        raise b.EvidenceError("PRESERVED_FAILURE_OPERATOR_INTERRUPT_MISMATCH")
+    core_keys = set(expected_correction) | {"marker_interruption_id"}
+    core = {key: correction.get(key) for key in core_keys}
+    try:
+        uuid.UUID(correction.get("marker_interruption_id", ""))
+    except (AttributeError, ValueError, TypeError):
+        raise b.EvidenceError("OPERATOR_ABORT_MARKER_ID_INVALID")
+    if set(correction) != core_keys | {"historical_evidence"} or canonical({key: core[key] for key in expected_correction}) != canonical(expected_correction):
+        raise b.EvidenceError("OPERATOR_ABORT_CORRECTION_MISMATCH")
+    return {**expected_correction, "failure_source_git_sha": OPERATOR_ABORT_SOURCE,
+            "failure_build_number": "126", "model_sha256": OPERATOR_ABORT_MODEL,
+            "marker_interruption_id": core["marker_interruption_id"]}
+
+def verify_full_operator_abort_archive(directory, identity, correction_path):
+    directory = Path(directory).resolve()
+    correction_path = Path(correction_path).resolve()
+    report_path = directory / "report.json"
+    failure_path = directory / "failure-capabilities.json"
+    phase_path = directory / "before-restart" / "phase-report.json"
+    zip_path = directory / "results.zip"
+    manifest_path = directory / "MANIFEST_SHA256.json"
+    zip_sha_path = directory / "results.zip.sha256"
+    if not all(p.is_file() for p in (report_path, failure_path, phase_path, zip_path,
+                                      manifest_path, zip_sha_path, correction_path)):
+        raise b.EvidenceError("PRESERVED_FULL_ABORT_ARCHIVE_INCOMPLETE")
+    report = json.loads(report_path.read_text(encoding="utf-8-sig"))
+    correction = json.loads(correction_path.read_text(encoding="utf-8-sig"))
+    normalized_correction = verify_operator_abort_correction(report, correction)
+    if identity.get("build_number") != "128" or identity.get("official_model", {}).get("sha256") != OPERATOR_ABORT_MODEL:
+        raise b.EvidenceError("ACKNOWLEDGEMENT_CANDIDATE_IDENTITY_MISMATCH")
+    failure = json.loads(failure_path.read_text(encoding="utf-8-sig"))
+    failure_evidence = failure.get("evidence") or {}
+    native = failure_evidence.get("native_context") or {}
+    marker = failure.get("q8_prior_interrupted")
+    if failure_evidence.get("source_git_sha") != OPERATOR_ABORT_SOURCE or failure_evidence.get("build_number") != "126":
+        raise b.EvidenceError("PRESERVED_FAILURE_CAPABILITIES_IDENTITY_MISMATCH")
+    failure_state = failure.get("state") or {}
+    if failure_state.get("active") is not False or failure_state.get("running") is not False or failure_state.get("ordinary_requests") != 0:
+        raise b.EvidenceError("PRESERVED_FAILURE_RUNTIME_NOT_IDLE")
+    if not failure_evidence.get("process_id") or not isinstance(marker, dict):
+        raise b.EvidenceError("PRESERVED_FAILURE_MARKER_MISSING")
+    if any(native.get(key) != value for key, value in {
+        "context": 16384, "batch": 8, "ubatch": 8, "kv_k": "Q8_0", "kv_v": "Q8_0",
+        "kv_policy": "Q8_0", "kv_observation_source": "allocated_native_kv_tensors",
+    }.items()) or (native.get("model_identity") or {}).get("sha256") != OPERATOR_ABORT_MODEL:
+        raise b.EvidenceError("PRESERVED_FAILURE_NATIVE_Q8_MISMATCH")
+    if any(marker.get(key) != value for key, value in {
+        "context": 16384, "batch": 8, "ubatch": 8, "kv_k": "Q8_0", "kv_v": "Q8_0",
+        "flags": 64, "flash_attention": True, "sequence_max": 1, "kv_reuse": False,
+    }.items()):
+        raise b.EvidenceError("PRESERVED_FAILURE_MARKER_SHAPE_MISMATCH")
+    if marker.get("interruption_id") != normalized_correction.get("marker_interruption_id"):
+        raise b.EvidenceError("PRESERVED_FAILURE_MARKER_ID_MISMATCH")
+    phase = json.loads(phase_path.read_text(encoding="utf-8-sig"))
+    samples = phase.get("samples") or []
+    if phase.get("status") != "FAIL" or phase.get("restoration") != "RESTORED" or len(samples) != 4:
+        raise b.EvidenceError("PRESERVED_FULL_PHASE_REPORT_MISMATCH")
+    for sample in samples:
+        actual = sample.get("actual") or {}
+        evidence = sample.get("evidence") or {}
+        sample_native = evidence.get("native_context") or {}
+        if sample.get("valid") is not True or sample.get("prompt_tokens") != 512 or sample.get("generated_tokens") != 128:
+            raise b.EvidenceError("PRESERVED_FULL_SAMPLE_INVALID")
+        if any(actual.get(key) != value for key, value in {
+            "context": 16384, "batch": 8, "ubatch": 8, "kv_k": "Q8_0", "kv_v": "Q8_0", "flags": 64,
+        }.items()):
+            raise b.EvidenceError("PRESERVED_FULL_SAMPLE_CONFIGURATION_MISMATCH")
+        if evidence.get("source_git_sha") != OPERATOR_ABORT_SOURCE or evidence.get("build_number") != "126":
+            raise b.EvidenceError("PRESERVED_FULL_SAMPLE_IDENTITY_MISMATCH")
+        if sample_native.get("kv_observation_source") != "allocated_native_kv_tensors" or \
+           (sample_native.get("model_identity") or {}).get("sha256") != OPERATOR_ABORT_MODEL:
+            raise b.EvidenceError("PRESERVED_FULL_SAMPLE_MODEL_MISMATCH")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    for name, digest in manifest.items():
+        path = (directory / name).resolve()
+        if directory not in path.parents or not path.is_file() or sha(path) != digest:
+            raise b.EvidenceError("PRESERVED_FULL_MANIFEST_MISMATCH")
+    archive_sha = sha(zip_path)
+    if archive_sha != zip_sha_path.read_text(encoding="utf-8-sig").split()[0].lower():
+        raise b.EvidenceError("PRESERVED_FULL_ZIP_SHA_MISMATCH")
+    with zipfile.ZipFile(zip_path) as archive:
+        if archive.testzip():
+            raise b.EvidenceError("PRESERVED_FULL_ZIP_CORRUPT")
+        required = {
+            "report.json": report_path,
+            "failure-capabilities.json": failure_path,
+            "before-restart/phase-report.json": phase_path,
+            "MANIFEST_SHA256.json": manifest_path,
+        }
+        for name, path in required.items():
+            if hashlib.sha256(archive.read(name)).hexdigest() != sha(path):
+                raise b.EvidenceError("PRESERVED_FULL_ZIP_MEMBER_MISMATCH:" + name)
+        for name, digest in manifest.items():
+            if hashlib.sha256(archive.read(name)).hexdigest() != digest:
+                raise b.EvidenceError("PRESERVED_FULL_ZIP_MANIFEST_MISMATCH:" + name)
+    correction_hashes = correction.get("historical_evidence") or {}
+    expected_hashes = {
+        "results_zip_sha256": archive_sha,
+        "report_json_sha256": sha(report_path),
+        "failure_capabilities_sha256": sha(failure_path),
+        "phase_report_sha256": sha(phase_path),
+    }
+    if correction_hashes != expected_hashes:
+        raise b.EvidenceError("OPERATOR_CORRECTION_EVIDENCE_HASH_MISMATCH")
+    correction_sha = sha(correction_path)
+    return {"directory": directory, "report": report, "correction": normalized_correction,
+        "failure": failure, "after": {"process_id": failure_evidence["process_id"], "native_context": native},
+        "marker": marker, "zip_sha256": archive_sha, "report_sha256": sha(report_path),
+        "correction_sha256": correction_sha, "failure_capabilities_sha256": sha(failure_path),
+        "phase_report_sha256": sha(phase_path)}
+
 def matches(path, expected):
     return isinstance(expected, str) and sha(path) == expected.lower()
 
-def verify_failure_archive(directory, identity):
+def verify_failure_archive(directory, identity, operator_correction_path=None):
     directory = Path(directory).resolve()
     report_path = directory / "report.json"
     correction_path = directory / "OPERATOR_CORRECTION.json"
@@ -31,9 +166,15 @@ def verify_failure_archive(directory, identity):
     failure_path = directory / "failure-capabilities.json"
     after_path = directory / "POST_RESTART_OBSERVATION.json"
     phase_path = directory / "before-restart" / "phase-report.json"
-    if not all(p.is_file() for p in (report_path, correction_path, zip_path, manifest_path, failure_path, after_path, phase_path)):
+    if not all(p.is_file() for p in (report_path, zip_path, manifest_path)):
         raise b.EvidenceError("PRESERVED_FAILURE_ARCHIVE_INCOMPLETE")
     report = json.loads(report_path.read_text(encoding="utf-8-sig"))
+    if report.get("mode") == "full":
+        if operator_correction_path is None:
+            raise b.EvidenceError("FULL_OPERATOR_ABORT_REQUIRES_SEPARATE_CORRECTION_RECORD")
+        return verify_full_operator_abort_archive(directory, identity, operator_correction_path)
+    if not all(p.is_file() for p in (correction_path, failure_path, after_path, phase_path)):
+        raise b.EvidenceError("PRESERVED_FAILURE_ARCHIVE_INCOMPLETE")
     correction = json.loads(correction_path.read_text(encoding="utf-8-sig"))
     failure = json.loads(failure_path.read_text(encoding="utf-8-sig"))
     after = json.loads(after_path.read_text(encoding="utf-8-sig"))
@@ -130,16 +271,33 @@ def verify_live(caps, identity, archived):
     if errors: raise b.EvidenceError("LIVE_Q8_ACK_PREFLIGHT_MISMATCH:" + ",".join(errors))
     return native, ev
 
+def resolve_operator_correction_path(results_path, supplied):
+    if supplied is not None:
+        return supplied
+    report_path = Path(results_path) / "report.json"
+    if not report_path.is_file():
+        return None
+    report = json.loads(report_path.read_text(encoding="utf-8-sig"))
+    if report.get("mode") != "full":
+        return None
+    value = input("请输入独立的 Q8-Operator-Correction JSON 文件路径：").strip().strip(chr(34))
+    if not value:
+        raise b.EvidenceError("OPERATOR_ABORT_CORRECTION_PATH_REQUIRED")
+    return Path(value)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", type=Path)
     parser.add_argument("--url")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--operator-correction", type=Path,
+        help="separate user correction record for the preserved Build126 Full operator abort")
     args = parser.parse_args()
     identity = json.loads((b.ROOT / "TestKitIdentity.json").read_text(encoding="utf-8-sig"))
     q.verify_kit(identity)
-    results_path = args.results or Path(input("包含 FAIL 结果包与 OPERATOR_CORRECTION.json 的目录：").strip())
-    archived = verify_failure_archive(results_path, identity)
+    results_path = args.results or Path(input("FAIL 结果包所在目录：").strip().strip(chr(34)))
+    correction_path = resolve_operator_correction_path(results_path, args.operator_correction)
+    archived = verify_failure_archive(results_path, identity, correction_path)
     output = args.output or b.ROOT / "ACKNOWLEDGEMENTS" / ("Q8-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
     output.mkdir(parents=True, exist_ok=False)
     report = {"schema":"bonsai-build126-q8-ack-v1", "status":"BLOCKED", "inference_launched":False,
@@ -158,14 +316,16 @@ def main():
             "context_id":native.get("context_id"), "marker":archived["marker"],
             "failure_archive_name":archived["directory"].name, "failure_report_sha256":archived["report_sha256"],
             "correction_sha256":archived["correction_sha256"]})
-        print("已校验失败 ZIP、报告、更正记录、隔离标记与当前 M5/Build126/Q8 运行时。")
-        print("确认后只归档并解除 Q8 重试隔离；不会发送推理请求，也不会删除/修改原失败结果包。")
-        if input("输入 " + TOKEN + " 才继续：").strip() != TOKEN:
-            raise b.EvidenceError("OPERATOR_ACKNOWLEDGEMENT_NOT_CONFIRMED")
+        print("已校验失败 ZIP、报告、更正记录、隔离标记与当前 M5/Build128/Q8 运行时。")
+        print("使用你已给出的 ACKNOWLEDGE PRESERVED FAILED Q8 授权，只归档并解除此精确标记；本步骤不发送推理请求。")
         body = {"reason":"operator_reviewed_preserved_failed_result",
             "expected_source_git_sha":identity["source_git_sha"], "failure_source_git_sha":archived["report"]["identity"]["source_git_sha"], "expected_process_id":ev["process_id"],
             "expected_interruption":archived["marker"], "results_zip_sha256":archived["zip_sha256"],
             "report_sha256":archived["report_sha256"], "correction_sha256":archived["correction_sha256"]}
+        if archived.get("correction"):
+            body.update({"operator_correction":archived["correction"],
+                "failure_capabilities_sha256":archived["failure_capabilities_sha256"],
+                "phase_report_sha256":archived["phase_report_sha256"]})
         b.dump(output / "acknowledgement-request.json", body)
         response = client.request("/debug/benchmark/acknowledge_q8_interruption", body, timeout=30)
         b.dump(output / "acknowledgement-response.json", q.safe(response))

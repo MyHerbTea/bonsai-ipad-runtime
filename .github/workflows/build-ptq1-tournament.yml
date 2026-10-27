@@ -1,8 +1,8 @@
-name: Bonsai Build127 Fixed Q8 Metal B8 Quick Candidate
+name: Bonsai Build128 Fixed Q8 Metal B8 Performance Candidate
 
 on:
   push:
-    branches: [codex/build127-q8-metal-b8]
+    branches: [codex/build128-q8-performance]
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +11,7 @@ concurrency:
 permissions:
   contents: read
 env:
-  BUILD_NUMBER: "127"
+  BUILD_NUMBER: "128"
   PRISM_COMMIT: "adfffbe41b2cabcd51fff326ab045662265062bb"
 jobs:
   build:
@@ -36,7 +36,10 @@ jobs:
           "$RUNNER_TEMP/kv-policy" | tee build/BUILD126_POLICY.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift BonsaiLab/BenchmarkCancellationEvidence.swift tools/build126_q8_interruption_recovery_tests.swift -o "$RUNNER_TEMP/q8-recovery"
           "$RUNNER_TEMP/q8-recovery" | tee -a build/BUILD126_POLICY.txt
+          xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkInterruptionRecovery.swift tools/build128_q8_operator_abort_tests.swift -o "$RUNNER_TEMP/q8-operator-abort"
+          "$RUNNER_TEMP/q8-operator-abort" | tee build/BUILD128_POLICY.txt
           python3 -m unittest discover -s tools/tests -p "test_build126*.py" -v 2>&1 | tee build/BUILD126_TESTS.txt
+          python3 -m unittest discover -s tools/PTQ1_ONECLICK -p "test_q8_full_operator_abort.py" -v 2>&1 | tee build/BUILD128_TESTS.txt
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/build127_q8_metal_b8_policy_tests.swift -o "$RUNNER_TEMP/build127-policy"
           "$RUNNER_TEMP/build127-policy" | tee build/BUILD127_POLICY.txt
           python3 -m unittest discover -s tools/tests -p "test_build127_q8_metal_b8.py" -v 2>&1 | tee build/BUILD127_TESTS.txt
@@ -55,7 +58,7 @@ jobs:
           python3 -m unittest discover -s tools/tests -p "test_build124_oneclick.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_abc.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_assembly.py" -v 2>&1 | tee -a build/CI_TESTS.txt
-          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/PTQ1_ONECLICK/kv_baseline.py tools/PTQ1_ONECLICK/q8_metal_b8.py tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py tools/rc126_build127_patch_prism_q8_metal_b8.py tools/package_ptq1_oneclick.py
+          python3 -m py_compile tools/PTQ1_ONECLICK/ptq1_oneclick.py tools/PTQ1_ONECLICK/prefill_compare.py tools/PTQ1_ONECLICK/kv_baseline.py tools/PTQ1_ONECLICK/q8_metal_b8.py tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py tools/PTQ1_ONECLICK/test_q8_full_operator_abort.py tools/rc126_build127_patch_prism_q8_metal_b8.py tools/package_ptq1_oneclick.py
           python3 -m unittest discover -s tools/tests -p "test_abba_measurement.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_drift_detection.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_measurement_thresholds.py" -v 2>&1 | tee -a build/CI_TESTS.txt
@@ -195,7 +198,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee build/build.log
 
-      - name: Verify Build127 IPA and native ABI
+      - name: Verify Build128 IPA and native ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -246,7 +249,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build127-Q8-Metal-B8-Analysis
+          name: Bonsai-Build128-Q8-Metal-B8-Analysis
           path: |
             build/sdot-analysis/
             build/pair-analysis/
@@ -255,6 +258,8 @@ jobs:
             build/BUILD126_TESTS.txt
             build/BUILD127_POLICY.txt
             build/BUILD127_TESTS.txt
+            build/BUILD128_POLICY.txt
+            build/BUILD128_TESTS.txt
             build/llama-strings.txt
           if-no-files-found: warn
           retention-days: 30
@@ -262,22 +267,22 @@ jobs:
       - name: Upload combined building artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build127-Q8-Metal-B8-IPA-and-TestKit
+          name: Bonsai-Build128-Q8-Metal-B8-IPA-and-TestKit
           path: |
-            build/delivery/BONSAI_BUILD127_PTQ1_ONECLICK.zip
-            build/delivery/BONSAI_BUILD127_PTQ1_ONECLICK.zip.sha256
-            build/delivery/BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip
-            build/delivery/BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip.sha256
+            build/delivery/BONSAI_BUILD128_PTQ1_ONECLICK.zip
+            build/delivery/BONSAI_BUILD128_PTQ1_ONECLICK.zip.sha256
+            build/delivery/BONSAI_BUILD128_Q8_TESTKIT.zip
+            build/delivery/BONSAI_BUILD128_Q8_TESTKIT.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload retained symbol artifact and UUID identity
         uses: actions/upload-artifact@v4
         with:
-          name: Bonsai-Build127-Symbols
+          name: Bonsai-Build128-Symbols
           path: |
-            build/Bonsai-Build127-Symbols.zip
-            build/Bonsai-Build127-Symbols.zip.sha256
+            build/Bonsai-Build128-Symbols.zip
+            build/Bonsai-Build128-Symbols.zip.sha256
             build/SYMBOL_IDENTITY.json
           if-no-files-found: error
           retention-days: 90

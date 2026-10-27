@@ -34,8 +34,12 @@ def build():
     kit.mkdir(parents=True, exist_ok=True)
     assert not any(kit.iterdir()), "Refuse stale delivery directory"
     for file in (ROOT / "tools/PTQ1_ONECLICK").iterdir():
-        if number == "127" and file.suffix.lower() == ".cmd" and file.name != "RUN_Q8_METAL_B8_QUICK.cmd":
+        if number == "128" and file.name.startswith("README_BUILD") and file.name != "README_BUILD128_CN.md":
             continue
+        if number in ("127", "128") and file.suffix.lower() == ".cmd":
+            allowed = {"RUN_Q8_METAL_B8_QUICK.cmd"}
+            if number == "128": allowed.add("RUN_Q8_ACKNOWLEDGE.cmd")
+            if file.name not in allowed: continue
         if number == "127" and file.name == "acknowledge_q8_interruption.py":
             continue
         if file.is_file() and file.suffix in (".py", ".cmd", ".txt", ".md", ".json"):
@@ -62,7 +66,8 @@ def build():
         "testkit_source_sha": source, "build_number": number, "unsigned_ipa_sha256": sha(ipa),
         "prism_upstream_sha": os.environ["PRISM_COMMIT"], "workflow_run_id": os.environ["GITHUB_RUN_ID"],
         "official_model": json.loads((ROOT / "tools/ptq1_official_model.json").read_text(encoding="utf-8")),
-        "acknowledge_failure_source_shas": ["2d5b75430ac152da7b03c0e4f0edb18b1a9ac5f2"] if number == "126" else [],
+        "acknowledge_failure_source_shas": (["2d5b75430ac152da7b03c0e4f0edb18b1a9ac5f2"] if number == "126" else
+            (["2b4daf44ff9f8b7d2bb30f9831c53938fc7bd158"] if number == "128" else [])),
         "python_archive_url": PYTHON_URL, "python_archive_sha256": PYTHON_SHA,
         "symbols_artifact": {"file": f"Bonsai-Build{number}-Symbols.zip",
             "sha256": sha(ROOT / f"build/Bonsai-Build{number}-Symbols.zip"),
@@ -76,8 +81,8 @@ def build():
     if number == "126":
         for filename in ("BUILD126_POLICY.txt", "BUILD126_TESTS.txt"):
             shutil.copy2(ROOT / "build" / filename, checks / filename)
-    elif number == "127":
-        for filename in ("BUILD127_POLICY.txt", "BUILD127_TESTS.txt"):
+    elif number in ("127", "128"):
+        for filename in (f"BUILD{number}_POLICY.txt", f"BUILD{number}_TESTS.txt"):
             shutil.copy2(ROOT / "build" / filename, checks / filename)
     (kit / "BUILD_INFO.txt").write_text(
         f"Build{number} PTQ1 candidates; concentrated prefill comparison included\n"
@@ -129,6 +134,25 @@ def build():
             ("docs/superpowers/plans/2026-10-27-build127-q8-metal-b8.md", "IMPLEMENTATION_PLAN.md"),
         ):
             shutil.copy2(ROOT / relative, kit / destination)
+    if number == "128":
+        (kit / "BUILD_INFO.txt").write_text(
+            f"Build128 fixed 16K/B8/Q8_0; opt-in PTQ1 Metal B8; source {source}; CI {os.environ['GITHUB_RUN_ID']}\n"
+            "Four-request ABBA Quick uses a fixed 128-token input and 32-token output cap; 60 seconds per request, 240 seconds total.\n"
+            "Device validation: NOT_RUN. Production defaults unchanged. No Full or Certified Stable claim.\n",
+            encoding="utf-8")
+        (kit / "BUILD128_DELIVERY_REPORT_CN.md").write_text(
+            f"# Build128 固定 Q8 + PTQ1 Metal B8 性能候选\n\n源码：{source}\n\n"
+            f"CI：https://github.com/MyHerbTea/bonsai-ipad-runtime/actions/runs/{os.environ['GITHUB_RUN_ID']}\n\n"
+            f"IPA SHA256：{sha(ipa)}\n\n"
+            "交付包含 unsigned IPA 与独立 Q8 Metal B8 TestKit。Quick 为四请求 ABBA、128输入/32输出、单请求限时60秒、全程上限240秒。\n"
+            "Q8隔离恢复需完整匹配已保存的Build126 Full人工中止证据；M5性能NOT_RUN，生产默认未改。\n",
+            encoding="utf-8")
+        for relative, destination in (
+            ("docs/superpowers/specs/2026-10-27-build128-q8-performance-enablement.md", "SOURCE_AUDIT_AND_DESIGN.md"),
+            ("docs/superpowers/plans/2026-10-27-build128-q8-performance.md", "IMPLEMENTATION_PLAN.md"),
+            ("tools/PTQ1_ONECLICK/README_BUILD128_CN.md", "README_BUILD128_CN.md"),
+        ):
+            shutil.copy2(ROOT / relative, kit / destination)
     manifest = {file.relative_to(kit).as_posix(): sha(file) for file in sorted(kit.rglob("*")) if file.is_file()}
     (kit / "DELIVERY_SHA256.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     output = kit.parent / f"BONSAI_BUILD{number}_PTQ1_ONECLICK.zip"
@@ -139,18 +163,23 @@ def build():
         assert archive.testzip() is None
         for name, digest in manifest.items():
             assert hashlib.sha256(archive.read(kit.name + "/" + name)).hexdigest() == digest, name
-        if number == "127":
+        if number in ("127", "128"):
             assert any(name.endswith("RUN_Q8_METAL_B8_QUICK.cmd") for name in archive.namelist())
             assert not any(name.endswith("RUN_Q8_BASELINE.cmd") or name.endswith("RUN_Q8_FULL.cmd")
-                           or name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
+                           for name in archive.namelist())
+            if number == "127":
+                assert not any(name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
+            else:
+                assert any(name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
         else:
             assert any(name.endswith("RUN_BONSAI_PTQ1_ONECLICK_BENCHMARK.cmd") for name in archive.namelist())
         if number == "126":
             assert any(name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
         assert len([name for name in archive.namelist() if name.endswith(".ipa")]) == 1
     Path(str(output) + ".sha256").write_text(sha(output) + "  " + output.name + "\n", encoding="utf-8")
-    if number in ("126", "127"):
-        standalone_name = f"BONSAI_BUILD{number}_Q8_TESTKIT.zip" if number == "126" else "BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip"
+    if number in ("126", "127", "128"):
+        standalone_name = (f"BONSAI_BUILD{number}_Q8_TESTKIT.zip" if number in ("126", "128")
+            else "BONSAI_BUILD127_Q8_METAL_B8_TESTKIT.zip")
         standalone = kit.parent / standalone_name
         separate = {name: digest for name, digest in manifest.items()
                     if not name.endswith((".ipa", ".ipa.sha256"))}
@@ -160,9 +189,11 @@ def build():
             archive.writestr(kit.name + "/DELIVERY_SHA256.json", json.dumps(separate, indent=2) + "\n")
         with zipfile.ZipFile(standalone) as archive:
             assert archive.testzip() is None
-            if number == "127":
+            if number in ("127", "128"):
                 assert any(name.endswith("RUN_Q8_METAL_B8_QUICK.cmd") for name in archive.namelist())
                 assert not any(name.endswith(".ipa") for name in archive.namelist())
+                if number == "128":
+                    assert any(name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
             else:
                 assert any(name.endswith("RUN_Q8_ACKNOWLEDGE.cmd") for name in archive.namelist())
             for name, digest in separate.items():

@@ -35,15 +35,16 @@ class Build126Q8RecoveryContractTests(unittest.TestCase):
         self.assertIn("acknowledge_failure_source_shas", packager)
         self.assertIn("RUN_Q8_ACKNOWLEDGE.cmd", packager)
 
-    def test_host_tool_requires_archive_hashes_and_explicit_operator_phrase(self):
+    def test_host_tool_requires_archive_hashes_and_scoped_prior_operator_ack(self):
         tool = (ROOT / "tools/PTQ1_ONECLICK/acknowledge_q8_interruption.py").read_text(encoding="utf-8")
         self.assertIn("verify_failure_archive", tool)
         self.assertIn("OPERATOR_CORRECTION.json", tool)
         self.assertIn("ACKNOWLEDGE PRESERVED FAILED Q8", tool)
+        self.assertIn('"operator_acknowledgement_token": TOKEN', tool)
+        self.assertIn("OPERATOR_ABORT_MARKER_ID", tool)
         self.assertIn("/debug/benchmark/acknowledge_q8_interruption", tool)
         self.assertNotIn("/v1/chat/completions", tool)
-        self.assertLess(tool.index('if input("输入 " + TOKEN'),
-                        tool.index('client.request("/debug/benchmark/acknowledge_q8_interruption"'))
+        self.assertIn('failure_evidence.get("source_git_sha") != OPERATOR_ABORT_SOURCE', tool)
 
 if __name__ == "__main__":
     unittest.main()

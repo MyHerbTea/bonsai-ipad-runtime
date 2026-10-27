@@ -9,6 +9,18 @@
   ],
   "rules": [
     {
+      "pattern": "docs/superpowers/specs/2026-10-27-build128-q8-performance-enablement.md",
+      "status": "DRAFT"
+    },
+    {
+      "pattern": "docs/superpowers/plans/2026-10-27-build128-q8-performance.md",
+      "status": "DRAFT"
+    },
+    {
+      "pattern": "tools/PTQ1_ONECLICK/README_BUILD128_CN.md",
+      "status": "REFERENCE"
+    },
+    {
       "pattern": "docs/superpowers/specs/2026-10-27-build127-q8-metal-b8-design.md",
       "status": "DRAFT"
     },

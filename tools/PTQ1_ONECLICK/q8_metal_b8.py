@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded Build127 Quick screen for fixed 16K/B8/Q8_0 PTQ1 Metal B8."""
+"""Bounded Build128 Quick screen for fixed 16K/B8/Q8_0 PTQ1 Metal B8."""
 import argparse
 import datetime as dt
 import getpass
@@ -17,8 +17,9 @@ import kv_baseline as q
 BASELINE = dict(context=16384, batch=8, kv="Q8_0", flags=64)
 CANDIDATE = dict(context=16384, batch=8, kv="Q8_0", flags=320)
 ORDER = (64, 320, 320, 64)
-TOTAL_DEADLINE_S = 600
-REQUEST_DEADLINE_S = 150
+TOTAL_DEADLINE_S = 240
+PROMPT_TOKENS = 128
+REQUEST_DEADLINE_S = 60
 MAX_MEMORY_DELTA = 512 * 1024 * 1024
 
 def config(flags=64, context=16384, batch=8, kv="Q8_0"):
@@ -134,7 +135,7 @@ def save_bundle(directory, report):
     b.dump(directory / "report.json", q.safe(report))
     summary = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
     (directory / "RESULT_CN.md").write_text(
-        "# Build127 Q8 固定配置 Quick 筛选\n\n"
+        "# Build128 Q8 固定配置 Quick 筛选\n\n"
         f"状态：{report.get('status')}\n\n"
         "本结果仅为四请求短 ABBA Quick 筛选，不代表 Full 认证或 M5 长期稳定认证。"
         "生产默认未改；仅在实际 Q8_0、flags 320、r1_8 路由和零 fallback 被观测时才计入候选样本。\n",
@@ -265,7 +266,7 @@ def run_screen(client, identity, directory):
     runner = Q8MetalRun(client, identity, directory)
     client.evidence_directory = directory
     report = {
-        "schema": "bonsai-build127-q8-metal-b8-quick-v1",
+        "schema": "bonsai-build128-q8-metal-b8-quick-v1",
         "status": "BLOCKED",
         "mode": "quick",
         "device_validation": "CONNECTED_M5_QUICK_ONLY",
@@ -276,6 +277,8 @@ def run_screen(client, identity, directory):
             "flash_attention": True, "sequence_max": 1, "kv_reuse": False,
             "cpu_flags_both_arms": 64, "metal_candidate_bit": 256},
         "production_default": "UNCHANGED",
+        "workload": {"target_prompt_tokens": PROMPT_TOKENS, "max_generated_tokens": 32,
+            "request_deadline_seconds": REQUEST_DEADLINE_S, "screen_deadline_seconds": TOTAL_DEADLINE_S},
         "samples": [],
         "errors": [],
         "started_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -291,14 +294,14 @@ def run_screen(client, identity, directory):
         runner.prepare()
         report["initial_q8_context_id"] = runner.creation_id
         report["phase"] = "calibrate_fixed_prompt"
-        prompt, target = runner.fit_prompt(128)
+        prompt, target = runner.fit_prompt(PROMPT_TOKENS)
         rows = []
         for index, flags in enumerate(ORDER):
             if time.monotonic() >= client.quick_deadline:
                 raise b.EvidenceError("QUICK_SCREEN_TOTAL_DEADLINE")
             report["phase"] = f"abba_{index + 1}_flags_{flags}"
             row = runner.run(config(flags), prompt, target,
-                f"build127-q8-metal-b8:{index}:{uuid.uuid4()}",
+                f"build128-q8-metal-b8:{index}:{uuid.uuid4()}",
                 "quick_probe", max_tokens=32)
             # Exclude generated text from the immutable summary; raw response remains preserved by Q8Run.
             row.pop("text", None)
@@ -364,7 +367,7 @@ def main():
         return 0
     root = b.ROOT
     output = args.output or root / "RESULTS" / (
-        "Build127-Q8-Metal-B8-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
+        "Build128-Q8-Metal-B8-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
     output.mkdir(parents=True, exist_ok=False)
     client = None
     report = {"status": "BLOCKED", "mode": "quick", "device_validation": "NOT_RUN",
@@ -382,7 +385,7 @@ def main():
         preflight_errors = validate_device_preflight(identity, before)
         if preflight_errors:
             raise b.EvidenceError("DEVICE_CANDIDATE_PREFLIGHT:" + ",".join(preflight_errors))
-        print("请确认：Build127 App 已冷启动，模型 SHA 与 TestKit 一致，API 正在运行，配置为16K + 固定Q8_0。")
+        print("请确认：Build128 App 已冷启动，模型 SHA 与 TestKit 一致，API 正在运行，配置为16K + 固定Q8_0。")
         if input("确认请键入 COLD；否则保留 BLOCKED：").strip() != "COLD":
             raise b.EvidenceError("COLD_LAUNCH_NOT_CONFIRMED")
         report = run_screen(client, identity, output / "screen")

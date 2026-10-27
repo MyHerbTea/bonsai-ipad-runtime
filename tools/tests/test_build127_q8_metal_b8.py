@@ -122,6 +122,10 @@ ggml_metal_encoder_dispatch_threadgroups(enc, ((ne01 + r0ptg - 1)/r0ptg), ((ne11
         with self.assertRaises(Exception):
             quick_runner.evaluate(rows)
 
+    def test_first_performance_screen_uses_short_fixed_prompt_and_bounded_time(self):
+        self.assertEqual(quick_runner.PROMPT_TOKENS, 128)
+        self.assertLessEqual(quick_runner.REQUEST_DEADLINE_S, 60)
+        self.assertLessEqual(quick_runner.TOTAL_DEADLINE_S, 240)
     def test_q8_run_keeps_raw_text_without_duplicate_keyword(self):
         request_key = "build127-fixed-key"
         request_id = quick_runner.b.digest(request_key)[:24]
