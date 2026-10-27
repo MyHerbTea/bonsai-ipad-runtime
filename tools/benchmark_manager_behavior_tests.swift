@@ -90,6 +90,14 @@ actor BonsaiEngine {
         precondition(profileRun["mode"] as? String == "production_profile")
         let controlRun = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test", "instrumented":false], onDelta: { _ in })
         precondition(controlRun["instrumented"] as? Bool == false, "control must explicitly turn off native profiling")
+        let counters = try await manager.handle("run", body: ["session_id":profileID,"prompt":"test","instrumented":false,"native_counters":true], onDelta:{ _ in })
+        precondition(counters["native_counters"] as? Bool == true && counters["instrumented"] as? Bool == false, "GPU counters must be independently controlled")
+        let cpu = try await manager.handle("run", body: ["session_id":profileID,"prompt":"test","instrumented":false,"native_counters":false,"cpu_experiment":"sdot"], onDelta:{ _ in })
+        precondition(cpu["cpu_experiment"] as? String == "sdot", "CPU candidate selection must be passed to the engine")
+        do {
+            _ = try await manager.handle("run", body: ["session_id":profileID,"prompt":"test","instrumented":false,"native_counters":true,"cpu_experiment":"sdot"], onDelta:{ _ in })
+            preconditionFailure("combined experiments must be rejected")
+        } catch { precondition(control.active) }
         do {
             _ = try await manager.handle("run", body: ["session_id":profileID, "prompt":"test", "instrumented":"false"], onDelta: { _ in })
             preconditionFailure("non-boolean instrumented must be rejected")

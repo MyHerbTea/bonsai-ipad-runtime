@@ -8,6 +8,7 @@
     "SUPERSEDED"
   ],
   "rules": [
+    {"pattern": "docs/superpowers/specs/2026-10-27-build129-single-build-experiments.md", "status": "DRAFT"},
     {
       "pattern": "docs/superpowers/specs/2026-10-27-build129-prefill-profiling-design.md",
       "status": "DRAFT"
