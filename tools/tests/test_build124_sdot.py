@@ -27,6 +27,14 @@ class SDOTTests(unittest.TestCase):
         self.assertIn('target("dotprod")',result)
         self.assertEqual(result.count('vdotq_s32('),2)
 
+    def test_sdot_candidate_uses_vectorized_unpack_only_in_candidate(self):
+        import rc126_build124_patch_sdot as patch
+        source = self.source()
+        result = source if 'BONSAI_SDOT_124' in source else patch.instrument_quants(source)
+        candidate, baseline = result.split('// BONSAI_SDOT_124_END', 1)
+        self.assertIn('bonsai_cpu_decode(&x[i], q, 1);', candidate)
+        self.assertNotIn('bonsai_cpu_decode(&x[i], q, 1);', baseline)
+
     def test_assembly_gate_rejects_missing_sdot_and_hot_spills(self):
         from build124_inspect_assembly import inspect
         sample="""00000100 <_bonsai_sdot_ptq1_dot>:

@@ -19,6 +19,12 @@ def instrument_quants(source):
     new='            int32x4_t dot = vdupq_n_s32(0);\n            dot = vdotq_s32(dot,vld1q_s8(q+k*32),vld1q_s8(yb->qs));\n            dot = vdotq_s32(dot,vld1q_s8(q+k*32+16),vld1q_s8(yb->qs+16));\n            const int sumi_block = vaddvq_s32(dot);'
     if clone.count(old)!=1:raise ValueError('unexpected baseline dot')
     clone=clone.replace(old,new,1)
+    # Candidate-only NEON unpack: retain the exact baseline float accumulation
+    # and integer dot ordering. Unsupported CPUs keep the untouched baseline.
+    begin=clone.index('        int o = 0;')
+    unpack_end=clone.index('        assert(o == QK_PTQ1_0);', begin)+len('        assert(o == QK_PTQ1_0);')
+    clone=clone[:begin]+'        bonsai_cpu_decode(&x[i], q, 1);'+clone[unpack_end:]
+    clone=clone.replace('    static const uint8_t pow3[6] = {1, 3, 9, 27, 81, 243};\n    static const size_t  stages[3] = {32, 16, 8};\n\n','',1)
     anchor='    const int bonsai_flags = atomic_load_explicit(&bonsai_cpu_flags, memory_order_relaxed);'
     if original.count(anchor)!=1:raise ValueError('unexpected baseline control')
     # Both arms traverse identical counting and disabled-sampling checks.
