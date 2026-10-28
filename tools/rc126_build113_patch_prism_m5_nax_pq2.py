@@ -35,7 +35,7 @@ static inline half4 bonsai_m5_nax_pq2_decode4(
         int kpos) {
     const int block_index = kpos / QK_PQ2_0;
     const int in_block    = kpos - block_index*QK_PQ2_0;
-    const block_pq2_0 * block = row_blocks + block_index;
+    device const block_pq2_0 * block = row_blocks + block_index;
     const uchar q = block->qs[in_block >> 2];
     const float d = block->d;
 
@@ -218,9 +218,6 @@ void kernel_mul_mm_nax_pq2_0_f32(
     }
 }
 
-typedef decltype(kernel_mul_mm_nax_pq2_0_f32) bonsai_m5_nax_pq2_t;
-template [[host_name("kernel_mul_mm_nax_pq2_0_f32")]]
-kernel bonsai_m5_nax_pq2_t kernel_mul_mm_nax_pq2_0_f32;
 
 #endif // GGML_METAL_HAS_TENSOR
 """
