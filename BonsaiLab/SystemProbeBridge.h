@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +44,7 @@ typedef struct {
 
 void BonsaiBeginMetalTensorBackendLogCapture(void);
 BonsaiMetalTensorBackendLogEvidence BonsaiEndMetalTensorBackendLogCapture(void);
+size_t BonsaiCopyMetalTensorBackendErrors(char *out, size_t capacity);
 
 #ifdef __cplusplus
 }

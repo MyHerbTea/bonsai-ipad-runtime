@@ -306,6 +306,15 @@ actor BonsaiEngine {
         }
     }
 
+    private func recordMetalStartupErrors(_ stage: String) {
+        var buffer = [CChar](repeating: 0, count: 8193)
+        let count = BonsaiCopyMetalTensorBackendErrors(&buffer, buffer.count)
+        guard count > 0 else { return }
+        let message = String(cString: buffer)
+        UserDefaults.standard.set(message, forKey: "BonsaiM5MetalErrors_" + stage)
+        appendBuild84NativeContextTraceLine("METAL_ERRORS_" + stage + " " + message)
+    }
+
     private func initializeBackendIfNeeded(
         metalTensorDisabled: Bool,
         beginStage: String,
@@ -347,6 +356,7 @@ actor BonsaiEngine {
 
             let evidence =
                 BonsaiEndMetalTensorBackendLogCapture()
+            recordMetalStartupErrors("backend_init")
             UserDefaults.standard.set(
                 evidence.log_observed != 0,
                 forKey:
@@ -819,7 +829,11 @@ actor BonsaiEngine {
             ubatch: config.ubatch
         )
         defer { endBuild84NativeContextTrace() }
-        guard let loadedContext = llama_init_from_model(loadedModel, contextParams) else {
+        BonsaiBeginMetalTensorBackendLogCapture()
+        let contextResult = llama_init_from_model(loadedModel, contextParams)
+        _ = BonsaiEndMetalTensorBackendLogCapture()
+        recordMetalStartupErrors("context_init")
+        guard let loadedContext = contextResult else {
             mark("MODEL_07_CONTEXT_CREATE_NULL")
             llama_model_free(loadedModel)
             stopModelScope()

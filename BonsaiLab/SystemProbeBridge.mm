@@ -11,6 +11,8 @@
 #include <llama/llama.h>
 #include <mutex>
 #include <cstdio>
+#include <string>
+#include <algorithm>
 
 BonsaiSystemProbe BonsaiReadSystemProbe(void) {
     BonsaiSystemProbe out = {};
@@ -69,6 +71,8 @@ void * g_bonsai_previous_log_user_data = nullptr;
 bool g_bonsai_tensor_log_capture_active = false;
 bool g_bonsai_tensor_log_observed = false;
 int32_t g_bonsai_tensor_log_has_tensor = -1;
+std::string g_bonsai_tensor_errors;
+constexpr size_t kBonsaiTensorErrorsLimit = 8192;
 
 void bonsai_tensor_log_callback(
     enum ggml_log_level level,
@@ -82,6 +86,9 @@ void bonsai_tensor_log_callback(
         std::lock_guard<std::mutex> lock(g_bonsai_tensor_log_mutex);
 
         if (g_bonsai_tensor_log_capture_active && text != nullptr) {
+            if (level == GGML_LOG_LEVEL_ERROR && g_bonsai_tensor_errors.size() < kBonsaiTensorErrorsLimit) {
+                g_bonsai_tensor_errors.append(text, std::min(std::strlen(text), kBonsaiTensorErrorsLimit - g_bonsai_tensor_errors.size()));
+            }
             if (std::strstr(text, "has tensor") != nullptr) {
                 if (std::strstr(text, "= true") != nullptr) {
                     g_bonsai_tensor_log_observed = true;
@@ -120,6 +127,7 @@ extern "C" void BonsaiBeginMetalTensorBackendLogCapture(void) {
     );
     g_bonsai_tensor_log_observed = false;
     g_bonsai_tensor_log_has_tensor = -1;
+    g_bonsai_tensor_errors.clear();
     g_bonsai_tensor_log_capture_active = true;
     llama_log_set(bonsai_tensor_log_callback, nullptr);
 }
@@ -142,6 +150,15 @@ extern "C" BonsaiMetalTensorBackendLogEvidence BonsaiEndMetalTensorBackendLogCap
     }
 
     return out;
+}
+
+extern "C" size_t BonsaiCopyMetalTensorBackendErrors(char *out, size_t capacity) {
+    std::lock_guard<std::mutex> lock(g_bonsai_tensor_log_mutex);
+    if (!out || capacity == 0) return 0;
+    size_t count = std::min(g_bonsai_tensor_errors.size(), capacity - 1);
+    std::memcpy(out, g_bonsai_tensor_errors.data(), count);
+    out[count] = 0;
+    return count;
 }
 
 extern "C" BonsaiMetalTensorCapabilityProbe BonsaiProbeMetalTensorCapability(void) {
