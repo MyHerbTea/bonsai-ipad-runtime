@@ -945,6 +945,7 @@ private enum RC1232PerformanceDiagnostics {
     @State private var showAdvanced = false
     @State private var build113NAXCandidateNextLaunch =
         Phase2CMetalTensorLaunchLatch.nextArm == .candidate
+    @State private var ptq1TensorM8NextLaunch = M5PTQ1TensorM8LaunchLatch.next
     @State private var ptq1B16ShapeOnlyNextLaunch =
         Phase2DPrefillBatchLaunchLatch.nextArmForUI == .candidate16
     @State private var certification: [CertificationResult] = []
@@ -1616,6 +1617,8 @@ private enum RC1232PerformanceDiagnostics {
                         )
                         .onChange(of: build113NAXCandidateNextLaunch) { _, enabled in
                             if enabled {
+                                M5PTQ1TensorM8LaunchLatch.schedule(false)
+                                ptq1TensorM8NextLaunch = false
                                 let ptq1AB = modelName.localizedCaseInsensitiveContains("PTQ1_0")
                                     && selectedAPIContextValue == 16_384
                                 Phase2DPrefillBatchLaunchLatch.scheduleNext(
@@ -1638,12 +1641,28 @@ private enum RC1232PerformanceDiagnostics {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
+                        Toggle("实验：PTQ1_0 TensorOps 16K/B8（下次冷启动）", isOn: $ptq1TensorM8NextLaunch)
+                            .onChange(of: ptq1TensorM8NextLaunch) { _, enabled in
+                                M5PTQ1TensorM8LaunchLatch.schedule(enabled)
+                                if enabled {
+                                    Phase2CMetalTensorLaunchLatch.scheduleNext(.baseline)
+                                    Phase2DPrefillBatchLaunchLatch.scheduleNext(.baseline8)
+                                    build113NAXCandidateNextLaunch = false
+                                    ptq1B16ShapeOnlyNextLaunch = false
+                                }
+                            }
+                            .disabled(busy)
+                        Text("实验默认关闭。仅 PTQ1_0、16K、B8/UBatch8 符合条件；完全退出并重启 App 后生效，实际路由和数值须真机验证。")
+                            .font(.footnote).foregroundStyle(.secondary)
+
                         Toggle(
                             "实验：PTQ1_0 16K/B16 形状隔离（关闭候选时为纯形状测试）",
                             isOn: $ptq1B16ShapeOnlyNextLaunch
                         )
                         .onChange(of: ptq1B16ShapeOnlyNextLaunch) { _, enabled in
                             if enabled {
+                                M5PTQ1TensorM8LaunchLatch.schedule(false)
+                                ptq1TensorM8NextLaunch = false
                                 Phase2CMetalTensorLaunchLatch.scheduleNext(.baseline)
                                 build113NAXCandidateNextLaunch = false
                                 Phase2DPrefillBatchLaunchLatch.scheduleNext(.candidate16)
@@ -3870,6 +3889,11 @@ applyBuild82LongContextPolicy(
             selectedAPIContextValue
         let sharedEngine = engine
         let sharedVisionSidecar = mlxVisionSidecar
+        if M5PTQ1TensorM8LaunchLatch.restartRequired {
+            status = "PTQ1_0 B8 TensorOps 设置已更改"
+            detail = "请完全退出并重新打开 App 后再启动 API。"
+            return
+        }
         let shapeArmForProcess = Phase2DPrefillBatchLaunchLatch.arm
         let shapeArmForNextLaunch = Phase2DPrefillBatchLaunchLatch.nextArm
         ptq1B16ShapeOnlyNextLaunch = shapeArmForNextLaunch == .candidate16
@@ -3898,6 +3922,10 @@ applyBuild82LongContextPolicy(
             Phase2DPrefillBatchLaunchLatch.nextArm == .candidate16
         // PTQ1_0 must opt into TensorOps before backend prewarm, not only at model load.
         // Keep its eligibility separate from the legacy PQ2_0 NAX candidate.
+        let allowPTQ1TensorM8CandidateForModel = Build113MetalTensorPolicy.m8Eligible(
+            enabled: M5PTQ1TensorM8LaunchLatch.enabled && !shapeTrialRequestedForProcess,
+            isPTQ1: selectedModelIsPTQ1, context: selectedAPIContext, batch: 8, ubatch: 8
+        )
         let allowPTQ1TensorOpsCandidateForModel =
             Phase2CMetalTensorLaunchLatch.arm == .candidate
             && selectedModelIsPTQ1
@@ -4015,7 +4043,8 @@ applyBuild82LongContextPolicy(
                     metalTensorDisabled:
                         apiRuntime.disableMetalTensorAPI,
                     allowNAXCandidate: allowNAXCandidateForModel,
-                    allowPTQ1TensorOpsCandidate: allowPTQ1TensorOpsCandidateForModel
+                    allowPTQ1TensorOpsCandidate: allowPTQ1TensorOpsCandidateForModel,
+                    allowPTQ1TensorM8Candidate: allowPTQ1TensorM8CandidateForModel
                 )
                 await sharedEngine.recordAPIStartupNativeTrace(
                     "SWIFT_BACKEND_PREWARM_DONE"

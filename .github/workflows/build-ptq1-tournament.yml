@@ -32,6 +32,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
+          xcrun swiftc -swift-version 5 BonsaiLab/Build113MetalTensorPolicy.swift tools/rc126_build113_metal_tensor_policy_tests.swift -o "$RUNNER_TEMP/metal-policy"
+          "$RUNNER_TEMP/metal-policy"
           xcrun swiftc -swift-version 5 BonsaiLab/BenchmarkCandidateRegistry.swift tools/build129_production_profile_policy_tests.swift -o "$RUNNER_TEMP/build129-profile-policy"
           "$RUNNER_TEMP/build129-profile-policy" | tee build/BUILD129_PROFILE_POLICY.txt
           xcrun swiftc -swift-version 5 BonsaiLab/InferenceProfile.swift tools/build129_profile_timing_tests.swift -o "$RUNNER_TEMP/build129-profile-timing"

@@ -1,5 +1,18 @@
 import Foundation
 
+// Independent cold-launch arm; changing it never changes the live backend.
+struct M5PTQ1TensorM8LaunchLatch {
+    static let key = "BonsaiM5PTQ1TensorM8NextLaunch"
+    static let enabled = UserDefaults.standard.bool(forKey: key)
+    static var next: Bool { _ = enabled; return UserDefaults.standard.bool(forKey: key) }
+    static var restartRequired: Bool { enabled != next }
+    static func schedule(_ value: Bool) {
+        _ = enabled
+        UserDefaults.standard.set(value, forKey: key)
+        UserDefaults.standard.synchronize()
+    }
+}
+
 enum Phase2CMetalTensorLaunchArm: String, Codable, Sendable {
     case baseline = "BASELINE"
     case candidate = "CANDIDATE"

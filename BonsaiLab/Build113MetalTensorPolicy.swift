@@ -15,6 +15,10 @@ enum Build113MetalTensorPolicy {
         return requestedDisabled
     }
 
+    static func m8Eligible(enabled: Bool, isPTQ1: Bool, context: Int, batch: Int, ubatch: Int) -> Bool {
+        enabled && isPTQ1 && context == 16_384 && batch == 8 && ubatch == 8
+    }
+
     /// A backend registry is process-global; changing the effective mode in-process requires restart.
     static func requiresRestart(latchedDisabled: Bool?, effectiveDisabled: Bool) -> Bool {
         guard let latchedDisabled else { return false }

@@ -62,6 +62,8 @@ actor BonsaiEngine {
     private var allowNAXCandidateForCurrentModel = false
     private var allowPTQ1TensorOpsCandidateForCurrentModel = false
 
+    private var allowPTQ1TensorM8ForCurrentModel = false
+
     private var BonsaiBuild113PTQ1TensorOpsAB16Enabled: Bool {
         allowPTQ1TensorOpsCandidateForCurrentModel
             && Phase2CMetalTensorLaunchLatch.arm == .candidate
@@ -260,8 +262,8 @@ actor BonsaiEngine {
     private func effectiveBuild113MetalTensorDisabled(_ requested: Bool) -> Bool {
         Build113MetalTensorPolicy.effectiveDisabled(
             requestedDisabled: requested,
-            launchArmRawValue: Phase2CMetalTensorLaunchLatch.arm.rawValue,
-            allowNAXCandidate: allowNAXCandidateForCurrentModel
+            launchArmRawValue: allowPTQ1TensorM8ForCurrentModel ? "CANDIDATE" : Phase2CMetalTensorLaunchLatch.arm.rawValue,
+            allowNAXCandidate: allowNAXCandidateForCurrentModel || allowPTQ1TensorM8ForCurrentModel
         )
     }
 
@@ -274,7 +276,7 @@ actor BonsaiEngine {
         )
         try? Data().write(to: url, options: .atomic)
         setenv("BONSAI_M5_PTQ1_TENSOR_TRACE_PATH", url.path, 1)
-        if BonsaiBuild113PTQ1TensorOpsAB16Enabled {
+        if BonsaiBuild113PTQ1TensorOpsAB16Enabled || allowPTQ1TensorM8ForCurrentModel {
             unsetenv("GGML_METAL_PTQ1_TENSOROPS_DISABLE")
         } else {
             setenv("GGML_METAL_PTQ1_TENSOROPS_DISABLE", "1", 1)
@@ -284,7 +286,6 @@ actor BonsaiEngine {
     private func prepareMetalTensorBackend(
         disabled: Bool
     ) throws {
-        enableBuild113PTQ1TensorTrace()
         let effectiveDisabled = effectiveBuild113MetalTensorDisabled(disabled)
         if Build113MetalTensorPolicy.requiresRestart(
             latchedDisabled: backendRegistryMetalTensorDisabledAtFirstInit,
@@ -297,6 +298,7 @@ actor BonsaiEngine {
             )
         }
 
+        enableBuild113PTQ1TensorTrace()
         if effectiveDisabled {
             setenv("GGML_METAL_TENSOR_DISABLE", "1", 1)
         } else {
@@ -377,10 +379,12 @@ actor BonsaiEngine {
     func prepareAPIColdStart(
         metalTensorDisabled: Bool,
         allowNAXCandidate: Bool = false,
-        allowPTQ1TensorOpsCandidate: Bool = false
+        allowPTQ1TensorOpsCandidate: Bool = false,
+        allowPTQ1TensorM8Candidate: Bool = false
     ) throws {
         try checkBenchmarkAdmission()
         allowNAXCandidateForCurrentModel = allowNAXCandidate
+        allowPTQ1TensorM8ForCurrentModel = allowPTQ1TensorM8Candidate && M5PTQ1TensorM8LaunchLatch.enabled
         allowPTQ1TensorOpsCandidateForCurrentModel =
             allowPTQ1TensorOpsCandidate
             && Phase2CMetalTensorLaunchLatch.arm == .candidate
@@ -618,6 +622,10 @@ actor BonsaiEngine {
         let modelName = url.lastPathComponent
         let isPTQ1Model = modelName.localizedCaseInsensitiveContains("PTQ1_0")
         let isPQ2Model = modelName.localizedCaseInsensitiveContains("PQ2_0")
+        allowPTQ1TensorM8ForCurrentModel = Build113MetalTensorPolicy.m8Eligible(
+            enabled: M5PTQ1TensorM8LaunchLatch.enabled, isPTQ1: isPTQ1Model,
+            context: config.context, batch: config.batch, ubatch: config.ubatch
+        )
         allowPTQ1TensorOpsCandidateForCurrentModel =
             isPTQ1Model
             && Phase2CMetalTensorLaunchLatch.arm == .candidate

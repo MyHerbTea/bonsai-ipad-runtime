@@ -29,6 +29,11 @@ struct Build113MetalTensorPolicyTests {
                      "same mode must not require restart")
         precondition(!Build113MetalTensorPolicy.requiresRestart(latchedDisabled: nil, effectiveDisabled: false),
                      "first backend initialization has no previous latch")
+        precondition(Build113MetalTensorPolicy.m8Eligible(enabled: true, isPTQ1: true, context: 16384, batch: 8, ubatch: 8), "explicit M8 candidate must qualify")
+        precondition(!Build113MetalTensorPolicy.m8Eligible(enabled: false, isPTQ1: true, context: 16384, batch: 8, ubatch: 8), "default must remain off")
+        precondition(!Build113MetalTensorPolicy.m8Eligible(enabled: true, isPTQ1: false, context: 16384, batch: 8, ubatch: 8), "wrong model must fail closed")
+        precondition(!Build113MetalTensorPolicy.m8Eligible(enabled: true, isPTQ1: true, context: 32768, batch: 8, ubatch: 8), "wrong context must fail closed")
+        precondition(!Build113MetalTensorPolicy.m8Eligible(enabled: true, isPTQ1: true, context: 16384, batch: 16, ubatch: 16), "B16 must not use M8 arm")
         print("PASS Build113 Metal Tensor policy: default API cold start, model load, explicit CANDIDATE, safe fallback, restart latch")
     }
 }
