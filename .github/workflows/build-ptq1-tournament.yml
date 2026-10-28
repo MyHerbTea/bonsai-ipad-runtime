@@ -63,6 +63,7 @@ jobs:
           "$RUNNER_TEMP/benchmark-manager" | tee -a build/CI_TESTS.txt
           xcrun swiftc -frontend -parse BonsaiLab/APIReasoningModePolicy.swift BonsaiLab/BonsaiEngine.swift BonsaiLab/BenchmarkSessionManager.swift BonsaiLab/BenchmarkTelemetry.swift BonsaiLab/LocalOpenAIServer.swift
           python3 tools/rc126_build113_ptq1_tensorops_codec_tests.py 2>&1 | tee -a build/CI_TESTS.txt
+          python3 -m unittest discover -s tools/tests -p "test_build113_m8_tensorops.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/PTQ1_ONECLICK -p 'test_*.py' -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build124_oneclick.py" -v 2>&1 | tee -a build/CI_TESTS.txt
           python3 -m unittest discover -s tools/tests -p "test_build125_abc.py" -v 2>&1 | tee -a build/CI_TESTS.txt

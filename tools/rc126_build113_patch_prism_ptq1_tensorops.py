@@ -313,8 +313,8 @@ static inline void bonsai_m5_ptq1_tensor_trace(const char *fmt, ...) {
         !ggml_is_transposed(op->src[0]) &&
         !ggml_is_transposed(op->src[1]) &&
         ne00 % BONSAI_M5_PTQ1_TENSOROPS_QK == 0 &&
-        ne11 >= BONSAI_M5_PTQ1_TENSOROPS_BM &&
-        ne11 % BONSAI_M5_PTQ1_TENSOROPS_BM == 0 &&
+        (ne11 == 8 || (ne11 >= BONSAI_M5_PTQ1_TENSOROPS_BM &&
+        ne11 % BONSAI_M5_PTQ1_TENSOROPS_BM == 0)) &&
         ne01 >= BONSAI_M5_PTQ1_TENSOROPS_BN &&
         ne02 == 1 && ne03 == 1 &&
         ne12 == 1 && ne13 == 1 &&
